@@ -5698,17 +5698,23 @@ function kinoBuildDom(){
     <div class="k-vig"></div><div class="k-grain"></div><div class="k-flash" id="kFlash"></div><div class="k-fade" id="kFade"></div>
     <div class="k-slot k-title" data-slot="title"></div><div class="k-slot k-chapter" data-slot="chapter"></div>
     <div class="k-slot k-line" data-slot="line"></div><div class="k-slot k-counter" data-slot="counter"></div>
-    <div class="k-ctl"><button id="kSound" type="button">🔈 Dźwięk</button><button id="kSkip" type="button">Pomiń ⏭</button></div>
+    <div class="k-ctl"><button id="kFull" type="button" hidden>⛶ Pełny ekran</button><button id="kSound" type="button">🔈 Dźwięk</button><button id="kSkip" type="button">Pomiń ⏭</button></div>
     <div class="k-end" id="kEnd"><div class="k-eye">Koniec</div><div class="k-h1">Voyager 1</div>
       <div class="k-sub">Dane: NASA/JPL Horizons · film i scena na żywo: <a href="https://voyager.kodownik.co/">voyager.kodownik.co</a></div>
       <div class="k-btns"><button id="kAgain" type="button">↻ Jeszcze raz</button><button id="kStay" type="button">Zostań w scenie</button></div></div>
-    <div class="k-load" id="kLoad">wczytywanie sceny…</div>`;
+    <div class="k-load" id="kLoad">wczytywanie sceny…</div>
+    <div class="k-rot">↻ obróć telefon poziomo — cały kadr</div>`;
   document.body.appendChild(el);
   document.getElementById('kSkip').onclick = ()=>kinoEnd(true);
   document.getElementById('kAgain').onclick = ()=>kinoStart();
   document.getElementById('kStay').onclick = ()=>{ document.getElementById('kino').classList.remove('end');
     document.body.classList.remove('kino-on'); };
   document.getElementById('kSound').onclick = ()=>kinoAudioToggle();
+  // pełny ekran: tylko gdzie przeglądarka go daje (iPhone Safari nie — tam przycisk się nie pokazuje)
+  const kFull = document.getElementById('kFull');
+  kFull.hidden = !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  kFull.onclick = ()=>kinoFullscreenToggle();
+  ['fullscreenchange','webkitfullscreenchange'].forEach(ev=>document.addEventListener(ev, kinoFullscreenLabel));
 }
 
 function kinoSlots(t){
@@ -5798,6 +5804,22 @@ function kinoEnd(skipped){
   document.body.classList.remove('kino-run');
   document.getElementById('kino').classList.add('end');
   kinoAudioStop(skipped ? 0.4 : 3);
+}
+
+/* ---------- pełny ekran (przycisk w filmie; gest użytkownika wymagany przez przeglądarki) ---------- */
+function kinoFsElement(){ return document.fullscreenElement || document.webkitFullscreenElement || null; }
+function kinoFullscreenLabel(){
+  const b = document.getElementById('kFull'); if(b) b.textContent = kinoFsElement() ? '✕ Zamknij pełny ekran' : '⛶ Pełny ekran';
+}
+function kinoFullscreenToggle(){
+  const d = document, el = d.documentElement;
+  if(kinoFsElement()){ (d.exitFullscreen || d.webkitExitFullscreen).call(d); return; }
+  const req = el.requestFullscreen || el.webkitRequestFullscreen; if(!req) return;
+  Promise.resolve(req.call(el, {navigationUI:'hide'})).then(()=>{
+    // telefon: kadr 2.39:1 → poziomo, jeśli przeglądarka pozwala zablokować orientację (Android Chrome w pełnym ekranie)
+    if(matchMedia('(pointer: coarse)').matches && screen.orientation && screen.orientation.lock)
+      screen.orientation.lock('landscape').catch(()=>{});
+  }).catch(e=>console.warn('kino: pełny ekran odrzucony', e && e.message));
 }
 
 /* ---------- dźwięk: generatywna faktura (Web Audio), włączana przyciskiem (autoplay blokuje audio) ---------- */

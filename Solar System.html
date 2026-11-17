@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- iPhone nie daje Fullscreen API stronie: dodana do ekranu początkowego otwiera się bez pasków Safari -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Układ Słoneczny</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -387,9 +391,16 @@
 
   /* ===== Tryb filmowy ?film (solar.js „Tryb filmowy”, kino.js) ===== */
   body.kino-on > *:not(#app):not(#kino){opacity:0 !important;pointer-events:none !important;transition:opacity .6s}
+  :root{--kbar:max(0px,(100vh - 100vw/2.39)/2)}
+  /* telefon w pionie: 2.39:1 zostawiłby na film ~1/5 ekranu — pasy wąskie, kadr na cały ekran */
+  @media (orientation: portrait){ :root{--kbar:7vh} }
+  #kino .k-rot{position:absolute;left:0;right:0;bottom:calc(var(--kbar) + 18px);text-align:center;font:500 12px "IBM Plex Mono",monospace;
+    letter-spacing:.12em;color:#cfeaff;opacity:0;pointer-events:none;text-shadow:0 0 3px #000}
+  @media (orientation: portrait) and (pointer: coarse){ body.kino-run #kino .k-rot{animation:krot 7s ease 1.5s 1 both} }
+  @keyframes krot{0%{opacity:0}12%{opacity:.95}80%{opacity:.95}100%{opacity:0}}
   #kino{display:none;position:fixed;inset:0;z-index:60;pointer-events:none;color:#eaf6ff;font-family:"Space Grotesk",sans-serif}
   body.kino-on #kino{display:block}
-  #kino .k-bar{position:absolute;left:0;right:0;height:max(0px,calc((100vh - 100vw/2.39)/2));background:#000;
+  #kino .k-bar{position:absolute;left:0;right:0;height:var(--kbar);background:#000;
     transition:transform 1.4s cubic-bezier(.7,0,.2,1);display:flex;align-items:center;justify-content:flex-end;padding:0 3vw}
   #kino .k-top{top:0;transform:translateY(-100%)} #kino .k-bot{bottom:0;transform:translateY(100%)}
   body.kino-run #kino .k-bar{transform:none}
@@ -422,16 +433,16 @@
   #kino .k-eye{font-family:"IBM Plex Mono",monospace;font-size:clamp(10px,1.05vw,13px);letter-spacing:.32em;text-transform:uppercase;color:#c4ecff}
   #kino .k-h1{font-size:clamp(40px,8.2vw,120px);font-weight:300;letter-spacing:.06em;line-height:1.02;margin:.12em 0 .1em}
   #kino .k-sub{font-size:clamp(14px,1.7vw,22px);font-weight:400;letter-spacing:.04em;color:#e6f5ff}
-  #kino .k-title{top:calc(max(0px,(100vh - 100vw/2.39)/2) + 8vh)}
-  #kino .k-chapter{top:calc(max(0px,(100vh - 100vw/2.39)/2) + 4.5vh);font-family:"IBM Plex Mono",monospace;
+  #kino .k-title{top:calc(var(--kbar) + 8vh)}
+  #kino .k-chapter{top:calc(var(--kbar) + 4.5vh);font-family:"IBM Plex Mono",monospace;
     font-size:clamp(10px,1.1vw,14px);letter-spacing:.42em;text-transform:uppercase;color:#bfe9ff}
   #kino .k-chapter span{border-top:1px solid rgba(159,230,255,.35);border-bottom:1px solid rgba(159,230,255,.35);padding:.5em 1.2em}
-  #kino .k-line{bottom:calc(max(0px,(100vh - 100vw/2.39)/2) + 6vh);font-size:clamp(15px,1.75vw,24px);font-weight:300;
+  #kino .k-line{bottom:calc(var(--kbar) + 6vh);font-size:clamp(15px,1.75vw,24px);font-weight:300;
     letter-spacing:.02em}
-  #kino .k-counter{top:calc(max(0px,(100vh - 100vw/2.39)/2) + 9vh);left:5vw;right:auto;text-align:left;padding:0}
+  #kino .k-counter{top:calc(var(--kbar) + 9vh);left:5vw;right:auto;text-align:left;padding:0}
   #kino .k-big{font-family:"IBM Plex Mono",monospace;font-size:clamp(34px,6vw,84px);font-weight:300;color:#dff6ff}
   #kino .k-cap{font-family:"IBM Plex Mono",monospace;font-size:clamp(10px,1vw,13px);letter-spacing:.3em;text-transform:uppercase;color:#8fd8ff}
-  #kino .k-ctl{position:absolute;right:16px;top:calc(max(0px,(100vh - 100vw/2.39)/2) + 12px);display:flex;gap:8px;pointer-events:auto}
+  #kino .k-ctl{position:absolute;right:16px;top:calc(var(--kbar) + 12px);display:flex;gap:8px;pointer-events:auto}
   #kino button{font:500 12px "IBM Plex Mono",monospace;letter-spacing:.08em;color:#cfeaff;background:rgba(6,14,24,.55);
     border:1px solid rgba(159,230,255,.25);border-radius:999px;padding:7px 13px;cursor:pointer;backdrop-filter:blur(6px)}
   #kino button:hover{border-color:rgba(159,230,255,.7);color:#fff}
