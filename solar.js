@@ -1493,7 +1493,7 @@ const probeEphemReady = fetch('probes/ephem.json?v='+APP_VER)
 const LIGHT_DAY_WINDOW_MS = 365.25*86400000;   // membrana dnia świetlnego: ±1 rok od chwili przekroczenia
 const PROBE_TICK_MS = 250;                     // repozycja sond/membrany/karty — poza animate (gałąź pasywna nietknięta)
 // zegar sceny: w filmie (?film) przyspieszony, w locie warpowany, poza nimi realny 1:1
-const kino = { active:false, clockMs:0 };   // stan trybu filmowego (pełny w sekcji „Tryb filmowy” na końcu pliku)
+const kino = { active:false, clockMs:0, earthMs:0, film:'voyager' };   // stan trybu filmowego (pełny w sekcji „Tryb filmowy” na końcu pliku)
 function probeClockMs(){ return (kino.active && kino.clockMs) || (flight.active && flight.clockMs) || reality.clockMs || Date.now(); }
 function probeEphem(p){ return (!p.atBody && PROBE_EPHEM && PROBE_EPHEM.probes[p.id]) || null; }
 function _fmtAU(d){ return d.toFixed(3).replace('.', ',') + ' AU'; }
@@ -5350,7 +5350,7 @@ function animate(){
         const sx = sun.position.x - wp.x, sy = sun.position.y - wp.y, sz = sun.position.z - wp.z;
         const szA = -sy*Math.sin(eps) + sz*Math.cos(eps);
         const phiSun = Math.atan2(szA, sx);
-        const d = new Date(clockMs);
+        const d = new Date(kino.earthMs || clockMs);                // film „Mrugnięcie” obraca Ziemię zegarem filmu
         const utcH = d.getUTCHours() + d.getUTCMinutes()/60 + d.getUTCSeconds()/3600;
         const subSolarLon = (15 * (12 - utcH)) * Math.PI/180;     // długość podsłoneczna (E, rad)
         b.mesh.rotation.y = -subSolarLon - phiSun;
@@ -5774,6 +5774,7 @@ function kinoLoop(now){
 }
 
 function kinoStart(){
+  if(kino.film === 'vgr') return vgrStart();
   if(!kino.ready) return;
   const P = PROBES.find(p=>p.id===KINO_PROBE), e = probeEphem(P);
   kino.crossMs = Date.parse(e.lightDay.geometric); kino.downMs = Date.parse(e.lightDay.downlink);
@@ -5798,6 +5799,7 @@ function kinoStart(){
 
 function kinoEnd(skipped){
   if(!kino.active) return;
+  if(kino.film === 'vgr') vgrCleanup();
   kinoPauseSet(false);
   kino.active = false; cancelAnimationFrame(kino.raf);
   placeBodiesAt(reality.clockMs); updateProbes();                       // z powrotem na „teraz" 1:1
@@ -5917,4 +5919,278 @@ if(/[?&](film|kino)\b/.test(location.search)){
   };
   boot();
   if(typeof window !== 'undefined') window.__kino = kino;
+}
+
+/* ============================================================
+   Film „Mrugnięcie" (?mrugniecie) — V-G-R alfabetem Morse'a z Ziemi do Voyagera 1
+   (akcja NASA „Shine Bright for Voyager's Light-Day", 17.11.2026 po zachodzie słońca).
+   Oś czasu, zegar czoła światła, zmierzch per miasto i pozy kamery: mrugniecie.js (Mrug, testowane).
+   Tu: miasta mrugające o zmierzchu (geo/edu-data.json), latarka w Warszawie, pociąg błysków na promieniu
+   Ziemia→sonda w PRAWDZIWEJ skali (jednostka Morse'a = 0,22 s światła), kropka Ziemi zza sondy.
+   Wspólne z filmem 1: DOM #kino, napisy (kinoSlots), pauza, dźwięk, sprzątanie (kinoEnd → vgrCleanup).
+   ============================================================ */
+const VGR_PL = { lon:21.01, lat:52.23 };                       // Warszawa — latarka, którą śledzimy
+const vgr = { built:false, n:0, lon:null, sLat:null, cLat:null, pop:null, ph:null, names:null, pts:null, col:null,
+  hero:null, train:null, offs:null, dot:null, glint:null, K:null, Es:null, seq:Mrug.morseSeq('VGR'),
+  arrMs:0, tCross:NaN, tPass:0, passed:false, lastFront:0, rE:1, pr:1, city:'' };
+const _vV = new THREE.Vector3();
+const _va = v => [v.x, v.y, v.z];
+
+function vgrBuild(d){
+  const e = bodies.find(b=>b.data.earth), r = e.data.radius * 1.004;
+  const cs = d.cities.filter(c=>(c[3]||0) >= 150000);
+  const n = cs.length; vgr.n = n;
+  vgr.lon = new Float32Array(n); vgr.sLat = new Float32Array(n); vgr.cLat = new Float32Array(n);
+  vgr.pop = new Float32Array(n); vgr.ph = new Float32Array(n); vgr.names = cs.map(c=>c[2]);
+  const pos = new Float32Array(n*3);
+  cs.forEach((c, i)=>{
+    vgr.lon[i] = c[0]*Math.PI/180; vgr.sLat[i] = Math.sin(c[1]*Math.PI/180); vgr.cLat[i] = Math.cos(c[1]*Math.PI/180);
+    vgr.pop[i] = c[3];
+    vgr.ph[i] = (moonSeed(c[2]) % 3800) / 100;                 // każdy mruga po swojemu (faza 0..38 jednostek)
+    const p = lonlatToLocal(c[0], c[1], r); pos[i*3] = p.x; pos[i*3+1] = p.y; pos[i*3+2] = p.z;
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  vgr.col = new THREE.BufferAttribute(new Float32Array(n*3), 3); g.setAttribute('color', vgr.col);
+  const warm = glowTexture('rgba(255,250,236,1)', 'rgba(255,190,110,0.42)');
+  vgr.pts = new THREE.Points(g, new THREE.PointsMaterial({map:warm, size:22, sizeAttenuation:false, vertexColors:true,
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
+  vgr.pts.visible = false; e.mesh.add(vgr.pts);
+  const spr = (tex, color, att) => new THREE.Sprite(new THREE.SpriteMaterial({map:tex, color, sizeAttenuation:att,
+    transparent:true, depthWrite:false, depthTest:att, blending:THREE.AdditiveBlending}));
+  // latarka w Warszawie (stały rozmiar na ekranie)
+  vgr.hero = spr(glowTexture('rgba(255,255,255,1)', 'rgba(255,196,110,0.55)'), 0xffe2b0, false);
+  vgr.hero.position.copy(lonlatToLocal(VGR_PL.lon, VGR_PL.lat, e.data.radius*1.01)); vgr.hero.visible = false; e.mesh.add(vgr.hero);
+  // pociąg błysków: koraliki wzdłuż promienia (kropka = 1, kreska = 5), offset w jednostkach Morse'a od czoła
+  vgr.offs = [];
+  vgr.seq.forEach(el=>{ if(!el.on) return;
+    if(el.u === 1) vgr.offs.push(el.at + 0.5); else for(let k=0; k<5; k++) vgr.offs.push(el.at + 0.3 + k*0.6); });
+  vgr.train = new THREE.Group();
+  const bead = glowTexture('rgba(255,252,240,1)', 'rgba(255,214,150,0.4)');
+  vgr.offs.forEach(()=>{ const s = spr(bead, 0xfff0d8, true); vgr.train.add(s); });
+  vgr.train.visible = false; scene.add(vgr.train);
+  // kropka Ziemi widziana zza sondy + błysk na sondzie, gdy mija ją pociąg
+  vgr.dot = spr(glowTexture('rgba(220,240,255,1)', 'rgba(120,180,255,0.45)'), 0xb9dcff, false); vgr.dot.visible = false; scene.add(vgr.dot);
+  vgr.glint = spr(glowTexture('rgba(255,255,255,1)', 'rgba(255,220,160,0.45)'), 0xfff3dc, false); vgr.glint.visible = false; scene.add(vgr.glint);
+  vgr.built = true;
+}
+
+function vgrShow(on){
+  if(!vgr.built) return;
+  vgr.pts.visible = on; vgr.hero.visible = false; vgr.train.visible = false; vgr.dot.visible = false; vgr.glint.visible = false;
+}
+function vgrCleanup(){ vgrShow(false); vgrDark(false); kino.earthMs = 0; }
+// V · Kropka: ciemne niebo jak na „Pale Blue Dot" — chowa linie orbit/torów i błonę, potem przywraca dokładnie te same
+function vgrDark(on){
+  if(on === !!vgr.hidden) return;
+  if(on){
+    vgr.hidden = [];
+    scene.traverse(o=>{ if((o.isLine || o.isLineSegments) && o.visible && !vgr.train.children.includes(o)) { o.visible = false; vgr.hidden.push(o); } });
+    const g = kino.ld && kino.ld.film.parent; if(g && g.visible){ g.visible = false; vgr.hidden.push(g); }
+  } else { vgr.hidden.forEach(o=>{ o.visible = true; }); vgr.hidden = null; }
+}
+
+const _vfmtPL = ms => new Date(ms).toLocaleTimeString('pl-PL', {timeZone:'Europe/Warsaw', hour:'2-digit', minute:'2-digit'});
+function vgrCues(){
+  const st = id => Mrug.shotStart(id), K = vgr.K, c = [];
+  const add = (shot, a, b, slot, html) => c.push({ a: st(shot) + a, b: st(shot) + b, slot, html });
+  add('zmierzch', 1.0, 8.2, 'title', '<div class="k-eye">Akcja NASA · 17 listopada 2026</div><div class="k-h1">Mrugnięcie</div><div class="k-sub">V-G-R alfabetem Morse\'a — z Ziemi do Voyagera 1</div>');
+  Mrug.SHOTS.forEach(s=>{ if(s.id !== 'zmierzch') add(s.id, 0.3, 4.3, 'chapter', `<span>${s.chapter}</span>`); });
+  add('zmierzch', 5.0, 14.6, 'counter', ()=> vgr.city ? `<div class="k-big k-city">${vgr.city}</div><div class="k-cap">mruga teraz V-G-R</div>` : '');
+  add('zmierzch', 8.6, 14.7, 'line', 'Gdzie zachodzi słońce, ludzie świecą w niebo latarkami. Fala mrugnięć idzie za zmierzchem na zachód.');
+  add('nadawanie', 0.8, 11.8, 'counter', vgrMorseHtml);
+  add('nadawanie', 2.0, 6.8, 'line', `Warszawa, 17 listopada, ${_vfmtPL(K.sendMs)} — chwilę po zachodzie słońca.`);
+  add('nadawanie', 7.1, 11.9, 'line', 'Każde mignięcie odlatuje z prędkością światła: 300 000 km na sekundę.');
+  add('poscig', 1.5, 17.2, 'counter', t=>`<div class="k-big">${Kino.fmtDec(Math.max(0, (Mrug.clockMs(t, K) - K.sendMs)/3.6e6), 1)} h</div><div class="k-cap">lotu światła z Warszawy</div>`);
+  add('poscig', 4.2, 9.6, 'line', 'Prawdziwa skala: kropka to 66 tys. km światła, kreska — 198 tys. km.');
+  if(Number.isFinite(vgr.tCross)){
+    const a = vgr.tCross - st('poscig');
+    add('poscig', a - 0.4, Math.min(a + 4.6, Mrug.shotDur('poscig')), 'line',
+      `${_kfmt(kino.crossMs)}: Voyager przekracza granicę dnia świetlnego. Mrugnięcie leci ${Kino.fmtDec((vgr.arrMs - kino.crossMs)/3.6e6, 1)} h za nim.`);
+  }
+  const tp = vgr.tPass - st('przylot');
+  add('przylot', 0.6, tp - 0.3, 'line', `Ostatnie ${Kino.fmtDec(K.dEnd/AU_SCALE*ProbeEphem.AU_KM/1e6, 1)} mln km. Czas płynie normalnie.`);
+  add('przylot', tp - 0.1, tp + 5.2, 'title', `<div class="k-eye">${_kfmt(vgr.arrMs, true)}</div><div class="k-h1">Doleciało</div><div class="k-sub">Mrugnięcie z Polski mija Voyagera 1 — po dobie lotu.</div>`);
+  add('przylot', tp + 5.4, 13.9, 'line', 'Sonda leci 17 km/s. Światło mija ją, jakby stała w miejscu.');
+  add('kropka', 2.0, 7.8, 'line', ()=>{
+    const V = kino.mk.position, E = worldPos(bodies.find(b=>b.data.earth));
+    const ang = E.clone().sub(V).angleTo(sun.position.clone().sub(V)) * 180/Math.PI;
+    return `Stąd Ziemia jest ${Kino.fmtDec(ang, 2)}° od Słońca — bladą kropką. To światło wyleciało dobę temu.`; });
+  add('kropka', 8.2, 15.7, 'line', 'Voyager tego nie zobaczy — kamery wyłączono w 1990 roku. Światło leci dalej, między gwiazdy.');
+  return c;
+}
+function vgrMorseHtml(t){
+  const m = Mrug.morseAt((t - Mrug.shotStart('nadawanie'))/Mrug.UNIT_S, vgr.seq);
+  const L = ['V','G','R'].map((ch, i)=>`<span class="${i===m.letter ? 'on' : ''}">${ch}</span>`).join('');
+  const sym = vgr.seq.map((el, i)=> el.on ? `<i class="${i===m.el ? 'on' : ''}">${el.u === 1 ? '·' : '–'}</i>` : (el.u > 1 ? '<b> </b>' : '')).join('');
+  return `<div class="k-big k-vgrL">${L}</div><div class="k-cap k-vgrS">${sym}</div>`;
+}
+
+function vgrAnchors(){
+  const E = worldPos(bodies.find(b=>b.data.earth));
+  vgr.hero.getWorldPosition(_vV);
+  return { E:_va(E), Es:vgr.Es, V:_va(kino.mk.position), S:_va(sun.position), rE:vgr.rE, pr:vgr.pr,
+           pl: Kino._v.norm([_vV.x - E.x, _vV.y - E.y, _vV.z - E.z]) };
+}
+
+function vgrCities(t, clk, on){
+  vgr.pts.visible = on; if(!on) return;
+  const dec = Mrug.sunDecl(clk)*Math.PI/180, sd = Math.sin(dec), cd = Math.cos(dec), ls = Mrug.subSolarLon(clk)*Math.PI/180;
+  const a = vgr.col.array, u = t/Mrug.UNIT_S; let best = 0, name = '';
+  for(let i=0; i<vgr.n; i++){
+    const H = vgr.lon[i] - ls;                                        // kąt godzinny: wieczór gdy sin H > 0 (świt odpada)
+    const w = Math.sin(H) > 0 ? Mrug.dusk(vgr.sLat[i]*sd + vgr.cLat[i]*cd*Math.cos(H)) : 0;
+    let b = 0;
+    if(w > 0){
+      b = w * (Mrug.morseAt(u + vgr.ph[i], vgr.seq).on ? 1 : 0.08) * Math.min(1, 0.35 + Math.log10(vgr.pop[i]/150000)*0.45);
+      if(w > 0.6 && vgr.pop[i] > best){ best = vgr.pop[i]; name = vgr.names[i]; }
+    }
+    a[i*3] = b; a[i*3+1] = b*0.78; a[i*3+2] = b*0.42;                // bursztyn latarek — odróżnia się od białych świateł miast
+  }
+  vgr.col.needsUpdate = true; vgr.city = name;
+}
+
+function vgrLoop(now){
+  if(!kino.active) return;
+  kino.raf = requestAnimationFrame(vgrLoop);
+  if(kino.paused) return;
+  const t = (now - kino.t0)/1000, T = Mrug.total(), K = vgr.K;
+  if(t >= T){ kinoEnd(false); return; }
+  const clk = Mrug.clockMs(t, K);
+  if(clk !== kino.lastClock){ kino.clockMs = clk; kino.earthMs = clk; kino.lastClock = clk; placeBodiesAt(clk); updateProbes(); }
+  const A = vgrAnchors(), p = Mrug.pose(t, A, K);
+  camera.position.set(p.pos[0], p.pos[1], p.pos[2]);
+  controls.target.set(p.target[0], p.target[1], p.target[2]);
+  const dir = Kino._v.norm(Kino._v.sub(p.target, p.pos)), up = Kino.rotate([0,1,0], dir, p.roll);
+  camera.up.copy(_kUp.set(up[0], up[1], up[2]));
+  if(Math.abs(camera.fov - p.fov) > 1e-3){ camera.fov = p.fov; camera.updateProjectionMatrix(); }
+  camera.lookAt(controls.target);
+  const L = Mrug.locate(t), id = L.shot.id;
+  let gate = 0, flash = 0;
+  // I–II: miasta o zmierzchu; II: latarka w Warszawie (Morse w czasie rzeczywistym)
+  vgrCities(t, clk, id === 'zmierzch' || id === 'nadawanie');
+  const heroOn = id === 'nadawanie' && Mrug.morseAt(L.local/Mrug.UNIT_S, vgr.seq).on;
+  vgr.hero.visible = id === 'nadawanie' || (id === 'poscig' && L.f < 0.12);
+  { const s = heroOn ? 0.16 : 0.035; vgr.hero.scale.set(s, s, 1); }
+  if(heroOn){ gate = 0.07; flash = 0.10; }
+  // III–IV: pociąg błysków na promieniu (czoło jedzie z prędkością światła)
+  const dF = Mrug.front(t, K);
+  vgr.train.visible = dF !== null && id !== 'kropka';
+  if(vgr.train.visible){
+    const u = Kino._v.norm(Kino._v.sub(A.V, vgr.Es)), ul = Mrug.UNIT_S*1000*K.c;
+    vgr.train.children.forEach((s, j)=>{ const d = dF - vgr.offs[j]*ul;
+      s.visible = d > vgr.rE*1.02;
+      s.position.set(vgr.Es[0] + u[0]*d, vgr.Es[1] + u[1]*d, vgr.Es[2] + u[2]*d);
+      const k = 0.018 + 0.0025*Math.sin(now*0.02 + j); s.scale.set(k, k, 1); });
+    // przelot przez sondę: każdy element Morse'a błyska na sondzie i brzmi
+    const x = (dF - K.D)/ul;
+    if(x >= 0 && x < Mrug.seqUnits(vgr.seq) - 7){
+      const m = Mrug.morseAt(x, vgr.seq);
+      vgr.glint.visible = m.on; vgr.glint.position.copy(kino.mk.position); vgr.glint.scale.set(0.09, 0.09, 1);
+      if(m.on) gate = 0.08;
+    } else vgr.glint.visible = false;
+    if(!vgr.passed && x >= 0){ vgr.passed = true; vgrBell(); }
+  } else vgr.glint.visible = false;
+  // błona dnia świetlnego rozbłyska, gdy przechodzi przez nią czoło (w przylocie)
+  const tp = vgr.tPass;
+  const fl = id === 'przylot' ? Math.exp(-Math.pow((t - tp)/(t < tp ? 0.3 : 1.1), 2)) : 0;
+  kino.ld.film.material.color.setScalar(1 + 5*fl); flash = Math.max(flash, 0.45*fl);
+  kino.ld.label.visible = id !== 'kropka' && !(t > tp - 0.5 && t < tp + 5.4);
+  // V: kropka Ziemi zza sondy mruga V-G-R (światło sprzed doby); ciemne niebo od połowy odjazdu
+  vgr.dot.visible = id === 'kropka';
+  vgrDark(id === 'kropka' && L.f > 0.22);
+  if(vgr.dot.visible){
+    const on = Mrug.morseAt(L.local/Mrug.UNIT_S, vgr.seq).on, s = on ? 0.03 : 0.011;
+    vgr.dot.position.copy(worldPos(bodies.find(b=>b.data.earth))); vgr.dot.scale.set(s, s, 1);
+    if(on && L.f > 0.5) gate = 0.045;
+  }
+  document.getElementById('kFlash').style.opacity = flash.toFixed(3);
+  // HUD: data + tempo czasu
+  const r = Mrug.clockRate(t, K), dEl = document.getElementById('kDate');
+  dEl.textContent = _kfmt(clk, true) + (r > 1.5 ? `  ·  czas ×${Kino.fmtInt(r)}` : '  ·  czas ×1');
+  dEl.classList.add('show');
+  document.getElementById('kProg').style.width = (100*t/T).toFixed(2) + '%';
+  document.getElementById('kFade').style.opacity = Math.max(1 - t/1.6, Math.max(0, (t - (T - 1.2))/1.2)).toFixed(3);
+  kinoSlots(t);
+  vgrAudioTick(L, gate);
+}
+
+function vgrBell(){
+  const A = kino.audio; if(!A || !A.live) return;
+  [293.66, 440, 587.33, 739.99, 1318.5].forEach((f, i)=>kinoPing(f, 0.08/(1+i*0.4), 6 + i));
+}
+function vgrAudioTick(L, gate){
+  const A = kino.audio; if(!A || !A.live) return;
+  const ctx = A.ctx;
+  const open = { zmierzch:300, nadawanie:520, poscig:900, przylot:650, kropka:420 }[L.shot.id] +
+               (L.shot.id === 'poscig' ? 1300*Math.sin(Math.PI*L.f) : 0);
+  A.lp.frequency.setTargetAtTime(open, ctx.currentTime, 0.35);
+  if(A.vgrBeepFor !== A.oscs){                                      // ton Morse'a (bramkowany), na nowo po każdym starcie dźwięku
+    const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sine'; o.frequency.value = 660; g.gain.value = 0;
+    o.connect(g); g.connect(A.out); o.start(); A.oscs.push(o); A.vgrBeep = g; A.vgrBeepFor = A.oscs;
+  }
+  A.vgrBeep.gain.setTargetAtTime(gate, ctx.currentTime, 0.006);
+}
+
+function vgrStart(){
+  if(!kino.ready || !vgr.built) return;
+  kino.film = 'vgr';
+  const P = PROBES.find(p=>p.id===KINO_PROBE), e = probeEphem(P);
+  kino.crossMs = Date.parse(e.lightDay.geometric); kino.downMs = Date.parse(e.lightDay.downlink);
+  kino.mk = probes.byId[KINO_PROBE].mk;
+  kino.ld = probes.lightDay.find(m=>m.id===KINO_PROBE);
+  if(!kino.ld){ kino.ld = buildLightDayMembrane(P); probes.lightDay.push(kino.ld); }
+  // kotwice: Warszawa nadaje chwilę po zachodzie (Słońce 3° pod horyzontem); czoło leci od Ziemi z chwili nadania
+  const sendMs = Mrug.sendTime(VGR_PL.lon, VGR_PL.lat, Date.UTC(2026, 10, 17, 12), -3);
+  const earthEl = Ephemeris.REAL_PLANETS.find(x=>x.id==='earth');
+  vgr.Es = _va(eclToScene(Ephemeris.positionAt(earthEl, Ephemeris.julianDate(sendMs))));
+  const c = ProbeEphem.LIGHT_DAY_AU*AU_SCALE/86400000;
+  let arr = sendMs + 86400000, D = 0;
+  for(let i=0; i<4; i++){ D = Kino._v.len(Kino._v.sub(_va(eclToScene(ProbeEphem.positionAt(e.samples, Ephemeris.julianDate(arr)))), vgr.Es)); arr = sendMs + D/c; }
+  const em = bodies.find(b=>b.data.earth).mesh; if(!em.geometry.boundingSphere) em.geometry.computeBoundingSphere();
+  vgr.rE = em.geometry.boundingSphere.radius * em.getWorldScale(_vV).x;
+  vgr.pr = Math.max(0.05, new THREE.Box3().setFromObject(kino.mk).getBoundingSphere(new THREE.Sphere()).radius);
+  vgr.K = { startMs: Date.UTC(2026, 10, 17, 6, 30), sendMs, D, c, rE: vgr.rE, dEnd: 0.4 };
+  vgr.arrMs = arr; vgr.tCross = Mrug.tAtClock(kino.crossMs, vgr.K); vgr.tPass = Mrug.tPass(vgr.K); vgr.passed = false;
+  if(!kino.saved) kino.saved = { min:controls.minDistance, max:controls.maxDistance, fov:camera.fov };
+  focused = null; focusedMoon = null; focusedShip = false; tween = null; if(tour) stopTour();
+  elInfo.classList.remove('show'); elBack.classList.remove('show');
+  controls.enabled = false; controls.minDistance = 0; controls.maxDistance = Infinity;
+  renderer.domElement.style.pointerEvents = 'none';
+  PROBES.forEach(p=>{ if(p.atBody && probes.byId[p.id]) probes.byId[p.id].mk.visible = false; });
+  vgrShow(true);
+  kino.cues = vgrCues();
+  document.querySelectorAll('#kino .k-slot').forEach(s=>{ s._cue = null; s.classList.remove('show'); });
+  document.getElementById('kino').classList.remove('end', 'loading');
+  document.body.classList.add('kino-on', 'kino-run');
+  kino.active = true; kino.lastClock = NaN;
+  kinoPauseSet(false); kino.t0 = performance.now();
+  if(kino.audio && kino.audio.on) kinoAudioStart();
+  cancelAnimationFrame(kino.raf); kino.raf = requestAnimationFrame(vgrLoop);
+}
+
+if(/[?&]mrugniecie\b/.test(location.search)){
+  kino.film = 'vgr';
+  kinoBuildDom(); document.body.classList.add('kino-on', 'kino-run'); document.getElementById('kino').classList.add('loading');
+  { const end = document.getElementById('kEnd');                       // karta końcowa tego filmu
+    end.querySelector('.k-h1').textContent = 'Mrugnięcie';
+    end.querySelector('.k-sub').innerHTML = 'Dane: NASA/JPL Horizons · film 1: <a href="https://voyager.kodownik.co/">Voyager 1 na granicy dnia świetlnego</a>'; }
+  addEventListener('keydown', e=>{ if(e.key==='Escape' && kino.active){ kinoEnd(true); e.stopImmediatePropagation(); } }, true);
+  addEventListener('keydown', e=>{ if(e.key===' ' && kino.active && !(e.target.closest && e.target.closest('button'))){ kinoPauseToggle(); e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+  fetch('geo/edu-data.json?v='+APP_VER).then(r=>r.json()).then(vgrBuild).catch(err=>console.error('mrugniecie: edu-data', err));
+  const boot = ()=>{
+    if(!document.getElementById('loader').classList.contains('hide') || !PROBE_EPHEM || !vgr.built){ setTimeout(boot, 120); return; }
+    if(!probes.active){ startProbes(); setToggle('tProbes', true); }
+    const wait = ()=>{
+      if(!probes.byId[KINO_PROBE]){ setTimeout(wait, 80); return; }
+      try{ const ei = SKINS.earth.findIndex(s=>s.live); if(ei > 0) applySkin('earth', ei); }catch(e){ console.error('kino skin', e); }
+      showLabels = false; labelLayer.style.display = 'none'; setToggle('tLabels', false);
+      showClouds = false; { const ec = PLANETS.find(p=>p.earth); if(ec && ec._clouds) ec._clouds.visible = false; } setToggle('tClouds', false);
+      vgr.pts.visible = true; try{ renderer.compile(scene, camera); }catch(e){ console.error('kino compile', e); }
+      kino.ready = true; vgrStart();
+    };
+    wait();
+  };
+  boot();
+  window.__kino = kino; window.__vgr = vgr;
 }
