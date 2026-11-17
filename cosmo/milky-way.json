@@ -1,0 +1,43 @@
+{
+  "disk": { "type": "spiral", "arms": 4, "size": 2800, "radiusLy": 50000,
+            "pitch": 0.21, "turns": 1.3, "bulge": 0.18, "bar": 0.25,
+            "thickness": 0.03, "count": 9000,
+            "colBulge": 16770736, "colArm": 10470655 },
+  "sun": { "distFromCenterLy": 27000, "arm": "Ramię Oriona" },
+  "features": [
+    { "id": "sgrA", "name": "Sagittarius A* (centrum Galaktyki)", "label": "Sagittarius A*", "kind": "center",
+      "l": 0, "b": 0, "distLy": 27000, "wiki": { "lang": "pl", "title": "Sagittarius A*" } },
+    { "id": "orion", "name": "Ramię Oriona (Lokalne)", "kind": "arm", "arm": 0, "t": 0.76,
+      "wiki": { "lang": "pl", "title": "Ramię Oriona" } },
+    { "id": "perseus", "name": "Ramię Perseusza", "kind": "arm", "arm": 1, "t": 0.58,
+      "wiki": { "lang": "pl", "title": "Ramię Perseusza" } },
+    { "id": "sagittarius", "name": "Ramię Strzelca", "kind": "arm", "arm": 2, "t": 0.68,
+      "wiki": { "lang": "pl", "title": "Ramię Strzelca" } },
+    { "id": "scutum", "name": "Ramię Tarczy-Centaura", "kind": "arm", "arm": 3, "t": 0.54,
+      "wiki": { "lang": "pl", "title": "Ramię Tarczy-Krzyża" } },
+    { "id": "bar", "name": "Poprzeczka (bar)", "kind": "bar",
+      "wiki": { "lang": "pl", "title": "Galaktyka spiralna z poprzeczką" } }
+  ],
+  "objects": [
+    { "id": "m13",    "name": "Gromada w Herkulesie (M13)",    "kind": "globular", "l": 59.0,  "b": 40.9,  "distLy": 22200, "wiki": { "lang": "pl", "title": "Messier 13" } },
+    { "id": "m3",     "name": "Gromada M3",                    "kind": "globular", "l": 42.2,  "b": 78.7,  "distLy": 33900, "wiki": { "lang": "pl", "title": "Messier 3" } },
+    { "id": "m5",     "name": "Gromada M5",                    "kind": "globular", "l": 3.9,   "b": 46.8,  "distLy": 24500, "wiki": { "lang": "pl", "title": "Messier 5" } },
+    { "id": "m4",     "name": "Gromada M4 (najbliższa)",       "kind": "globular", "l": 351.0, "b": 16.0,  "distLy": 7200,  "wiki": { "lang": "pl", "title": "Messier 4" } },
+    { "id": "m22",    "name": "Gromada M22",                   "kind": "globular", "l": 9.9,   "b": -7.6,  "distLy": 10600, "wiki": { "lang": "pl", "title": "Messier 22" } },
+    { "id": "m15",    "name": "Gromada M15",                   "kind": "globular", "l": 65.0,  "b": -27.3, "distLy": 33600, "wiki": { "lang": "pl", "title": "Messier 15" } },
+    { "id": "m92",    "name": "Gromada M92",                   "kind": "globular", "l": 68.3,  "b": 34.9,  "distLy": 26700, "wiki": { "lang": "pl", "title": "Messier 92" } },
+    { "id": "omegaCen", "name": "Omega Centauri",              "kind": "globular", "l": 309.1, "b": 15.0,  "distLy": 15800, "wiki": { "lang": "pl", "title": "Omega Centauri" } },
+    { "id": "47tuc",  "name": "47 Tucanae",                    "kind": "globular", "l": 305.9, "b": -44.9, "distLy": 13400, "wiki": { "lang": "pl", "title": "47 Tucanae" } },
+    { "id": "m42",    "name": "Mgławica Oriona (M42)",         "kind": "nebula",   "l": 209.0, "b": -19.4, "distLy": 1340,  "wiki": { "lang": "pl", "title": "Wielka Mgławica Oriona" } },
+    { "id": "carina", "name": "Mgławica Carina",               "kind": "nebula",   "l": 287.6, "b": -0.6,  "distLy": 7500,  "wiki": { "lang": "pl", "title": "Mgławica Carina" } },
+    { "id": "m16",    "name": "Mgławica Orzeł (M16)",          "kind": "nebula",   "l": 17.0,  "b": 0.8,   "distLy": 7000,  "wiki": { "lang": "pl", "title": "Mgławica Orzeł" } },
+    { "id": "m17",    "name": "Mgławica Omega (M17)",          "kind": "nebula",   "l": 15.1,  "b": -0.7,  "distLy": 5500,  "wiki": { "lang": "pl", "title": "Mgławica Omega" } },
+    { "id": "m8",     "name": "Mgławica Laguna (M8)",          "kind": "nebula",   "l": 6.0,   "b": -1.2,  "distLy": 4100,  "wiki": { "lang": "pl", "title": "Mgławica Laguna" } },
+    { "id": "m20",    "name": "Mgławica Trójlistna (M20)",     "kind": "nebula",   "l": 7.0,   "b": -0.3,  "distLy": 4100,  "wiki": { "lang": "pl", "title": "Mgławica Trójlistna Koniczyna" } },
+    { "id": "rosette","name": "Mgławica Rozeta",               "kind": "nebula",   "l": 206.3, "b": -2.1,  "distLy": 5200,  "wiki": { "lang": "pl", "title": "Mgławica Rozeta" } },
+    { "id": "ngc7000","name": "Mgławica Ameryka Północna",     "kind": "nebula",   "l": 85.6,  "b": -0.6,  "distLy": 2590,  "wiki": { "lang": "pl", "title": "Mgławica Ameryka Północna" } },
+    { "id": "m1",     "name": "Mgławica Krab (M1, SN 1054)",   "kind": "nebula",   "l": 184.6, "b": -5.8,  "distLy": 6500,  "wiki": { "lang": "pl", "title": "Mgławica Krab" } },
+    { "id": "doubleCl","name": "Gromada Podwójna (h+χ Persei)","kind": "cluster",  "l": 134.6, "b": -3.7,  "distLy": 7500,  "wiki": { "lang": "pl", "title": "Gromada Podwójna" } },
+    { "id": "m45",    "name": "Plejady (M45)",                 "kind": "cluster",  "l": 166.6, "b": -23.5, "distLy": 444,   "wiki": { "lang": "pl", "title": "Plejady" } }
+  ]
+}

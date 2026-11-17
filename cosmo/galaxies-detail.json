@@ -1,0 +1,31 @@
+{
+  "m31": {
+    "distLy": 2500000, "center": { "ra": 10.6847, "dec": 41.2691 },
+    "incl": 77, "pa": 35, "angRadiusArcmin": 95,
+    "disk": { "type":"spiral", "size":900, "arms":2, "pitch":0.20, "turns":1.3,
+              "bulge":0.34, "thickness":0.05, "count":16000,
+              "colBulge":"0xffe6b0", "colArm":"0x9fc4ff", "dustLane":0.5, "hii":0.6, "blueEdge":0.6 },
+    "landmarks": [
+      { "id":"m32",   "name":"M32 (galaktyka satelitarna)",  "kind":"companion", "ra":10.6743, "dec":40.8652, "wiki":{"lang":"pl","title":"Messier 32"} },
+      { "id":"m110",  "name":"M110 (galaktyka satelitarna)", "kind":"companion", "ra":10.0919, "dec":41.6854, "wiki":{"lang":"pl","title":"Messier 110"} },
+      { "id":"ngc206","name":"NGC 206 (obłok gwiazd)",       "kind":"starcloud", "ra":10.06,   "dec":40.72,   "wiki":{"lang":"pl","title":"NGC 206"} }
+    ]
+  },
+  "m33":  { "distLy": 2730000, "center": { "ra": 23.4621, "dec": 30.6600 }, "incl": 54, "pa": 23, "angRadiusArcmin": 35,
+    "disk": { "type":"spiral","size":640,"arms":2,"pitch":0.30,"turns":1.2,"bulge":0.12,"thickness":0.06,"count":11000,"colBulge":"0xffe0c0","colArm":"0x9fd0ff","dustLane":0.3,"hii":0.8,"blueEdge":0.6 },
+    "landmarks": [ { "id":"ngc604","name":"NGC 604 (olbrzymi obszar HII)","kind":"hii","ra":23.7204,"dec":30.7844,"wiki":{"lang":"pl","title":"NGC 604"} } ] },
+  "m51":  { "distLy": 23000000, "center": { "ra": 202.4696, "dec": 47.1952 }, "incl": 22, "pa": 10, "angRadiusArcmin": 6,
+    "disk": { "type":"spiral","size":560,"arms":2,"pitch":0.36,"turns":1.0,"bulge":0.22,"thickness":0.05,"count":12000,"colBulge":"0xffe6b0","colArm":"0x8fbaff","dustLane":0.5,"hii":0.7,"blueEdge":0.7 },
+    "landmarks": [ { "id":"ngc5195","name":"NGC 5195 (oddziałujący towarzysz)","kind":"companion","ra":202.4983,"dec":47.2656,"wiki":{"lang":"pl","title":"NGC 5195"} } ] },
+  "m101": { "distLy": 21000000, "center": { "ra": 210.8023, "dec": 54.3488 }, "incl": 18, "pa": 40, "angRadiusArcmin": 14,
+    "disk": { "type":"spiral","size":680,"arms":3,"pitch":0.28,"turns":1.1,"bulge":0.12,"thickness":0.05,"count":13000,"colBulge":"0xfff0d0","colArm":"0x9fd6ff","dustLane":0.3,"hii":0.7,"blueEdge":0.6 },
+    "landmarks": [ { "id":"ngc5471","name":"NGC 5471 (obszar HII)","kind":"hii","ra":211.1979,"dec":54.3894,"wiki":{"lang":"pl","title":"NGC 5471"} } ] },
+  "lmc":  { "distLy": 160000, "center": { "ra": 80.8942, "dec": -69.7561 }, "incl": 35, "pa": 170, "angRadiusArcmin": 320,
+    "disk": { "type":"irregular","size":720,"clumps":7,"clumpSpread":0.6,"thickness":0.12,"count":9000,"colBulge":"0xffd9b0","colArm":"0xbcd4ff","hii":0.9,"blueEdge":0.5 },
+    "landmarks": [
+      { "id":"tarantula","name":"Mgławica Tarantula (30 Doradus)","kind":"nebula","ra":84.6771,"dec":-69.1009,"wiki":{"lang":"pl","title":"Mgławica Tarantula"} },
+      { "id":"sn1987a","name":"SN 1987A","kind":"sn","ra":83.8667,"dec":-69.2697,"wiki":{"lang":"pl","title":"SN 1987A"} } ] },
+  "smc":  { "distLy": 200000, "center": { "ra": 13.1583, "dec": -72.8003 }, "incl": 40, "pa": 45, "angRadiusArcmin": 160,
+    "disk": { "type":"irregular","size":520,"clumps":5,"clumpSpread":0.7,"thickness":0.14,"count":6500,"colBulge":"0xffd9b0","colArm":"0xbcd4ff","hii":0.7,"blueEdge":0.5 },
+    "landmarks": [ { "id":"ngc346","name":"NGC 346 (obszar gwiazdotwórczy)","kind":"hii","ra":14.7708,"dec":-72.1728,"wiki":{"lang":"pl","title":"NGC 346"} } ] }
+}

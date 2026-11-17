@@ -1,0 +1,89 @@
+{
+  "_provenance": "SIMBAD + Bond et al. 2015/2017 (HST), Provencal et al. 2002, Maddison et al. 2017 (HST), Kervella et al. 2017 (VLTI), Pourbaix et al. 2002. Audyt 2026-07-04. aAU/periodYears = orbita względna (fizyczna półoś z rozwiązania orbity). displayAU obcinane w renderze (cap 45 j.) — 40 Eri B faktycznie ~400 AU. +6 układów (review finding #10, audyt 2026-07-04): Mann et al. 2019 (Kruger 60), Kervella et al. 2016 (UV Ceti), Cortés-Zuleta et al. 2025 (Struve 2398), Pinamonti et al. 2018 (Groombridge 34), Giovinazzi et al. 2025 (Eta Cas), Izmailov & Khovritchev 2025 (Ksi Boo).",
+
+  "sirius": {
+    "companions": [
+      { "name": "Syriusz B", "spectral": "DA2", "kind": "whitedwarf",
+        "radiusSun": 0.0084, "colorTemp": 25193,
+        "orbit": { "periodYears": 50.1284, "aAU": 19.783, "ecc": 0.59142 } }
+    ]
+  },
+
+  "alphacena": {
+    "companions": [
+      { "name": "Alfa Centauri B", "spectral": "K1V", "kind": "star",
+        "radiusSun": 0.8591, "colorTemp": 5214,
+        "orbit": { "periodYears": 79.91, "aAU": 23.4, "ecc": 0.5179 } }
+    ]
+  },
+
+  "procyon": {
+    "companions": [
+      { "name": "Procjon B", "spectral": "DQZ", "kind": "whitedwarf",
+        "radiusSun": 0.01234, "colorTemp": 7740,
+        "orbit": { "periodYears": 40.840, "aAU": 15.1, "ecc": 0.39785 } }
+    ]
+  },
+
+  "40eri": {
+    "_hierarchy": "Potrójny A + (B+C). B i C tworzą ciasną parę ~400 AU od A. Render uproszczony: B i C wokół A (B faktycznie ~400 AU — obcięte do kadru; C orbituje B).",
+    "companions": [
+      { "name": "40 Eridani B", "spectral": "DA4", "kind": "whitedwarf",
+        "radiusSun": 0.01308, "colorTemp": 17200,
+        "orbit": { "periodYears": 8000, "aAU": 400, "ecc": 0.35 } },
+      { "name": "40 Eridani C", "spectral": "M4.5Ve", "kind": "star",
+        "radiusSun": 0.274, "colorTemp": 3167,
+        "orbit": { "periodYears": 233.20, "aAU": 34.52, "ecc": 0.4141 } }
+    ]
+  },
+
+  "kruger60": {
+    "companions": [
+      { "name": "Kruger 60 B", "spectral": "M4V", "kind": "star",
+        "radiusSun": 0.209, "colorTemp": 3097,
+        "orbit": { "periodYears": 45.13, "aAU": 9.82, "ecc": 0.4131 } }
+    ]
+  },
+
+  "gliese65": {
+    "companions": [
+      { "name": "UV Ceti", "spectral": "M6Ve", "kind": "star",
+        "radiusSun": 0.159, "colorTemp": 2728,
+        "orbit": { "periodYears": 26.38, "aAU": 5.459, "ecc": 0.6172 } }
+    ]
+  },
+
+  "struve2398": {
+    "_orbitNote": "Rozwiązania orbity rozbieżne w literaturze (P 408–1166 lat, e 0.29–0.53); przyjęto samospójne Cortés-Zuleta et al. 2025 (SPIRou/GJ725): P=871±108, a=63±1, e=0.29±0.01. a=63 AU zgodne między nowymi pracami.",
+    "companions": [
+      { "name": "Struve 2398 B", "spectral": "M3.5V", "kind": "star",
+        "radiusSun": 0.280, "colorTemp": 3379,
+        "orbit": { "periodYears": 871, "aAU": 63, "ecc": 0.29 } }
+    ]
+  },
+
+  "groombridge34": {
+    "_orbitNote": "Rozwiązanie słabo ograniczone (a=93 +42/−6 AU, e=0.73±0.01, Pinamonti et al. 2018); starsze prace: separacja ~147 AU, P~2600 lat, orbita kołowa (Lippincott 1972).",
+    "companions": [
+      { "name": "Groombridge 34 B", "spectral": "M3.5V", "kind": "star",
+        "radiusSun": 0.18, "colorTemp": 3304,
+        "orbit": { "periodYears": 1065, "aAU": 93, "ecc": 0.73 } }
+    ]
+  },
+
+  "etacas": {
+    "companions": [
+      { "name": "Eta Cassiopeiae B", "spectral": "K7V", "kind": "star",
+        "radiusSun": 0.57, "colorTemp": 4011,
+        "orbit": { "periodYears": 472.2, "aAU": 70.55, "ecc": 0.4942 } }
+    ]
+  },
+
+  "xiboo": {
+    "companions": [
+      { "name": "Ksi Wolarza B", "spectral": "K4Ve", "kind": "star",
+        "radiusSun": 0.61, "colorTemp": 4350,
+        "orbit": { "periodYears": 152.46, "aAU": 33.2, "ecc": 0.5141 } }
+    ]
+  }
+}

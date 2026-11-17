@@ -1,0 +1,434 @@
+{
+  "groups": [
+    { "id": "circumpolar", "label": "Okołobiegunowe",   "hemi": "N" },
+    { "id": "winter",      "label": "Zimowe niebo",      "hemi": "N" },
+    { "id": "spring",      "label": "Wiosenne niebo",    "hemi": "N" },
+    { "id": "summer",      "label": "Letnie niebo",      "hemi": "N" },
+    { "id": "autumn",      "label": "Jesienne niebo",    "hemi": "N" },
+    { "id": "southern",    "label": "Niebo południowe",  "hemi": "S" }
+  ],
+  "asterisms": [
+    {
+      "name": "Wielki Wóz",
+      "group": "circumpolar",
+      "wiki": { "lang": "pl", "title": "Wielki Wóz" },
+      "stars": [
+        { "n": "Dubhe",  "ra": 165.93, "dec": 61.75, "m": 1.79 },
+        { "n": "Merak",  "ra": 165.46, "dec": 56.38, "m": 2.37 },
+        { "n": "Phecda", "ra": 178.46, "dec": 53.69, "m": 2.44 },
+        { "n": "Megrez", "ra": 183.86, "dec": 57.03, "m": 3.31 },
+        { "n": "Alioth", "ra": 193.51, "dec": 55.96, "m": 1.77 },
+        { "n": "Mizar",  "ra": 200.98, "dec": 54.93, "m": 2.04 },
+        { "n": "Alkaid", "ra": 206.89, "dec": 49.31, "m": 1.86 }
+      ],
+      "lines": [[6,5],[5,4],[4,3],[3,2],[2,1],[1,0],[0,3]]
+    },
+    {
+      "name": "Kasjopeja",
+      "group": "circumpolar",
+      "wiki": { "lang": "pl", "title": "Kasjopeja (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Segin",    "ra": 28.60, "dec": 63.67, "m": 3.35 },
+        { "n": "Ruchbah",  "ra": 21.45, "dec": 60.24, "m": 2.68 },
+        { "n": "Gamma Cas","ra": 14.18, "dec": 60.72, "m": 2.47 },
+        { "n": "Schedar",  "ra": 10.13, "dec": 56.54, "m": 2.24 },
+        { "n": "Caph",     "ra": 2.29,  "dec": 59.15, "m": 2.28 }
+      ],
+      "lines": [[0,1],[1,2],[2,3],[3,4]]
+    },
+    {
+      "name": "Mała Niedźwiedzica",
+      "group": "circumpolar",
+      "wiki": { "lang": "pl", "title": "Mała Niedźwiedzica" },
+      "stars": [
+        { "n": "Polaris",    "ra": 37.95,  "dec": 89.26, "m": 1.98 },
+        { "n": "Kochab",     "ra": 222.68, "dec": 74.16, "m": 2.07 },
+        { "n": "Pherkad",    "ra": 230.18, "dec": 71.83, "m": 3.00 },
+        { "n": "Epsilon UMi","ra": 251.49, "dec": 82.04, "m": 4.21 },
+        { "n": "Zeta UMi",   "ra": 236.01, "dec": 77.79, "m": 4.28 },
+        { "n": "Yildun",     "ra": 263.05, "dec": 86.59, "m": 4.36 },
+        { "n": "Eta UMi",    "ra": 244.38, "dec": 75.76, "m": 4.95 }
+      ],
+      "lines": [[0,5],[5,3],[3,4],[4,6],[6,1],[1,2],[2,4]]
+    },
+    {
+      "name": "Orion",
+      "group": "winter",
+      "wiki": { "lang": "pl", "title": "Orion (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Betelgeza", "ra": 88.79, "dec": 7.41,  "m": 0.42 },
+        { "n": "Bellatrix", "ra": 81.28, "dec": 6.35,  "m": 1.64 },
+        { "n": "Alnitak",   "ra": 85.19, "dec": -1.94, "m": 1.77 },
+        { "n": "Alnilam",   "ra": 84.05, "dec": -1.20, "m": 1.69 },
+        { "n": "Mintaka",   "ra": 83.00, "dec": -0.30, "m": 2.23 },
+        { "n": "Rigel",     "ra": 78.63, "dec": -8.20, "m": 0.18 },
+        { "n": "Saiph",     "ra": 86.94, "dec": -9.67, "m": 2.07 }
+      ],
+      "lines": [[0,1],[0,2],[1,4],[2,3],[3,4],[2,6],[4,5],[5,6]]
+    },
+    {
+      "name": "Plejady",
+      "group": "winter",
+      "wiki": { "lang": "pl", "title": "Plejady" },
+      "stars": [
+        { "n": "Alkione", "ra": 56.87, "dec": 24.11, "m": 2.87 },
+        { "n": "Atlas",   "ra": 57.29, "dec": 24.05, "m": 3.62 },
+        { "n": "Elektra", "ra": 56.22, "dec": 24.11, "m": 3.70 },
+        { "n": "Maja",    "ra": 56.46, "dec": 24.37, "m": 3.87 },
+        { "n": "Merope",  "ra": 56.58, "dec": 23.95, "m": 4.17 }
+      ],
+      "lines": []
+    },
+    {
+      "name": "Byk",
+      "group": "winter",
+      "wiki": { "lang": "pl", "title": "Byk (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Aldebaran","ra": 68.98, "dec": 16.51, "m": 0.85 },
+        { "n": "Ain",      "ra": 67.15, "dec": 19.18, "m": 3.53 },
+        { "n": "Gamma Tau","ra": 64.95, "dec": 15.63, "m": 3.65 },
+        { "n": "Delta Tau","ra": 65.73, "dec": 17.54, "m": 3.76 },
+        { "n": "Theta Tau","ra": 67.17, "dec": 15.87, "m": 3.40 },
+        { "n": "Elnath",   "ra": 81.57, "dec": 28.61, "m": 1.65 },
+        { "n": "Zeta Tau", "ra": 84.41, "dec": 21.14, "m": 3.00 }
+      ],
+      "lines": [[0,4],[4,2],[2,3],[3,1],[1,5],[0,6]]
+    },
+    {
+      "name": "Wielki Pies",
+      "group": "winter",
+      "wiki": { "lang": "pl", "title": "Wielki Pies (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Syriusz","ra": 101.29, "dec": -16.72, "m": -1.46 },
+        { "n": "Mirzam", "ra": 95.67,  "dec": -17.96, "m": 1.98 },
+        { "n": "Wezen",  "ra": 107.10, "dec": -26.39, "m": 1.83 },
+        { "n": "Adhara", "ra": 104.66, "dec": -28.97, "m": 1.50 },
+        { "n": "Aludra", "ra": 111.02, "dec": -29.30, "m": 2.45 },
+        { "n": "Furud",  "ra": 95.08,  "dec": -30.06, "m": 3.02 }
+      ],
+      "lines": [[0,1],[0,2],[2,3],[3,5],[2,4]]
+    },
+    {
+      "name": "Bliźnięta",
+      "group": "winter",
+      "wiki": { "lang": "pl", "title": "Bliźnięta (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Pollux", "ra": 116.33, "dec": 28.03, "m": 1.14 },
+        { "n": "Kastor", "ra": 113.65, "dec": 31.89, "m": 1.58 },
+        { "n": "Alhena", "ra": 99.43,  "dec": 16.40, "m": 1.90 },
+        { "n": "Wasat",  "ra": 110.03, "dec": 21.98, "m": 3.53 },
+        { "n": "Mebsuta","ra": 100.98, "dec": 25.13, "m": 3.06 },
+        { "n": "Tejat",  "ra": 95.74,  "dec": 22.51, "m": 2.87 }
+      ],
+      "lines": [[1,4],[4,5],[0,3],[3,2],[4,3]]
+    },
+    {
+      "name": "Woźnica",
+      "group": "winter",
+      "wiki": { "lang": "pl", "title": "Woźnica (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Capella",    "ra": 79.17, "dec": 45.99, "m": 0.08 },
+        { "n": "Menkalinan", "ra": 89.88, "dec": 44.95, "m": 1.90 },
+        { "n": "Mahasim",    "ra": 89.93, "dec": 37.21, "m": 2.62 },
+        { "n": "Hassaleh",   "ra": 74.25, "dec": 33.17, "m": 2.69 },
+        { "n": "Almaaz",     "ra": 75.49, "dec": 43.82, "m": 3.03 },
+        { "n": "Elnath",     "ra": 81.57, "dec": 28.61, "m": 1.65 }
+      ],
+      "lines": [[0,1],[1,2],[2,5],[5,3],[3,4],[4,0]]
+    },
+    {
+      "name": "Lew",
+      "group": "spring",
+      "wiki": { "lang": "pl", "title": "Lew (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Regulus",  "ra": 152.09, "dec": 11.97, "m": 1.35 },
+        { "n": "Denebola", "ra": 177.26, "dec": 14.57, "m": 2.14 },
+        { "n": "Algieba",  "ra": 154.99, "dec": 19.84, "m": 2.01 },
+        { "n": "Zosma",    "ra": 168.53, "dec": 20.52, "m": 2.56 },
+        { "n": "Chort",    "ra": 168.56, "dec": 15.43, "m": 3.33 },
+        { "n": "Adhafera", "ra": 154.17, "dec": 23.42, "m": 3.43 },
+        { "n": "Eta Leo",  "ra": 151.83, "dec": 16.76, "m": 3.48 }
+      ],
+      "lines": [[0,6],[6,2],[2,5],[0,4],[4,1],[3,1],[3,4],[2,3]]
+    },
+    {
+      "name": "Panna",
+      "group": "spring",
+      "wiki": { "lang": "pl", "title": "Panna (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Spika",        "ra": 201.30, "dec": -11.16, "m": 0.98 },
+        { "n": "Zavijava",     "ra": 177.67, "dec": 1.76,   "m": 3.60 },
+        { "n": "Porrima",      "ra": 190.42, "dec": -1.45,  "m": 2.74 },
+        { "n": "Vindemiatrix", "ra": 195.54, "dec": 10.96,  "m": 2.83 },
+        { "n": "Heze",         "ra": 203.67, "dec": -0.60,  "m": 3.38 },
+        { "n": "Delta Vir",    "ra": 193.90, "dec": 3.40,   "m": 3.39 }
+      ],
+      "lines": [[0,4],[4,5],[5,2],[2,1],[3,5]]
+    },
+    {
+      "name": "Wolarz",
+      "group": "spring",
+      "wiki": { "lang": "pl", "title": "Wolarz (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Arktur",  "ra": 213.92, "dec": 19.18, "m": -0.05 },
+        { "n": "Izar",    "ra": 221.25, "dec": 27.07, "m": 2.35 },
+        { "n": "Muphrid", "ra": 208.67, "dec": 18.40, "m": 2.68 },
+        { "n": "Seginus", "ra": 218.02, "dec": 38.31, "m": 3.04 },
+        { "n": "Nekkar",  "ra": 225.49, "dec": 40.39, "m": 3.49 },
+        { "n": "Rho Boo", "ra": 218.83, "dec": 30.37, "m": 3.58 }
+      ],
+      "lines": [[0,2],[0,5],[5,1],[1,4],[4,3],[3,5]]
+    },
+    {
+      "name": "Trójkąt Letni",
+      "group": "summer",
+      "wiki": { "lang": "pl", "title": "Trójkąt letni" },
+      "stars": [
+        { "n": "Wega",   "ra": 279.23, "dec": 38.78, "m": 0.03 },
+        { "n": "Deneb",  "ra": 310.36, "dec": 45.28, "m": 1.25 },
+        { "n": "Altair", "ra": 297.70, "dec": 8.87,  "m": 0.77 }
+      ],
+      "lines": [[0,1],[1,2],[2,0]]
+    },
+    {
+      "name": "Łabędź",
+      "group": "summer",
+      "wiki": { "lang": "pl", "title": "Łabędź (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Deneb",    "ra": 310.36, "dec": 45.28, "m": 1.25 },
+        { "n": "Albireo",  "ra": 292.68, "dec": 27.96, "m": 3.18 },
+        { "n": "Sadr",     "ra": 305.56, "dec": 40.26, "m": 2.23 },
+        { "n": "Gienah",   "ra": 311.55, "dec": 33.97, "m": 2.48 },
+        { "n": "Delta Cyg","ra": 296.24, "dec": 45.13, "m": 2.87 }
+      ],
+      "lines": [[0,2],[2,1],[4,2],[2,3]]
+    },
+    {
+      "name": "Skorpion",
+      "group": "summer",
+      "wiki": { "lang": "pl", "title": "Skorpion (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Antares",    "ra": 247.35, "dec": -26.43, "m": 1.06 },
+        { "n": "Shaula",     "ra": 263.40, "dec": -37.10, "m": 1.62 },
+        { "n": "Sargas",     "ra": 264.33, "dec": -43.00, "m": 1.86 },
+        { "n": "Dschubba",   "ra": 240.08, "dec": -22.62, "m": 2.29 },
+        { "n": "Pi Sco",     "ra": 239.71, "dec": -26.11, "m": 2.89 },
+        { "n": "Acrab",      "ra": 241.36, "dec": -19.81, "m": 2.56 },
+        { "n": "Epsilon Sco","ra": 252.97, "dec": -34.29, "m": 2.29 },
+        { "n": "Tau Sco",    "ra": 248.97, "dec": -28.22, "m": 2.82 }
+      ],
+      "lines": [[5,3],[3,4],[3,0],[0,7],[7,6],[6,1],[1,2]]
+    },
+    {
+      "name": "Strzelec",
+      "group": "summer",
+      "wiki": { "lang": "pl", "title": "Strzelec (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Kaus Australis","ra": 276.04, "dec": -34.38, "m": 1.85 },
+        { "n": "Nunki",         "ra": 283.82, "dec": -26.30, "m": 2.05 },
+        { "n": "Ascella",       "ra": 285.65, "dec": -29.88, "m": 2.60 },
+        { "n": "Kaus Media",    "ra": 275.25, "dec": -29.83, "m": 2.70 },
+        { "n": "Kaus Borealis", "ra": 276.99, "dec": -25.42, "m": 2.81 },
+        { "n": "Phi Sgr",       "ra": 281.41, "dec": -26.99, "m": 3.17 },
+        { "n": "Alnasl",        "ra": 271.45, "dec": -30.42, "m": 2.98 }
+      ],
+      "lines": [[6,3],[3,0],[0,2],[3,4],[4,5],[5,1],[1,2]]
+    },
+    {
+      "name": "Pegaz",
+      "group": "autumn",
+      "wiki": { "lang": "pl", "title": "Pegaz (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Markab",    "ra": 346.19, "dec": 15.21, "m": 2.48 },
+        { "n": "Scheat",    "ra": 345.94, "dec": 28.08, "m": 2.42 },
+        { "n": "Algenib",   "ra": 3.31,   "dec": 15.18, "m": 2.83 },
+        { "n": "Alpheratz", "ra": 2.10,   "dec": 29.09, "m": 2.06 },
+        { "n": "Enif",      "ra": 326.05, "dec": 9.88,  "m": 2.39 }
+      ],
+      "lines": [[0,1],[1,3],[3,2],[2,0],[0,4]]
+    },
+    {
+      "name": "Andromeda",
+      "group": "autumn",
+      "wiki": { "lang": "pl", "title": "Andromeda (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Alpheratz","ra": 2.10,  "dec": 29.09, "m": 2.06 },
+        { "n": "Mirach",   "ra": 17.43, "dec": 35.62, "m": 2.05 },
+        { "n": "Almach",   "ra": 30.97, "dec": 42.33, "m": 2.10 },
+        { "n": "Delta And","ra": 9.83,  "dec": 30.86, "m": 3.27 }
+      ],
+      "lines": [[0,3],[3,1],[1,2]]
+    },
+    {
+      "name": "Perseusz",
+      "group": "autumn",
+      "wiki": { "lang": "pl", "title": "Perseusz (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Mirfak",     "ra": 51.08, "dec": 49.86, "m": 1.79 },
+        { "n": "Algol",      "ra": 47.04, "dec": 40.96, "m": 2.12 },
+        { "n": "Zeta Per",   "ra": 58.53, "dec": 31.88, "m": 2.85 },
+        { "n": "Epsilon Per","ra": 59.46, "dec": 40.01, "m": 2.89 },
+        { "n": "Gamma Per",  "ra": 46.20, "dec": 53.51, "m": 2.93 },
+        { "n": "Delta Per",  "ra": 55.73, "dec": 47.79, "m": 3.01 }
+      ],
+      "lines": [[4,0],[0,5],[5,3],[3,2],[0,1]]
+    },
+    {
+      "name": "Krzyż Południa",
+      "group": "southern",
+      "wiki": { "lang": "pl", "title": "Krzyż Południa" },
+      "stars": [
+        { "n": "Acrux",    "ra": 186.65, "dec": -63.10, "m": 0.77 },
+        { "n": "Gacrux",   "ra": 187.79, "dec": -57.11, "m": 1.59 },
+        { "n": "Mimosa",   "ra": 191.93, "dec": -59.69, "m": 1.25 },
+        { "n": "Delta Cru","ra": 183.79, "dec": -58.75, "m": 2.79 }
+      ],
+      "lines": [[0,1],[2,3]]
+    },
+    {
+      "name": "Centaur",
+      "group": "southern",
+      "wiki": { "lang": "pl", "title": "Centaur (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Rigil Kentaurus","ra": 219.90, "dec": -60.83, "m": -0.27 },
+        { "n": "Hadar",          "ra": 210.96, "dec": -60.37, "m": 0.61 },
+        { "n": "Menkent",        "ra": 211.67, "dec": -36.37, "m": 2.06 },
+        { "n": "Gamma Cen",      "ra": 190.38, "dec": -48.96, "m": 2.17 },
+        { "n": "Epsilon Cen",    "ra": 204.97, "dec": -53.47, "m": 2.30 },
+        { "n": "Zeta Cen",       "ra": 208.89, "dec": -47.29, "m": 2.55 }
+      ],
+      "lines": [[0,1],[1,4],[4,3],[4,5],[5,2]]
+    },
+    {
+      "name": "Kil",
+      "group": "southern",
+      "wiki": { "lang": "pl", "title": "Kil (gwiazdozbiór)" },
+      "stars": [
+        { "n": "Canopus",     "ra": 95.99,  "dec": -52.70, "m": -0.74 },
+        { "n": "Miaplacidus", "ra": 138.30, "dec": -69.72, "m": 1.67 },
+        { "n": "Avior",       "ra": 125.63, "dec": -59.51, "m": 1.86 },
+        { "n": "Aspidiske",   "ra": 139.27, "dec": -59.28, "m": 2.21 },
+        { "n": "Theta Car",   "ra": 160.74, "dec": -64.39, "m": 2.74 }
+      ],
+      "lines": [[0,2],[2,3],[3,1],[3,4]]
+    },
+    { "name":"Smok", "group":"circumpolar", "wiki":{"lang":"pl","title":"Smok (gwiazdozbiór)"},
+      "stars":[
+        {"n":"Eltanin","ra":269.15,"dec":51.49,"m":2.23},
+        {"n":"Rastaban","ra":262.61,"dec":52.30,"m":2.79},
+        {"n":"Altais","ra":288.14,"dec":67.66,"m":3.07},
+        {"n":"Aldhibah","ra":257.20,"dec":65.71,"m":3.17},
+        {"n":"Edasich","ra":231.23,"dec":58.97,"m":3.29},
+        {"n":"Thuban","ra":211.10,"dec":64.38,"m":3.65},
+        {"n":"Grumium","ra":268.38,"dec":56.87,"m":3.75}],
+      "lines":[[5,4],[4,3],[3,2],[2,6],[6,0],[0,1],[1,6]] },
+    { "name":"Cefeusz", "group":"circumpolar", "wiki":{"lang":"pl","title":"Cefeusz (gwiazdozbiór)"},
+      "stars":[
+        {"n":"Alderamin","ra":319.64,"dec":62.59,"m":2.45},
+        {"n":"Alfirk","ra":322.16,"dec":70.56,"m":3.23},
+        {"n":"Errai","ra":354.84,"dec":77.63,"m":3.21},
+        {"n":"Zeta Cep","ra":332.71,"dec":58.20,"m":3.39},
+        {"n":"Iota Cep","ra":342.42,"dec":66.20,"m":3.52}],
+      "lines":[[0,1],[1,2],[2,4],[4,3],[3,0]] },
+    { "name":"Rak", "group":"spring", "wiki":{"lang":"pl","title":"Rak (gwiazdozbiór)"},
+      "stars":[
+        {"n":"Tarf","ra":124.13,"dec":9.19,"m":3.53},
+        {"n":"Asellus Australis","ra":131.17,"dec":18.15,"m":3.94},
+        {"n":"Asellus Borealis","ra":130.82,"dec":21.47,"m":4.66},
+        {"n":"Acubens","ra":134.62,"dec":11.86,"m":4.25},
+        {"n":"Iota Cnc","ra":131.67,"dec":28.76,"m":4.02}],
+      "lines":[[0,1],[1,3],[1,2],[2,4]] },
+    { "name":"Waga", "group":"summer", "wiki":{"lang":"pl","title":"Waga (gwiazdozbiór)"},
+      "stars":[
+        {"n":"Zubeneschamali","ra":229.25,"dec":-9.38,"m":2.61},
+        {"n":"Zubenelgenubi","ra":222.72,"dec":-16.04,"m":2.75},
+        {"n":"Brachium","ra":226.02,"dec":-25.28,"m":3.29},
+        {"n":"Gamma Lib","ra":233.88,"dec":-14.79,"m":3.91}],
+      "lines":[[1,0],[0,3],[3,1],[1,2]] },
+    { "name":"Wężownik", "group":"summer", "wiki":{"lang":"pl","title":"Wężownik"},
+      "stars":[
+        {"n":"Rasalhague","ra":263.73,"dec":12.56,"m":2.08},
+        {"n":"Sabik","ra":257.59,"dec":-15.72,"m":2.43},
+        {"n":"Zeta Oph","ra":249.29,"dec":-10.57,"m":2.56},
+        {"n":"Yed Prior","ra":243.59,"dec":-3.69,"m":2.74},
+        {"n":"Cebalrai","ra":265.87,"dec":4.57,"m":2.76},
+        {"n":"Kappa Oph","ra":254.42,"dec":9.38,"m":3.20},
+        {"n":"Epsilon Oph","ra":244.58,"dec":-4.69,"m":3.23}],
+      "lines":[[0,4],[4,1],[1,2],[2,3],[3,5],[5,0],[3,6]] },
+    { "name":"Korona Północna", "group":"summer", "wiki":{"lang":"pl","title":"Korona Północna"},
+      "stars":[
+        {"n":"Alphecca","ra":233.67,"dec":26.71,"m":2.22},
+        {"n":"Beta CrB","ra":231.96,"dec":29.10,"m":3.66},
+        {"n":"Gamma CrB","ra":235.69,"dec":26.30,"m":3.81},
+        {"n":"Theta CrB","ra":233.23,"dec":31.36,"m":4.14},
+        {"n":"Delta CrB","ra":237.40,"dec":26.07,"m":4.59},
+        {"n":"Epsilon CrB","ra":239.40,"dec":26.88,"m":4.13}],
+      "lines":[[3,1],[1,0],[0,2],[2,4],[4,5]] },
+    { "name":"Herkules", "group":"summer", "wiki":{"lang":"pl","title":"Herkules (gwiazdozbiór)"},
+      "stars":[
+        {"n":"Kornephoros","ra":247.55,"dec":21.49,"m":2.78},
+        {"n":"Zeta Her","ra":250.32,"dec":31.60,"m":2.81},
+        {"n":"Delta Her","ra":258.76,"dec":24.84,"m":3.12},
+        {"n":"Pi Her","ra":258.76,"dec":36.81,"m":3.16},
+        {"n":"Eta Her","ra":250.72,"dec":38.92,"m":3.48},
+        {"n":"Epsilon Her","ra":255.07,"dec":30.93,"m":3.92},
+        {"n":"Rasalgethi","ra":258.66,"dec":14.39,"m":3.10}],
+      "lines":[[1,5],[5,3],[3,4],[4,1],[1,0],[5,2],[0,6]] },
+    { "name":"Delfin", "group":"summer", "wiki":{"lang":"pl","title":"Delfin (gwiazdozbiór)"},
+      "stars":[
+        {"n":"Rotanev","ra":309.39,"dec":14.60,"m":3.63},
+        {"n":"Sualocin","ra":309.93,"dec":15.91,"m":3.77},
+        {"n":"Gamma Del","ra":311.66,"dec":16.12,"m":3.90},
+        {"n":"Delta Del","ra":310.86,"dec":15.07,"m":4.43},
+        {"n":"Deneb Dulfim","ra":308.30,"dec":11.30,"m":4.03}],
+      "lines":[[1,0],[0,3],[3,2],[2,1],[0,4]] },
+    { "name":"Baran", "group":"autumn", "wiki":{"lang":"pl","title":"Baran (gwiazdozbiór)"},
+      "stars":[
+        {"n":"Hamal","ra":31.79,"dec":23.46,"m":2.01},
+        {"n":"Sheratan","ra":28.66,"dec":20.81,"m":2.64},
+        {"n":"Mesarthim","ra":28.38,"dec":19.29,"m":3.86},
+        {"n":"41 Ari","ra":42.50,"dec":27.26,"m":3.61}],
+      "lines":[[2,1],[1,0],[0,3]] },
+    { "name":"Koziorożec", "group":"autumn", "wiki":{"lang":"pl","title":"Koziorożec (gwiazdozbiór)"},
+      "stars":[
+        {"n":"Deneb Algedi","ra":326.76,"dec":-16.13,"m":2.85},
+        {"n":"Dabih","ra":305.25,"dec":-14.78,"m":3.05},
+        {"n":"Algedi","ra":304.51,"dec":-12.54,"m":3.57},
+        {"n":"Nashira","ra":325.02,"dec":-16.66,"m":3.69},
+        {"n":"Zeta Cap","ra":321.67,"dec":-22.41,"m":3.74},
+        {"n":"Omega Cap","ra":312.96,"dec":-26.92,"m":4.11}],
+      "lines":[[2,1],[1,5],[5,4],[4,0],[0,3],[3,2]] },
+    { "name":"Wodnik", "group":"autumn", "wiki":{"lang":"pl","title":"Wodnik (gwiazdozbiór)"},
+      "stars":[
+        {"n":"Sadalsuud","ra":322.89,"dec":-5.57,"m":2.90},
+        {"n":"Sadalmelik","ra":331.45,"dec":-0.32,"m":2.95},
+        {"n":"Skat","ra":343.66,"dec":-15.82,"m":3.27},
+        {"n":"Zeta Aqr","ra":337.21,"dec":-0.02,"m":3.65},
+        {"n":"Sadachbia","ra":335.41,"dec":-1.39,"m":3.84},
+        {"n":"Lambda Aqr","ra":343.15,"dec":-7.58,"m":3.74},
+        {"n":"Albali","ra":311.92,"dec":-9.50,"m":3.77}],
+      "lines":[[6,0],[0,1],[1,4],[4,3],[3,1],[1,5],[5,2]] },
+    { "name":"Ryby", "group":"autumn", "wiki":{"lang":"pl","title":"Ryby (gwiazdozbiór)"},
+      "stars":[
+        {"n":"Eta Psc","ra":22.87,"dec":15.35,"m":3.62},
+        {"n":"Gamma Psc","ra":349.29,"dec":3.28,"m":3.69},
+        {"n":"Omega Psc","ra":359.83,"dec":6.86,"m":4.03},
+        {"n":"Iota Psc","ra":354.99,"dec":5.61,"m":4.13},
+        {"n":"Theta Psc","ra":351.99,"dec":6.38,"m":4.27},
+        {"n":"Alrescha","ra":30.51,"dec":2.76,"m":3.82}],
+      "lines":[[1,2],[2,3],[3,4],[4,1],[1,5],[0,5]] },
+    { "name":"Wieloryb", "group":"autumn", "wiki":{"lang":"pl","title":"Wieloryb (gwiazdozbiór)"},
+      "stars":[
+        {"n":"Menkar","ra":45.57,"dec":4.09,"m":2.54},
+        {"n":"Diphda","ra":10.90,"dec":-17.99,"m":2.04},
+        {"n":"Gamma Cet","ra":40.83,"dec":3.24,"m":3.47},
+        {"n":"Delta Cet","ra":39.87,"dec":0.33,"m":4.07},
+        {"n":"Mira","ra":34.84,"dec":-2.98,"m":3.00},
+        {"n":"Zeta Cet","ra":27.87,"dec":-10.34,"m":3.73},
+        {"n":"Tau Cet","ra":26.02,"dec":-15.94,"m":3.50},
+        {"n":"Theta Cet","ra":21.00,"dec":-8.18,"m":3.60},
+        {"n":"Eta Cet","ra":17.15,"dec":-10.18,"m":3.45}],
+      "lines":[[0,2],[2,3],[3,4],[4,5],[5,6],[6,1],[1,7],[7,8],[8,5]] }
+  ]
+}
+

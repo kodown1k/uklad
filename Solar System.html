@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Układ Słoneczny</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- Planet textures referenced from JS — lifted for offline bundling -->
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/sunmap.jpg" data-resource-id="sunmap">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/mercurymap.jpg" data-resource-id="mercurymap">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/mercurybump.jpg" data-resource-id="mercurybump">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/venusmap.jpg" data-resource-id="venusmap">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/venusbump.jpg" data-resource-id="venusbump">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/earthmap1k.jpg" data-resource-id="earthmap">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/earthbump1k.jpg" data-resource-id="earthbump">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/earthspec1k.jpg" data-resource-id="earthspec">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/earthcloudmap.jpg" data-resource-id="earthcloud">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/earthcloudmaptrans.jpg" data-resource-id="earthcloudtrans">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_lights_2048.png" data-resource-id="earthlights">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/marsmap1k.jpg" data-resource-id="marsmap">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/marsbump1k.jpg" data-resource-id="marsbump">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/jupitermap.jpg" data-resource-id="jupitermap">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/saturnmap.jpg" data-resource-id="saturnmap">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/saturnringcolor.jpg" data-resource-id="saturnring">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/uranusmap.jpg" data-resource-id="uranusmap">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/neptunemap.jpg" data-resource-id="neptunemap">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/moonmap1k.jpg" data-resource-id="moonmap">
+<meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/moonbump1k.jpg" data-resource-id="moonbump">
+
+<template id="__bundler_thumbnail" data-bg-color="#05060a">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#05060a"/>
+    <ellipse cx="600" cy="400" rx="430" ry="150" fill="none" stroke="#4a5a7a" stroke-width="3" opacity="0.4"/>
+    <ellipse cx="600" cy="400" rx="280" ry="98" fill="none" stroke="#4a5a7a" stroke-width="3" opacity="0.5"/>
+    <circle cx="600" cy="400" r="62" fill="#ffd27a"/>
+    <circle cx="600" cy="400" r="62" fill="none" stroke="#ffae3c" stroke-width="10" opacity="0.5"/>
+    <circle cx="1030" cy="400" r="20" fill="#7fb4ff"/>
+    <circle cx="320" cy="498" r="13" fill="#c1502e"/>
+  </svg>
+</template>
+<style>
+  :root{
+    --bg:#05060a;
+    --panel:rgba(14,17,26,0.72);
+    --panel-solid:#0c0f17;
+    --border:rgba(255,255,255,0.10);
+    --text:#eef1f7;
+    --muted:#8b93a7;
+    --accent:#7fb4ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:"Space Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  #app{position:fixed;inset:0}
+  canvas{display:block}
+
+  /* ---------- Loader ---------- */
+  #loader{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:22px;z-index:50;transition:opacity .8s ease}
+  #loader.hide{opacity:0;pointer-events:none}
+  .orbit-spin{width:64px;height:64px;border-radius:50%;border:1px solid rgba(255,255,255,.12);
+    position:relative;animation:spin 3s linear infinite}
+  .orbit-spin::after{content:"";position:absolute;top:-4px;left:50%;width:8px;height:8px;
+    border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent);transform:translateX(-50%)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #loader .lbl{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--muted)}
+  #loadbar{width:200px;height:2px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden}
+  #loadbar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s ease}
+
+  /* ---------- HUD ---------- */
+  .hud{position:fixed;z-index:20;pointer-events:none}
+  .hud > *{pointer-events:auto}
+
+  /* top-left brand */
+  #brand{top:22px;left:24px}
+  #brand .k{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.32em;
+    text-transform:uppercase;color:var(--muted)}
+  #brand h1{font-size:21px;font-weight:600;letter-spacing:-.01em;margin-top:3px}
+
+  /* planet rail (left) */
+  #rail{top:50%;left:24px;transform:translateY(-50%);display:flex;flex-direction:column;gap:2px}
+  .rail-btn{display:flex;align-items:center;gap:12px;background:transparent;border:none;
+    color:var(--muted);font-family:inherit;font-size:14px;font-weight:500;cursor:pointer;
+    padding:8px 12px 8px 8px;border-radius:10px;transition:.18s;text-align:left;width:184px}
+  .rail-btn .dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto;
+    box-shadow:0 0 0 1px rgba(255,255,255,.15) inset}
+  .rail-btn .nm{flex:1}
+  .rail-btn .au{font-family:"IBM Plex Mono",monospace;font-size:10px;opacity:0;transition:.18s}
+  .rail-btn:hover{background:var(--panel);color:var(--text)}
+  .rail-btn:hover .au{opacity:.6}
+  .rail-btn.active{background:var(--panel);color:var(--text)}
+  .rail-btn.active .au{opacity:.6}
+  /* księżyce — strzałka rozwijania + wcięta podlista */
+  .rail-group{display:flex;flex-direction:column;gap:2px}
+  .rail-btn .chev{width:10px;flex:0 0 auto;font-size:9px;opacity:.55;text-align:center;cursor:pointer}
+  .rail-btn .chev.empty{opacity:0;cursor:default}
+  .rail-sub{display:none;flex-direction:column;gap:1px;margin:1px 0 4px 0}
+  .rail-group.open .rail-sub{display:flex}
+  .moon-btn{display:flex;align-items:center;gap:10px;background:transparent;border:none;
+    color:var(--muted);font-family:inherit;font-size:12.5px;font-weight:500;cursor:pointer;
+    padding:5px 12px 5px 32px;border-radius:9px;transition:.18s;text-align:left;width:184px}
+  .moon-btn .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 1px rgba(255,255,255,.15) inset}
+  .moon-btn .nm{flex:1}
+  .moon-btn:hover{background:var(--panel);color:var(--text)}
+  .moon-btn.active{background:var(--panel);color:var(--text)}
+
+  /* info card (bottom-right) */
+  #info{right:24px;bottom:24px;width:312px;background:var(--panel);backdrop-filter:blur(16px);
+    border:1px solid var(--border);border-radius:16px;padding:20px;opacity:0;transform:translateY(12px);
+    visibility:hidden;transition:opacity .45s cubic-bezier(.2,.7,.2,1),transform .45s cubic-bezier(.2,.7,.2,1)}
+  #info.show{opacity:1;transform:none;visibility:visible}
+  #info.show ~ #hint{opacity:0;pointer-events:none}
+  #info .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--accent)}
+  #info h2{font-size:27px;font-weight:600;margin:6px 0 2px;letter-spacing:-.01em}
+  #info .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  #info .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+  #info .stat .l{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--muted)}
+  #info .stat .v{font-size:15px;font-weight:500;margin-top:2px}
+
+  /* controls (top-right) */
+  #panel{top:22px;right:24px;width:248px;background:var(--panel);backdrop-filter:blur(16px);
+    border:1px solid var(--border);border-radius:16px;padding:16px 18px;
+    max-height:calc(100vh - 44px);overflow-y:auto}
+  .ctl{margin-bottom:15px}
+  .ctl:last-child{margin-bottom:0}
+  .ctl .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .ctl .row label{font-size:13px;font-weight:500}
+  .ctl .row .val{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--accent)}
+  input[type=range]{-webkit-appearance:none;width:100%;height:3px;border-radius:3px;
+    background:rgba(255,255,255,.14);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;
+    border-radius:50%;background:var(--text);cursor:pointer;border:3px solid var(--panel-solid);
+    box-shadow:0 0 0 1px rgba(255,255,255,.25)}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:var(--text);
+    cursor:pointer;border:none}
+  .toggle{display:flex;align-items:center;justify-content:space-between;cursor:pointer;
+    font-size:13px;font-weight:500;padding:5px 0}
+  .switch{width:36px;height:20px;border-radius:20px;background:rgba(255,255,255,.14);position:relative;
+    transition:.2s;flex:0 0 auto}
+  .switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+    background:var(--text);transition:.2s}
+  .toggle.on .switch{background:var(--accent)}
+  .toggle.on .switch::after{transform:translateX(16px)}
+
+  /* grupa przełączników warstwy geo (per-kategoria: nazwy + obszary) */
+  .geo-grid{display:grid;grid-template-columns:1fr 36px 36px;gap:8px 11px;align-items:center;margin-top:9px}
+  .geo-grid .gh{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;text-align:center;line-height:1.1}
+  .geo-grid .gc{font-size:12px;color:var(--text)}
+  .toggle.sm{padding:0;width:36px;justify-content:center;margin:0}
+  .toggle.sm.dis{opacity:.22;pointer-events:none}
+  /* drzewo-akordeon panelu */
+  details.sec{border-top:1px solid var(--border)}
+  details.sec:first-of-type{border-top:none}
+  details.sec>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;
+    padding:11px 2px;font-size:13px;font-weight:600;user-select:none}
+  details.sec>summary::-webkit-details-marker{display:none}
+  .sec .chev{width:12px;color:var(--muted);font-size:11px;transition:transform .15s}
+  details.sec[open]>summary .chev{transform:rotate(90deg)}
+  .sec .sec-sw{margin-left:auto}
+  .sec-body{padding:2px 0 10px 4px}
+  .grp{margin:2px 0}
+  .grp-h{display:flex;align-items:center;gap:8px;padding:6px 2px;cursor:pointer;font-size:12.5px;color:var(--text)}
+  .grp-h .cnt{color:var(--muted);font-size:10.5px;font-family:'IBM Plex Mono',monospace;margin-left:2px}
+  .grp-h .grp-sw{margin-left:auto}
+  .grp.collapsed .leaf{display:none}
+  .leaf{display:flex;align-items:center;gap:8px;padding:4px 2px 4px 22px;font-size:12.5px;color:var(--muted);cursor:pointer}
+  .leaf .cb{width:15px;height:15px;border-radius:4px;border:1.5px solid var(--border);flex:none;position:relative}
+  .leaf.on{color:var(--text)}
+  .leaf.on .cb{background:var(--accent);border-color:var(--accent)}
+  .leaf.on .cb::after{content:"✓";position:absolute;inset:0;font-size:11px;color:#fff;text-align:center;line-height:14px}
+  .leaf .iso{margin-left:auto;font-size:10px;color:var(--muted);opacity:0;transition:opacity .12s}
+  .leaf:hover .iso{opacity:1}
+  /* switch z indeterminate (półprzezroczysty) */
+  .switch.indet{opacity:.55}
+  .pbtn{width:100%;background:var(--accent);color:#04121f;border:none;font-family:inherit;
+    font-size:13px;font-weight:600;padding:10px;border-radius:10px;cursor:pointer;transition:.18s;
+    letter-spacing:.01em}
+  .pbtn:hover{filter:brightness(1.08)}
+  .pbtn.on{background:rgba(255,255,255,.12);color:var(--text)}
+  .divider{height:1px;background:var(--border);margin:14px -18px}
+
+  /* górny pasek (wyśrodkowany) — przycisk powrotu + menu galaktyk */
+  #topbar{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:22;
+    display:flex;align-items:center;gap:10px;pointer-events:none}
+  #topbar > *{pointer-events:auto}
+
+  /* back button */
+  #back{background:var(--panel);backdrop-filter:blur(16px);border:1px solid var(--border);color:var(--text);
+    font-family:inherit;font-size:13px;font-weight:500;padding:9px 18px;border-radius:30px;cursor:pointer;
+    display:none;align-items:center;gap:8px;transition:background .2s}
+  #back.show{display:flex}
+  #back:hover{background:var(--panel-solid)}
+  #back .arrow{font-family:"IBM Plex Mono",monospace}
+
+  /* breadcrumb (ścieżka kosmicznego zoomu) — klik = powrót o poziom wyżej */
+  #crumb{background:var(--panel);backdrop-filter:blur(16px);border:1px solid var(--border);color:var(--muted);
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.05em;padding:9px 15px;border-radius:30px;
+    cursor:pointer;white-space:nowrap;transition:background .2s,color .2s}
+  #crumb:hover{background:var(--panel-solid);color:var(--text)}
+
+  /* menu galaktyk / układów (podgląd) */
+  #galaxyMenu{position:relative}
+  #galaxyMenu.gx-hidden{display:none}   /* ukryte w trybie lotu — góra należy do warp/„Widok układu" */
+  #galaxyMenu .gx-btn{background:var(--panel);backdrop-filter:blur(16px);border:1px solid var(--border);
+    color:var(--text);font-family:inherit;font-size:13px;font-weight:500;padding:9px 16px;border-radius:30px;
+    cursor:pointer;display:flex;align-items:center;gap:9px;transition:background .2s;white-space:nowrap}
+  #galaxyMenu .gx-btn:hover{background:var(--panel-solid)}
+  #galaxyMenu .gx-caret{font-size:9px;opacity:.7;transition:transform .2s}
+  #galaxyMenu.open .gx-caret{transform:rotate(180deg)}
+  #galaxyMenu .gx-panel{position:absolute;top:calc(100% + 9px);left:50%;
+    transform:translateX(-50%) translateY(-6px);min-width:288px;max-height:62vh;overflow-y:auto;
+    background:var(--panel-solid);border:1px solid var(--border);border-radius:14px;padding:7px;
+    box-shadow:0 16px 48px rgba(0,0,0,.55);backdrop-filter:blur(10px);
+    opacity:0;visibility:hidden;transition:opacity .18s ease,transform .18s ease,visibility .18s}
+  #galaxyMenu.open .gx-panel{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+  #galaxyMenu .gx-head{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted);padding:10px 10px 5px}
+  #galaxyMenu .gx-head:first-child{padding-top:5px}
+  #galaxyMenu .gx-item{display:flex;flex-direction:column;gap:1px;padding:7px 10px;border-radius:8px;cursor:default}
+  #galaxyMenu .gx-item.nav{cursor:pointer}
+  #galaxyMenu .gx-item.nav:hover{background:var(--panel)}
+  #galaxyMenu .gx-item:hover{background:var(--panel)}
+  #galaxyMenu .gx-item .gx-nm{font-size:13px;font-weight:500;color:var(--text)}
+  #galaxyMenu .gx-item .gx-desc{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)}
+  #galaxyMenu .gx-foot{font-size:10px;color:var(--muted);padding:9px 10px 4px;margin-top:4px;
+    border-top:1px solid var(--border);text-align:center;line-height:1.5}
+
+  /* menu kontekstowe (prawy przycisk) */
+  #ctxMenu{position:fixed;z-index:40;min-width:168px;background:var(--panel-solid);
+    border:1px solid var(--border);border-radius:10px;padding:5px;display:none;
+    box-shadow:0 12px 40px rgba(0,0,0,.55);backdrop-filter:blur(8px)}
+  #ctxMenu.show{display:block}
+  #ctxMenu .ctx-item{display:flex;align-items:center;gap:9px;width:100%;background:transparent;
+    border:none;color:var(--text);font-family:inherit;font-size:13px;font-weight:500;
+    padding:8px 10px;border-radius:7px;cursor:pointer;text-align:left}
+  #ctxMenu .ctx-item:hover{background:var(--panel)}
+  #ctxMenu .ctx-head{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--muted);padding:5px 10px 6px}
+
+  /* modal „Informacje" */
+  #objModal{position:fixed;inset:0;z-index:45;display:none}
+  #objModal.show{display:block}
+  #objModal .modal-backdrop{position:absolute;inset:0;background:rgba(2,4,8,.62);backdrop-filter:blur(3px)}
+  #objModal .modal-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:min(440px,calc(100vw - 32px));max-height:84vh;overflow-y:auto;background:var(--panel-solid);
+    border:1px solid var(--border);border-radius:16px;padding:22px;box-shadow:0 20px 70px rgba(0,0,0,.6)}
+  #objModal .modal-x{position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:8px;
+    background:var(--panel);border:1px solid var(--border);color:var(--text);cursor:pointer;font-size:13px}
+  #objModal .modal-x:hover{background:var(--panel-solid)}
+  #objModal .modal-eye{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--accent)}
+  #objModal .modal-name{font-size:25px;font-weight:600;margin:6px 0 12px}
+  #objModal .modal-thumb{width:100%;border-radius:12px;margin-bottom:12px;display:block}
+  #objModal .modal-extract{font-size:14px;line-height:1.6;color:var(--text)}
+  #objModal .modal-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:14px}
+  #objModal .modal-stats .stat .l{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--muted)}
+  #objModal .modal-stats .stat .v{font-size:14px;font-weight:500;margin-top:2px}
+  #objModal .modal-link{display:inline-block;margin-top:16px;color:var(--accent);font-size:13px;font-weight:600;text-decoration:none}
+  #objModal .modal-link:hover{text-decoration:underline}
+
+  /* labels in 3D */
+  #labels{position:fixed;inset:0;z-index:10;pointer-events:none;overflow:hidden}
+  .lab{position:absolute;transform:translate(-50%,-50%);font-family:"IBM Plex Mono",monospace;
+    font-size:11px;letter-spacing:.08em;color:rgba(255,255,255,.78);white-space:nowrap;
+    text-shadow:0 1px 6px rgba(0,0,0,.9);transition:opacity .3s;cursor:pointer;pointer-events:auto;
+    padding:3px 6px}
+  .lab::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;
+    background:currentColor;margin-right:7px;vertical-align:middle;opacity:.7}
+  .lab:hover{color:#fff}
+
+  /* ===== HUD lotu (M1b-3) ===== */
+  #flight-orbit{top:84px;left:24px;width:212px;background:var(--panel);backdrop-filter:blur(16px);
+    border:1px solid var(--border);border-radius:16px;padding:16px 18px;opacity:0;transform:translateY(-8px);
+    visibility:hidden;transition:opacity .25s ease,transform .25s ease;pointer-events:none}
+  #flight-orbit.show{opacity:1;transform:none;visibility:visible}
+  #flight-orbit .fo-title,#flight-maneuver .fm-title{font-family:"IBM Plex Mono",monospace;font-size:10px;
+    letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:12px}
+  #flight-orbit .fo-grid{grid-template-columns:1fr 1fr}
+  #flight-orbit .stat .l{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--muted)}
+  #flight-orbit .stat .v{font-size:14px;font-weight:500;margin-top:2px}
+  #flight-orbit .fo-dv{margin-top:12px;font-size:11px;color:var(--muted)}
+  #flight-orbit .fo-dv b{display:block;font-size:16px;color:#7af0c0;margin-top:2px}      /* mint */
+  #flight-orbit .fo-dv b.amber{color:#f5c451}
+  #flight-orbit .fo-dv b.coral{color:#ff7a6b}
+  #flight-orbit .fo-dv #foRegime{display:block;margin-top:6px;font-size:10px;color:#f5c451}
+  #flight-warp{top:64px;left:50%;transform:translateX(-50%);font-family:"IBM Plex Mono",monospace;
+    font-size:13px;color:var(--text);background:var(--panel);border:1px solid var(--border);
+    border-radius:20px;padding:6px 14px;opacity:0;visibility:hidden;
+    transition:opacity .25s ease;pointer-events:none}
+  #flight-warp.show{opacity:1;visibility:visible}
+  #flight-warp #fwCap{color:#f5c451;margin-left:8px}
+  #flight-maneuver{left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);width:340px;
+    background:var(--panel);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;
+    padding:14px 18px;opacity:0;visibility:hidden;
+    transition:opacity .25s ease,transform .25s ease;pointer-events:none}
+  #flight-maneuver.show{opacity:1;transform:translateX(-50%);visibility:visible}
+  #flight-maneuver .fm-row{display:grid;grid-template-columns:64px 1fr 64px;align-items:center;gap:8px;margin-bottom:8px}
+  #flight-maneuver .fm-row label{font-size:11px;color:var(--muted)}
+  #flight-maneuver .fm-row input[type=range]{width:100%}
+  #flight-maneuver .fm-val{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--accent);text-align:right}
+  #flight-maneuver .fm-foot{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:11px;color:var(--muted)}
+  #flight-maneuver .fm-foot b{color:var(--text);font-size:13px}
+  #flight-maneuver .fm-foot b#fmSum.over{color:#ff7a7a}
+  #flight-maneuver .fm-node{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:11px;color:var(--muted)}
+  #flight-maneuver .fm-node b{color:var(--accent);font-size:12px;font-family:"IBM Plex Mono",monospace}
+  #flight-maneuver .fm-nodelist{display:flex;flex-direction:column;gap:3px;margin-bottom:8px;max-height:120px;overflow-y:auto}
+  #flight-maneuver .fm-node-row{display:flex;align-items:center;gap:8px;padding:3px 7px;border-radius:6px;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);background:rgba(255,255,255,.04);cursor:pointer}
+  #flight-maneuver .fm-node-row:hover{background:rgba(255,255,255,.09)}
+  #flight-maneuver .fm-node-row.on{background:rgba(255,210,122,.22);color:var(--text)}
+  #flight-maneuver .fm-node-row span{flex:1 1 auto}
+  #flight-maneuver .fm-node-x{flex:0 0 auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 2px;line-height:1}
+  #flight-maneuver .fm-node-x:hover{color:#ff7a7a}
+  #flight-maneuver .fm-target{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--muted)}
+  #flight-maneuver .fm-target .fm-outcome{margin-left:auto;color:var(--accent);font-family:"IBM Plex Mono",monospace}
+  #flight-maneuver .fm-target .pbtn.on{background:rgba(89,245,200,.22);color:var(--text)}
+  #flight-maneuver .pbtn[disabled]{opacity:.45;pointer-events:none}
+  #flight-maneuver .pbtn.on{background:rgba(89,245,200,.22);color:var(--text)}
+  #flight-maneuver .pbtn{width:auto;flex:0 0 auto;padding:8px 14px;margin:0}
+  #flight-maneuver .fm-reset{background:rgba(255,255,255,.12);color:var(--text)}
+
+  /* hint */
+  #hint{bottom:26px;right:26px;font-family:"IBM Plex Mono",monospace;font-size:10.5px;
+    color:var(--muted);text-align:right;line-height:1.7;opacity:.65}
+  #hint b{color:rgba(255,255,255,.78);font-weight:500}
+
+  /* atrybucja źródeł danych (lewy-dolny róg) — OSM/ODbL wymaga kredytu */
+  #credit{bottom:24px;left:24px;font-family:"IBM Plex Mono",monospace;font-size:9.5px;
+    color:var(--muted);line-height:1.6;opacity:.48;max-width:300px;transition:opacity .25s}
+  #credit:hover{opacity:.82}
+  #credit a{color:inherit;text-decoration:underline;pointer-events:auto}
+
+  /* mobile menu toggle + backdrop (ukryte na desktopie) */
+  #menuToggle{display:none;top:14px;right:16px;align-items:center;gap:8px;
+    background:var(--panel);backdrop-filter:blur(16px);border:1px solid var(--border);
+    color:var(--text);font-family:inherit;font-size:13px;font-weight:600;
+    padding:9px 14px;border-radius:12px;cursor:pointer;z-index:32;pointer-events:auto}
+  #menuBackdrop{position:fixed;inset:0;z-index:28;background:rgba(0,0,0,.5);
+    opacity:0;pointer-events:none;transition:opacity .3s}
+  #menuBackdrop.show{opacity:1;pointer-events:auto}
+
+  @media (max-width:760px){
+    #hint{display:none}
+    #credit{display:none}
+    #brand{left:16px;top:14px}
+    #brand h1{font-size:18px}
+    #brand .k{font-size:10px}
+    #menuToggle{display:flex}
+
+    /* sterowanie -> wysuwany arkusz (bottom sheet), przewijalny */
+    #panel{top:auto;right:0;left:0;bottom:0;width:auto;max-height:80vh;overflow-y:auto;
+      -webkit-overflow-scrolling:touch;border-radius:18px 18px 0 0;border-bottom:none;
+      padding:18px 18px calc(20px + env(safe-area-inset-bottom));z-index:30;
+      transform:translateY(110%);transition:transform .34s cubic-bezier(.2,.7,.2,1)}
+    #panel.open{transform:translateY(0)}
+    #panel::before{content:"";display:block;width:42px;height:4px;border-radius:4px;
+      background:rgba(255,255,255,.22);margin:-2px auto 16px}
+
+    /* planety -> poziomy pasek przewijany u góry */
+    #rail{top:60px;left:0;right:0;transform:none;flex-direction:row;gap:6px;
+      padding:4px 14px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+      scrollbar-width:none;
+      -webkit-mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent)}
+    #rail::-webkit-scrollbar{display:none}
+    .rail-btn{width:auto;flex:0 0 auto;white-space:nowrap;padding:7px 13px;
+      background:var(--panel);border:1px solid var(--border);border-radius:20px;font-size:13px}
+    .rail-btn .au{display:none}
+
+    #info{width:auto;left:14px;right:14px;bottom:14px}
+    #flight-orbit{top:auto;bottom:120px;left:14px;width:160px;padding:12px;font-size:11px}
+    #flight-maneuver{width:auto;left:14px;right:14px;bottom:14px;transform:none}
+    #flight-maneuver.show{transform:none}
+    #flight-warp{top:auto;bottom:300px}
+
+    /* górny pasek pod poziomym railem planet */
+    #topbar{top:104px;gap:8px;max-width:calc(100vw - 28px)}
+    #galaxyMenu .gx-btn{font-size:12px;padding:8px 13px}
+    #galaxyMenu .gx-panel{min-width:0;width:min(320px,calc(100vw - 28px))}
+  }
+
+  /* ===== Tryb filmowy ?film (solar.js „Tryb filmowy”, kino.js) ===== */
+  body.kino-on > *:not(#app):not(#kino){opacity:0 !important;pointer-events:none !important;transition:opacity .6s}
+  #kino{display:none;position:fixed;inset:0;z-index:60;pointer-events:none;color:#eaf6ff;font-family:"Space Grotesk",sans-serif}
+  body.kino-on #kino{display:block}
+  #kino .k-bar{position:absolute;left:0;right:0;height:max(0px,calc((100vh - 100vw/2.39)/2));background:#000;
+    transition:transform 1.4s cubic-bezier(.7,0,.2,1);display:flex;align-items:center;justify-content:flex-end;padding:0 3vw}
+  #kino .k-top{top:0;transform:translateY(-100%)} #kino .k-bot{bottom:0;transform:translateY(100%)}
+  body.kino-run #kino .k-bar{transform:none}
+  #kino .k-date{font-family:"IBM Plex Mono",monospace;font-size:clamp(10px,1.1vw,13px);letter-spacing:.14em;color:#9fdcff;
+    opacity:0;transition:opacity .8s;white-space:nowrap}
+  #kino .k-date.show{opacity:.9}
+  #kino .k-prog{position:absolute;left:0;right:0;top:0;height:1px;background:rgba(159,230,255,.08)}
+  #kino .k-prog i{display:block;height:100%;width:0;background:rgba(159,230,255,.45)}
+  #kino .k-vig{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.62) 100%)}
+  #kino .k-grain{position:absolute;inset:-50%;opacity:.07;mix-blend-mode:screen;animation:kgrain .45s steps(4) infinite;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  @keyframes kgrain{0%{transform:translate(0,0)}25%{transform:translate(-4%,3%)}50%{transform:translate(3%,-5%)}75%{transform:translate(-2%,-2%)}100%{transform:translate(4%,4%)}}
+  #kino .k-flash{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,#e9fbff 0%,rgba(140,225,255,.5) 35%,transparent 75%);opacity:0;mix-blend-mode:screen}
+  #kino .k-fade{position:absolute;inset:0;background:#000;opacity:0}
+  #kino.loading .k-fade{opacity:1}
+  #kino .k-load{position:absolute;left:0;right:0;top:50%;text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;
+    letter-spacing:.3em;text-transform:uppercase;color:#6f8fa3;opacity:0;transition:opacity .4s}
+  #kino.loading .k-load{opacity:1}
+  #kino .k-slot{position:absolute;left:0;right:0;text-align:center;opacity:0;transform:translateY(8px);filter:blur(6px);
+    transition:opacity 1.1s ease,transform 1.6s cubic-bezier(.2,.7,.2,1),filter 1.2s ease;padding:0 6vw}
+  #kino .k-slot.show{opacity:1;transform:none;filter:none}
+  /* czytelność na jasnym tle (sonda, błona): ciemna miękka plama pod napisem + ciemny cień liter */
+  #kino .k-slot::before{content:"";position:absolute;z-index:-1;left:50%;top:50%;width:min(92vw,980px);height:calc(100% + 7vh);
+    transform:translate(-50%,-50%);background:radial-gradient(closest-side,rgba(1,5,11,.62),rgba(1,5,11,.38) 55%,transparent);pointer-events:none}
+  #kino .k-counter::before{left:0;width:min(60vw,520px);transform:translate(-18%,-50%)}
+  #kino .k-chapter::before{height:calc(100% + 4vh);width:min(70vw,560px)}
+  #kino .k-slot,#kino .k-end{text-shadow:0 0 2px rgba(0,0,0,.85),0 1px 3px rgba(0,0,0,.8),0 2px 22px rgba(0,0,0,.75)}
+  #kino .k-h1,#kino .k-big{text-shadow:0 0 3px rgba(0,0,0,.7),0 3px 30px rgba(0,0,0,.75),0 0 46px rgba(111,220,255,.3)}
+  #kino .k-date{text-shadow:0 0 2px #000}
+  #kino .k-eye{font-family:"IBM Plex Mono",monospace;font-size:clamp(10px,1.05vw,13px);letter-spacing:.32em;text-transform:uppercase;color:#c4ecff}
+  #kino .k-h1{font-size:clamp(40px,8.2vw,120px);font-weight:300;letter-spacing:.06em;line-height:1.02;margin:.12em 0 .1em}
+  #kino .k-sub{font-size:clamp(14px,1.7vw,22px);font-weight:400;letter-spacing:.04em;color:#e6f5ff}
+  #kino .k-title{top:calc(max(0px,(100vh - 100vw/2.39)/2) + 8vh)}
+  #kino .k-chapter{top:calc(max(0px,(100vh - 100vw/2.39)/2) + 4.5vh);font-family:"IBM Plex Mono",monospace;
+    font-size:clamp(10px,1.1vw,14px);letter-spacing:.42em;text-transform:uppercase;color:#bfe9ff}
+  #kino .k-chapter span{border-top:1px solid rgba(159,230,255,.35);border-bottom:1px solid rgba(159,230,255,.35);padding:.5em 1.2em}
+  #kino .k-line{bottom:calc(max(0px,(100vh - 100vw/2.39)/2) + 6vh);font-size:clamp(15px,1.75vw,24px);font-weight:300;
+    letter-spacing:.02em}
+  #kino .k-counter{top:calc(max(0px,(100vh - 100vw/2.39)/2) + 9vh);left:5vw;right:auto;text-align:left;padding:0}
+  #kino .k-big{font-family:"IBM Plex Mono",monospace;font-size:clamp(34px,6vw,84px);font-weight:300;color:#dff6ff}
+  #kino .k-cap{font-family:"IBM Plex Mono",monospace;font-size:clamp(10px,1vw,13px);letter-spacing:.3em;text-transform:uppercase;color:#8fd8ff}
+  #kino .k-ctl{position:absolute;right:16px;top:calc(max(0px,(100vh - 100vw/2.39)/2) + 12px);display:flex;gap:8px;pointer-events:auto}
+  #kino button{font:500 12px "IBM Plex Mono",monospace;letter-spacing:.08em;color:#cfeaff;background:rgba(6,14,24,.55);
+    border:1px solid rgba(159,230,255,.25);border-radius:999px;padding:7px 13px;cursor:pointer;backdrop-filter:blur(6px)}
+  #kino button:hover{border-color:rgba(159,230,255,.7);color:#fff}
+  #kino .k-end{position:absolute;left:0;right:0;top:30%;text-align:center;opacity:0;pointer-events:none;transition:opacity 1.4s;padding:0 6vw}
+  #kino.end .k-end{opacity:1;pointer-events:auto}
+  #kino.end .k-ctl,#kino.end .k-grain{display:none}
+  #kino .k-btns{margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  #kino .k-btns button{font-size:13px;padding:10px 18px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="labels"></div>
+
+<!-- HUD -->
+<div id="brand" class="hud">
+  <div class="k">Symulacja 3D</div>
+  <h1>Układ Słoneczny</h1>
+</div>
+
+<!-- przycisk menu (tylko mobile) + tło przyciemniające arkusz -->
+<button id="menuToggle" class="hud" aria-label="Sterowanie">☰ Sterowanie</button>
+<div id="menuBackdrop"></div>
+
+<div id="rail" class="hud"></div>
+
+<div id="topbar">
+  <button id="back"><span class="arrow">←</span> Widok układu</button>
+  <span id="crumb" class="crumb" style="display:none"></span>
+  <div id="galaxyMenu">
+    <button class="gx-btn" id="gxBtn" aria-haspopup="true" aria-expanded="false">🌌 Galaktyki i układy <span class="gx-caret">▾</span></button>
+    <div class="gx-panel" id="gxPanel" role="menu"></div>
+  </div>
+</div>
+
+<div id="panel" class="hud">
+  <div class="ctl">
+    <div class="row"><label>Czas rzeczywisty</label><span class="val">live · 1:1</span></div>
+    <div id="realityStat" style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);line-height:1.6;display:none"></div>
+  </div>
+
+  <details class="sec" data-sec="vis" open>
+    <summary><span class="chev">▸</span><span>Widoczność</span></summary>
+    <div class="sec-body">
+      <div class="toggle on" id="tOrbits"><span>Orbity</span><span class="switch"></span></div>
+      <div class="toggle on" id="tClouds"><span>Chmury (Ziemia)</span><span class="switch"></span></div>
+      <div class="toggle on" id="tLabels"><span>Etykiety</span><span class="switch"></span></div>
+      <div class="toggle" id="tRelief"><span>Relief 3D (teren)</span><span class="switch"></span></div>
+      <div class="toggle" id="tTrueScale"><span>Prawdziwa skala (rozmiary)</span><span class="switch"></span></div>
+      <div class="toggle on" id="tGalaxies"><span>🌌 Galaktyki</span><span class="switch"></span></div>
+    </div>
+  </details>
+
+  <details class="sec" data-sec="geo">
+    <summary><span class="chev">▸</span><span>🗺 Warstwa geo</span><div class="toggle sm sec-sw" id="tEdu"><span class="switch"></span></div></summary>
+    <div class="sec-body">
+      <div class="geo-grid">
+        <span></span><span class="gh">etykiety</span><span class="gh">obszary</span>
+        <span class="gc">Rzeki i jeziora</span><div class="toggle sm on" id="gWaterL"><span class="switch"></span></div><div class="toggle sm on" id="gWaterA"><span class="switch"></span></div>
+        <span class="gc">Morza i oceany</span><div class="toggle sm on" id="gSeaL"><span class="switch"></span></div><div class="toggle sm dis" id="gSeaA"><span class="switch"></span></div>
+        <span class="gc">Góry</span><div class="toggle sm on" id="gMtnL"><span class="switch"></span></div><div class="toggle sm on" id="gMtnA"><span class="switch"></span></div>
+        <span class="gc">Miasta</span><div class="toggle sm on" id="gCityL"><span class="switch"></span></div><div class="toggle sm on" id="gCityA"><span class="switch"></span></div>
+        <span class="gc">Państwa</span><div class="toggle sm on" id="gCtyL"><span class="switch"></span></div><div class="toggle sm on" id="gCtyA"><span class="switch"></span></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="sec" data-sec="sky">
+    <summary><span class="chev">▸</span><span>✦ Niebo — asteryzmy</span><div class="toggle sm sec-sw" id="tAsterisms"><span class="switch"></span></div></summary>
+    <div class="sec-body"><div id="skyTree"></div></div>
+  </details>
+
+  <details class="sec" data-sec="probes">
+    <summary><span class="chev">▸</span><span>🛰 Satelity i sondy</span></summary>
+    <div class="sec-body">
+      <div class="toggle" id="tSats"><span>🛰 Satelity Ziemi (zbliż na Ziemię)</span><span class="switch"></span></div>
+      <div id="satStat" style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);line-height:1.6;display:none"></div>
+      <div class="toggle" id="tProbes" style="margin-top:10px"><span>🚀 Sondy głębokiego kosmosu</span><span class="switch"></span></div>
+      <div id="probeStat" style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);line-height:1.6;display:none"></div>
+    </div>
+  </details>
+
+  <details class="sec" data-sec="tour">
+    <summary><span class="chev">▸</span><span>▶ Tryb przelotu</span></summary>
+    <div class="sec-body"><button class="pbtn" id="tourBtn">▶ Tryb przelotu</button></div>
+  </details>
+  <details class="sec" data-sec="flight">
+    <summary><span class="chev">▸</span><span>🚀 Lot orbitalny</span></summary>
+    <div class="sec-body"><button class="pbtn" id="flightBtn">🚀 Rozpocznij lot</button></div>
+  </details>
+</div>
+
+<div id="info" class="hud">
+  <div class="eyebrow" id="iEye">Planeta</div>
+  <h2 id="iName">—</h2>
+  <div class="sub" id="iSub">—</div>
+  <div class="stats" id="iStats"></div>
+  <div id="iTex" style="margin-top:14px"></div>
+</div>
+
+<div id="hint" class="hud">
+  <b>Przeciągnij</b> — obróć widok &nbsp;·&nbsp; <b>Scroll</b> — przybliż / oddal<br>
+  <b>Kliknij planetę</b> — zbliżenie
+</div>
+
+<!-- ===== HUD lotu (M1b-3) — ukryte poza trybem lotu ===== -->
+<div id="flight-orbit" class="hud">
+  <div class="fo-title">ORBITA</div>
+  <div class="stats fo-grid">
+    <div class="stat"><div class="l">Apocentrum</div><div class="v" id="foAp">—</div></div>
+    <div class="stat"><div class="l">Perycentrum</div><div class="v" id="foPe">—</div></div>
+    <div class="stat"><div class="l">Okres</div><div class="v" id="foPer">—</div></div>
+    <div class="stat"><div class="l">→ do peri</div><div class="v" id="foTp">—</div></div>
+    <div class="stat"><div class="l">→ do apo</div><div class="v" id="foTa">—</div></div>
+    <div class="stat"><div class="l">Wysokość</div><div class="v" id="foAlt">—</div></div>
+    <div class="stat"><div class="l">Prędkość</div><div class="v" id="foV">—</div></div>
+    <div class="stat"><div class="l">Ciało centralne</div><div class="v" id="foBody">—</div></div>
+  </div>
+  <div class="fo-dv">Δv pozostała <b id="foDv">—</b><span id="foRegime"></span></div>
+</div>
+
+<div id="flight-warp" class="hud"><span id="fwIcon">⏩</span> <b id="fwVal">×1</b><span id="fwCap"></span></div>
+
+<div id="flight-maneuver" class="hud">
+  <div class="fm-title">MANEWR</div>
+  <div class="fm-nodelist" id="fmNodeList"></div>
+  <div class="fm-row"><label>Prograde</label><input type="range" id="fmPro" min="-500" max="500" step="1" value="0"><span class="fm-val" id="fmProV">0 m/s</span></div>
+  <div class="fm-row"><label>Normal</label><input type="range" id="fmNor" min="-500" max="500" step="1" value="0"><span class="fm-val" id="fmNorV">0 m/s</span></div>
+  <div class="fm-row"><label>Radial</label><input type="range" id="fmRad" min="-500" max="500" step="1" value="0"><span class="fm-val" id="fmRadV">0 m/s</span></div>
+  <div class="fm-node"><span>→ węzeł <b id="fmNodeT">—</b></span>
+    <button class="pbtn fm-node-add" id="fmAddNode">+ węzeł</button>
+    <button class="pbtn fm-node-warp" id="fmWarpNode" disabled>⏩ do węzła</button></div>
+  <div class="fm-target"><span>Cel</span>
+    <button class="pbtn" id="fmTargetEarth">Ziemia</button>
+    <button class="pbtn" id="fmTargetMars">Mars</button>
+    <span class="fm-outcome" id="fmOutcome">—</span></div>
+  <div class="fm-foot"><span>Σ Δv <b id="fmSum">0 m/s</b></span>
+    <button class="pbtn fm-go" id="fmFire">Wykonaj</button>
+    <button class="pbtn fm-reset" id="fmReset">Reset</button></div>
+</div>
+
+<div id="credit" class="hud">
+  Dane: Natural Earth (PD) · pasma górskie © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL) · tekstury NASA/JPL
+</div>
+
+<!-- Loader -->
+<div id="loader">
+  <div class="orbit-spin"></div>
+  <div class="lbl" id="loadLbl">Ładowanie tekstur…</div>
+  <div id="loadbar"><i></i></div>
+</div>
+
+<div id="ctxMenu"></div>
+
+<div id="objModal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-card">
+    <button class="modal-x" aria-label="Zamknij">✕</button>
+    <div class="modal-eye" id="omEye"></div>
+    <h2 class="modal-name" id="omName"></h2>
+    <img class="modal-thumb" id="omThumb" alt="" hidden>
+    <div class="modal-extract" id="omExtract"></div>
+    <div class="modal-stats" id="omStats"></div>
+    <a class="modal-link" id="omLink" target="_blank" rel="noopener" hidden></a>
+  </div>
+</div>
+
+<!-- przełącznik mobilnego arkusza sterowania (niezależny od solar.js) -->
+<script>
+(function(){
+  var btn=document.getElementById('menuToggle'),
+      panel=document.getElementById('panel'),
+      bd=document.getElementById('menuBackdrop');
+  if(!btn||!panel||!bd) return;
+  function set(open){
+    panel.classList.toggle('open',open);
+    bd.classList.toggle('show',open);
+    btn.innerHTML = open ? '✕ Zamknij' : '☰ Sterowanie';
+  }
+  btn.addEventListener('click',function(){ set(!panel.classList.contains('open')); });
+  bd.addEventListener('click',function(){ set(false); });
+  // zamknij arkusz po wyborze planety z paska (rail wypełnia solar.js)
+  document.getElementById('rail').addEventListener('click',function(e){
+    if(e.target.closest('.rail-btn')) set(false);
+  });
+})();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/5.0.0/satellite.min.js"></script>
+<script src="tle-snapshot.js"></script>
+<script src="wiki-info.js"></script>
+<script src="sat-scale.js"></script>
+<script src="sat-info.js"></script>
+<script src="ephemeris.js"></script>
+<script src="probe-ephem.js"></script>
+<script src="kino.js"></script>
+<script src="focus-scale.js"></script>
+<script src="moon-format.js"></script>
+<script src="sky-math.js"></script>
+<script src="galaxy-shape.js"></script>
+<script src="earth-fx.js"></script>
+<script src="country-pick.js"></script>
+<script src="orbit.js"></script>
+<script src="maneuver.js"></script>
+<script src="ship-stats.js"></script>
+<script src="soi.js"></script>
+<script src="soi-events.js"></script>
+<script src="flight-core.js"></script>
+<script src="maneuver-node.js"></script>
+<script src="node-handle.js"></script>
+<script src="node-chain.js"></script>
+<script src="sky-groups.js"></script>
+<script src="constellation-card.js"></script>
+<script src="cosmo-scale.js"></script>
+<script src="galactic-scale.js"></script>
+<script src="system-render.js"></script>
+<script src="star-phys.js"></script>
+<script src="system-scale.js"></script>
+<script src="solar.js"></script>
+</body>
+</html>

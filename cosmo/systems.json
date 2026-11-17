@@ -1,0 +1,399 @@
+{
+  "systems": [
+    { "id": "sol", "name": "Słońce", "special": true,
+      "wiki": { "lang": "pl", "title": "Słońce" } },
+
+    { "id": "proxima", "name": "Proxima Centauri", "ra": 217.43, "dec": -62.68,
+      "distLy": 4.24, "spectral": "M5.5Ve",
+      "wiki": { "lang": "pl", "title": "Proxima Centauri" },
+      "star": { "radiusSun": 0.15, "colorTemp": 2992 },
+      "planets": [
+        { "name": "Proxima b", "aAU": 0.0485, "periodDays": 11.19, "radiusEarth": 1.07,
+          "wiki": { "lang": "pl", "title": "Proxima Centauri b" } },
+        { "name": "Proxima d", "aAU": 0.0288, "periodDays": 5.12, "radiusEarth": 0.81,
+          "wiki": { "lang": "pl", "title": "Proxima Centauri" } }
+      ] },
+
+    { "id": "barnard", "name": "Gwiazda Barnarda", "ra": 269.45, "dec": 4.69,
+      "distLy": 5.96, "spectral": "M4.0V",
+      "wiki": { "lang": "pl", "title": "Gwiazda Barnarda" },
+      "star": { "radiusSun": 0.19, "colorTemp": 3195 },
+      "planets": [
+        { "name": "Barnard b", "aAU": 0.0229, "periodDays": 3.15, "radiusEarth": 0.72,
+          "wiki": { "lang": "pl", "title": "Gwiazda Barnarda" } },
+        { "name": "Barnard c", "aAU": 0.0274, "periodDays": 4.12, "radiusEarth": 0.74,
+          "wiki": { "lang": "pl", "title": "Gwiazda Barnarda" } },
+        { "name": "Barnard d", "aAU": 0.0188, "periodDays": 2.34, "radiusEarth": 0.70,
+          "wiki": { "lang": "pl", "title": "Gwiazda Barnarda" } },
+        { "name": "Barnard e", "aAU": 0.0381, "periodDays": 6.74, "radiusEarth": 0.64,
+          "wiki": { "lang": "pl", "title": "Gwiazda Barnarda" } }
+      ] },
+
+    { "id": "epseri", "name": "Epsilon Eridani", "ra": 53.23, "dec": -9.46,
+      "distLy": 10.48, "spectral": "K2V",
+      "wiki": { "lang": "pl", "title": "Epsilon Eridani" },
+      "star": { "radiusSun": 0.74, "colorTemp": 5085 },
+      "planets": [
+        { "name": "Epsilon Eridani b", "aAU": 3.53, "periodDays": 2678, "radiusEarth": 11.2,
+          "wiki": { "lang": "pl", "title": "Epsilon Eridani b" } }
+      ] },
+
+    { "id": "gliese581", "name": "Gliese 581", "ra": 229.86, "dec": -7.72,
+      "distLy": 20.5, "spectral": "M3V",
+      "wiki": { "lang": "pl", "title": "Gliese 581" },
+      "star": { "radiusSun": 0.30, "colorTemp": 3500 },
+      "planets": [
+        { "name": "Gliese 581e", "aAU": 0.028, "periodDays": 3.15, "radiusEarth": 1.0,
+          "wiki": { "lang": "pl", "title": "Gliese 581 e" } },
+        { "name": "Gliese 581c", "aAU": 0.073, "periodDays": 12.9, "radiusEarth": 1.5,
+          "wiki": { "lang": "pl", "title": "Gliese 581 c" } }
+      ] },
+
+    { "id": "trappist1", "name": "TRAPPIST-1", "ra": 346.62, "dec": -5.04,
+      "distLy": 40.66, "spectral": "M8V",
+      "wiki": { "lang": "pl", "title": "TRAPPIST-1" },
+      "star": { "radiusSun": 0.12, "colorTemp": 2566 },
+      "planets": [
+        { "name": "TRAPPIST-1 b", "aAU": 0.0115, "periodDays": 1.51, "radiusEarth": 1.12, "wiki": { "lang": "pl", "title": "TRAPPIST-1 b" } },
+        { "name": "TRAPPIST-1 c", "aAU": 0.0158, "periodDays": 2.42, "radiusEarth": 1.10, "wiki": { "lang": "pl", "title": "TRAPPIST-1 c" } },
+        { "name": "TRAPPIST-1 d", "aAU": 0.0223, "periodDays": 4.05, "radiusEarth": 0.77, "wiki": { "lang": "pl", "title": "TRAPPIST-1 d" } },
+        { "name": "TRAPPIST-1 e", "aAU": 0.0293, "periodDays": 6.10, "radiusEarth": 0.92, "wiki": { "lang": "pl", "title": "TRAPPIST-1 e" } },
+        { "name": "TRAPPIST-1 f", "aAU": 0.0385, "periodDays": 9.21, "radiusEarth": 1.05, "wiki": { "lang": "pl", "title": "TRAPPIST-1 f" } },
+        { "name": "TRAPPIST-1 g", "aAU": 0.0469, "periodDays": 12.35, "radiusEarth": 1.13, "wiki": { "lang": "pl", "title": "TRAPPIST-1 g" } },
+        { "name": "TRAPPIST-1 h", "aAU": 0.0619, "periodDays": 18.77, "radiusEarth": 0.78, "wiki": { "lang": "pl", "title": "TRAPPIST-1 h" } }
+      ] },
+
+    { "id": "51peg", "name": "51 Pegasi", "ra": 344.37, "dec": 20.77,
+      "distLy": 50.6, "spectral": "G2IV",
+      "wiki": { "lang": "pl", "title": "51 Pegasi" },
+      "star": { "radiusSun": 1.15, "colorTemp": 5768 },
+      "planets": [
+        { "name": "51 Pegasi b", "aAU": 0.052, "periodDays": 4.23, "radiusEarth": 12.0,
+          "wiki": { "lang": "pl", "title": "51 Pegasi b" } }
+      ] },
+
+  { "id": "alphacena", "name": "Alfa Centauri", "ra": 219.902, "dec": -60.834,
+      "distLy": 4.40, "spectral": "G2V",
+      "wiki": { "lang": "pl", "title": "Alfa Centauri" },
+      "star": { "radiusSun": 1.217, "colorTemp": 5804 } },
+
+    { "id": "sirius", "name": "Syriusz", "ra": 101.287, "dec": -16.716,
+      "distLy": 8.60, "spectral": "A1V",
+      "wiki": { "lang": "pl", "title": "Syriusz" },
+      "star": { "radiusSun": 1.714, "colorTemp": 9845 } },
+
+    { "id": "wolf359", "name": "Wolf 359", "ra": 164.121, "dec": 7.015,
+      "distLy": 7.86, "spectral": "M6V",
+      "wiki": { "lang": "pl", "title": "Wolf 359" },
+      "star": { "radiusSun": 0.144, "colorTemp": 2749 } },
+
+    { "id": "lalande21185", "name": "Lalande 21185", "ra": 165.834, "dec": 35.970,
+      "distLy": 8.31, "spectral": "M2V",
+      "wiki": { "lang": "pl", "title": "Lalande 21185" },
+      "star": { "radiusSun": 0.392, "colorTemp": 3547 },
+      "planets": [
+        { "name": "Lalande 21185 b", "aAU": 0.0788, "periodDays": 12.94, "radiusEarth": 1.5,
+          "wiki": { "lang": "pl", "title": "Lalande 21185" } },
+        { "name": "Lalande 21185 c", "aAU": 2.94, "periodDays": 2946, "radiusEarth": 3.5,
+          "wiki": { "lang": "pl", "title": "Lalande 21185" } }
+      ] },
+
+    { "id": "ross128", "name": "Ross 128", "ra": 176.935, "dec": 0.805,
+      "distLy": 11.01, "spectral": "M4V",
+      "wiki": { "lang": "pl", "title": "Ross 128" },
+      "star": { "radiusSun": 0.198, "colorTemp": 3189 },
+      "planets": [
+        { "name": "Ross 128 b", "aAU": 0.0496, "periodDays": 9.856, "radiusEarth": 1.6,
+          "wiki": { "lang": "pl", "title": "Ross 128" } }
+      ] },
+
+    { "id": "luyten", "name": "Gwiazda Luytena", "ra": 111.852, "dec": 5.226,
+      "distLy": 12.35, "spectral": "M3.5V",
+      "wiki": { "lang": "pl", "title": "Gwiazda Luytena" },
+      "star": { "radiusSun": 0.293, "colorTemp": 3382 },
+      "planets": [
+        { "name": "Luyten b", "aAU": 0.0911, "periodDays": 18.65, "radiusEarth": 1.5,
+          "wiki": { "lang": "pl", "title": "Gwiazda Luytena" } },
+        { "name": "Luyten c", "aAU": 0.0365, "periodDays": 4.72, "radiusEarth": 1.1,
+          "wiki": { "lang": "pl", "title": "Gwiazda Luytena" } }
+      ] },
+
+    { "id": "procyon", "name": "Procjon", "ra": 114.825, "dec": 5.224,
+      "distLy": 11.46, "spectral": "F5IV",
+      "wiki": { "lang": "pl", "title": "Procjon" },
+      "star": { "radiusSun": 2.043, "colorTemp": 6582 } },
+
+    { "id": "tauceti", "name": "Tau Ceti", "ra": 26.017, "dec": -15.937,
+      "distLy": 11.91, "spectral": "G8V",
+      "wiki": { "lang": "pl", "title": "Tau Ceti" },
+      "star": { "radiusSun": 0.793, "colorTemp": 5320 } },
+
+    { "id": "40eri", "name": "40 Eridani", "ra": 63.818, "dec": -7.653,
+      "distLy": 16.35, "spectral": "K0.5V",
+      "wiki": { "lang": "pl", "title": "40 Eridani" },
+      "star": { "radiusSun": 0.804, "colorTemp": 5126 } },
+
+    { "id": "vega", "name": "Wega", "ra": 279.235, "dec": 38.784,
+      "distLy": 25.05, "spectral": "A0V",
+      "wiki": { "lang": "pl", "title": "Wega" },
+      "star": { "radiusSun": 2.362, "colorTemp": 9602 } },
+
+    { "id": "altair", "name": "Altair", "ra": 297.696, "dec": 8.868,
+      "distLy": 16.73, "spectral": "A7V",
+      "wiki": { "lang": "pl", "title": "Altair" },
+      "star": { "radiusSun": 1.79, "colorTemp": 7550 } },
+
+    { "id": "fomalhaut", "name": "Fomalhaut", "ra": 344.413, "dec": -29.622,
+      "distLy": 25.13, "spectral": "A4V",
+      "wiki": { "lang": "pl", "title": "Fomalhaut" },
+      "star": { "radiusSun": 1.842, "colorTemp": 8590 } },
+
+    { "id": "gliese876", "name": "Gliese 876", "ra": 343.320, "dec": -14.264,
+      "distLy": 15.24, "spectral": "M4V",
+      "wiki": { "lang": "pl", "title": "Gliese 876" },
+      "star": { "radiusSun": 0.372, "colorTemp": 3201 },
+      "planets": [
+        { "name": "Gliese 876 d", "aAU": 0.021, "periodDays": 1.94, "radiusEarth": 1.7,
+          "wiki": { "lang": "pl", "title": "Gliese 876" } },
+        { "name": "Gliese 876 c", "aAU": 0.131, "periodDays": 30.10, "radiusEarth": 9.5,
+          "wiki": { "lang": "pl", "title": "Gliese 876" } },
+        { "name": "Gliese 876 b", "aAU": 0.210, "periodDays": 61.10, "radiusEarth": 12.0,
+          "wiki": { "lang": "pl", "title": "Gliese 876" } },
+        { "name": "Gliese 876 e", "aAU": 0.336, "periodDays": 123.55, "radiusEarth": 4.0,
+          "wiki": { "lang": "pl", "title": "Gliese 876" } }
+      ] },
+
+    { "id": "kapteyn", "name": "Gwiazda Kapteyna", "ra": 77.919, "dec": -45.018,
+      "distLy": 12.83, "spectral": "M1VI",
+      "wiki": { "lang": "pl", "title": "Gwiazda Kapteyna" },
+      "star": { "radiusSun": 0.291, "colorTemp": 3570 } },
+
+    { "id": "ross154", "name": "Ross 154", "ra": 282.456, "dec": -23.836,
+      "distLy": 9.70, "spectral": "M3.5V",
+      "wiki": { "lang": "pl", "title": "Ross 154" },
+      "star": { "radiusSun": 0.200, "colorTemp": 3248 } },
+
+  {
+      "id": "groombridge34",
+      "name": "Groombridge 34",
+      "ra": 4.595,
+      "dec": 44.023,
+      "distLy": 11.62,
+      "spectral": "M2V",
+      "wiki": { "lang": "pl", "title": "Groombridge 34" },
+      "star": { "radiusSun": 0.388, "colorTemp": 3607 },
+      "planets": [
+        { "name": "Groombridge 34 b", "aAU": 0.0717, "periodDays": 11.44, "radiusEarth": 1.5,
+          "wiki": { "lang": "en", "title": "Gliese 15 Ab" } }
+      ]
+    },
+
+    {
+      "id": "gliese65",
+      "name": "Luyten 726-8",
+      "ra": 24.756,
+      "dec": -17.951,
+      "distLy": 8.77,
+      "spectral": "M5.5Ve",
+      "wiki": { "lang": "pl", "title": "Luyten 726-8" },
+      "star": { "radiusSun": 0.165, "colorTemp": 2784 }
+    },
+
+    {
+      "id": "kruger60",
+      "name": "Kruger 60",
+      "ra": 336.998,
+      "dec": 57.695,
+      "distLy": 13.08,
+      "spectral": "M3V",
+      "wiki": { "lang": "pl", "title": "Kruger 60" },
+      "star": { "radiusSun": 0.301, "colorTemp": 3342 }
+    },
+
+    {
+      "id": "struve2398",
+      "name": "Struve 2398",
+      "ra": 280.694,
+      "dec": 59.630,
+      "distLy": 11.49,
+      "spectral": "M3V",
+      "wiki": { "lang": "pl", "title": "Struve 2398" },
+      "star": { "radiusSun": 0.351, "colorTemp": 3433 },
+      "planets": [
+        { "name": "Struve 2398 b", "aAU": 0.068, "periodDays": 11.22, "radiusEarth": 1.4,
+          "wiki": { "lang": "en", "title": "Struve 2398" } }
+      ]
+    },
+
+    {
+      "id": "gliese1061",
+      "name": "Gliese 1061",
+      "ra": 53.999,
+      "dec": -44.513,
+      "distLy": 11.98,
+      "spectral": "M5.5V",
+      "wiki": { "lang": "pl", "title": "GJ 1061" },
+      "star": { "radiusSun": 0.152, "colorTemp": 2977 },
+      "planets": [
+        { "name": "Gliese 1061 b", "aAU": 0.0210, "periodDays": 3.207, "radiusEarth": 1.1,
+          "wiki": { "lang": "pl", "title": "GJ 1061" } },
+        { "name": "Gliese 1061 c", "aAU": 0.0342, "periodDays": 6.682, "radiusEarth": 1.2,
+          "wiki": { "lang": "pl", "title": "GJ 1061" } },
+        { "name": "Gliese 1061 d", "aAU": 0.054, "periodDays": 13.07, "radiusEarth": 1.2,
+          "wiki": { "lang": "pl", "title": "GJ 1061" } }
+      ]
+    },
+
+    {
+      "id": "teegardens",
+      "name": "Gwiazda Teegardena",
+      "ra": 43.254,
+      "dec": 16.881,
+      "distLy": 12.50,
+      "spectral": "M7V",
+      "wiki": { "lang": "pl", "title": "Gwiazda Teegardena" },
+      "star": { "radiusSun": 0.120, "colorTemp": 3034 },
+      "planets": [
+        { "name": "Teegarden b", "aAU": 0.0259, "periodDays": 4.910, "radiusEarth": 1.0,
+          "wiki": { "lang": "pl", "title": "Gwiazda Teegardena" } },
+        { "name": "Teegarden c", "aAU": 0.0455, "periodDays": 11.42, "radiusEarth": 1.05,
+          "wiki": { "lang": "pl", "title": "Gwiazda Teegardena" } },
+        { "name": "Teegarden d", "aAU": 0.0791, "periodDays": 26.13, "radiusEarth": 0.95,
+          "wiki": { "lang": "pl", "title": "Gwiazda Teegardena" } }
+      ]
+    },
+
+    {
+      "id": "yzceti",
+      "name": "YZ Ceti",
+      "ra": 18.128,
+      "dec": -16.999,
+      "distLy": 12.12,
+      "spectral": "M4Ve",
+      "wiki": { "lang": "pl", "title": "YZ Ceti" },
+      "star": { "radiusSun": 0.168, "colorTemp": 3056 },
+      "planets": [
+        { "name": "YZ Ceti b", "aAU": 0.01634, "periodDays": 2.0209, "radiusEarth": 0.9,
+          "wiki": { "lang": "pl", "title": "YZ Ceti" } },
+        { "name": "YZ Ceti c", "aAU": 0.02156, "periodDays": 3.0599, "radiusEarth": 1.05,
+          "wiki": { "lang": "pl", "title": "YZ Ceti" } },
+        { "name": "YZ Ceti d", "aAU": 0.02851, "periodDays": 4.6563, "radiusEarth": 1.03,
+          "wiki": { "lang": "pl", "title": "YZ Ceti" } }
+      ]
+    },
+
+    {
+      "id": "gliese674",
+      "name": "Gliese 674",
+      "ra": 262.166,
+      "dec": -46.895,
+      "distLy": 14.85,
+      "spectral": "M3V",
+      "wiki": { "lang": "pl", "title": "Gliese 674" },
+      "star": { "radiusSun": 0.361, "colorTemp": 3404 },
+      "planets": [
+        { "name": "Gliese 674 b", "aAU": 0.03867, "periodDays": 4.695, "radiusEarth": 2.7,
+          "wiki": { "lang": "pl", "title": "Gliese 674" } }
+      ]
+    },
+
+    {
+      "id": "gliese887",
+      "name": "Lacaille 9352",
+      "ra": 346.467,
+      "dec": -35.853,
+      "distLy": 10.72,
+      "spectral": "M0.5V",
+      "wiki": { "lang": "pl", "title": "Lacaille 9352" },
+      "star": { "radiusSun": 0.474, "colorTemp": 3672 },
+      "planets": [
+        { "name": "Lacaille 9352 b", "aAU": 0.0683, "periodDays": 9.26, "radiusEarth": 1.5,
+          "wiki": { "lang": "pl", "title": "Lacaille 9352" } },
+        { "name": "Lacaille 9352 c", "aAU": 0.121, "periodDays": 21.78, "radiusEarth": 2.0,
+          "wiki": { "lang": "pl", "title": "Lacaille 9352" } }
+      ]
+    },
+
+    {
+      "id": "groombridge1618",
+      "name": "Groombridge 1618",
+      "ra": 152.842,
+      "dec": 49.454,
+      "distLy": 15.88,
+      "spectral": "K7.5Ve",
+      "wiki": { "lang": "en", "title": "Groombridge 1618" },
+      "star": { "radiusSun": 0.605, "colorTemp": 3970 }
+    },
+
+    {
+      "id": "etacas",
+      "name": "Eta Cassiopeiae",
+      "ra": 12.276,
+      "dec": 57.815,
+      "distLy": 19.32,
+      "spectral": "G0V",
+      "wiki": { "lang": "pl", "title": "Eta Cassiopeiae" },
+      "star": { "radiusSun": 1.034, "colorTemp": 6012 }
+    },
+
+    {
+      "id": "82eri",
+      "name": "82 Eridani",
+      "ra": 49.982,
+      "dec": -43.070,
+      "distLy": 19.70,
+      "spectral": "G6V",
+      "wiki": { "lang": "en", "title": "82 G. Eridani" },
+      "star": { "radiusSun": 0.93, "colorTemp": 5473 },
+      "planets": [
+        { "name": "82 Eridani b", "aAU": 0.1257, "periodDays": 18.31, "radiusEarth": 1.4,
+          "wiki": { "lang": "en", "title": "82 G. Eridani" } },
+        { "name": "82 Eridani c", "aAU": 0.3625, "periodDays": 89.68, "radiusEarth": 1.4,
+          "wiki": { "lang": "en", "title": "82 G. Eridani" } },
+        { "name": "82 Eridani d", "aAU": 1.3541, "periodDays": 647.6, "radiusEarth": 1.6,
+          "wiki": { "lang": "en", "title": "82 G. Eridani" } }
+      ]
+    },
+
+    {
+      "id": "deltapav",
+      "name": "Delta Pavonis",
+      "ra": 302.182,
+      "dec": -66.182,
+      "distLy": 19.89,
+      "spectral": "G8IV",
+      "wiki": { "lang": "pl", "title": "Delta Pavonis" },
+      "star": { "radiusSun": 1.197, "colorTemp": 5609 }
+    },
+
+    {
+      "id": "xiboo",
+      "name": "Ksi Wolarza",
+      "ra": 222.847,
+      "dec": 19.100,
+      "distLy": 22.02,
+      "spectral": "G8Ve",
+      "wiki": { "lang": "en", "title": "Xi Boötis" },
+      "star": { "radiusSun": 0.817, "colorTemp": 5545 }
+    },
+
+    {
+      "id": "wolf1061",
+      "name": "Wolf 1061",
+      "ra": 247.575,
+      "dec": -12.663,
+      "distLy": 14.05,
+      "spectral": "M3.5V",
+      "wiki": { "lang": "pl", "title": "Wolf 1061" },
+      "star": { "radiusSun": 0.319, "colorTemp": 3307 },
+      "planets": [
+        { "name": "Wolf 1061 b", "aAU": 0.0375, "periodDays": 4.887, "radiusEarth": 1.2,
+          "wiki": { "lang": "pl", "title": "Wolf 1061" } },
+        { "name": "Wolf 1061 c", "aAU": 0.0890, "periodDays": 17.872, "radiusEarth": 1.45,
+          "wiki": { "lang": "pl", "title": "Wolf 1061" } },
+        { "name": "Wolf 1061 d", "aAU": 0.470, "periodDays": 217.21, "radiusEarth": 2.2,
+          "wiki": { "lang": "pl", "title": "Wolf 1061" } }
+      ]
+    }
+  ]
+}
