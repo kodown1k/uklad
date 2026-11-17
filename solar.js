@@ -5700,7 +5700,7 @@ function kinoBuildDom(){
     <div class="k-slot k-line" data-slot="line"></div><div class="k-slot k-counter" data-slot="counter"></div>
     <div class="k-ctl"><button id="kSound" type="button">🔈 Dźwięk</button><button id="kSkip" type="button">Pomiń ⏭</button></div>
     <div class="k-end" id="kEnd"><div class="k-eye">Koniec</div><div class="k-h1">Voyager 1</div>
-      <div class="k-sub">Dane: NASA/JPL Horizons · scena na żywo, w czasie rzeczywistym: kodownik.co/uklad</div>
+      <div class="k-sub">Dane: NASA/JPL Horizons · film i scena na żywo: <a href="https://voyager.kodownik.co/">voyager.kodownik.co</a></div>
       <div class="k-btns"><button id="kAgain" type="button">↻ Jeszcze raz</button><button id="kStay" type="button">Zostań w scenie</button></div></div>
     <div class="k-load" id="kLoad">wczytywanie sceny…</div>`;
   document.body.appendChild(el);
