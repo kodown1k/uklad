@@ -6112,6 +6112,7 @@ function vgrLoop(now){
   document.getElementById('kProg').style.width = (100*t/T).toFixed(2) + '%';
   document.getElementById('kFade').style.opacity = Math.max(1 - t/1.6, Math.max(0, (t - (T - 1.2))/1.2)).toFixed(3);
   kinoSlots(t);
+  vgr.snd = { gate, open: vgrAudioOpen(L) };                         // stan dźwięku klatki (nagranie wideo: scripts/video-mrug.mjs)
   vgrAudioTick(L, gate);
 }
 
@@ -6119,12 +6120,14 @@ function vgrBell(){
   const A = kino.audio; if(!A || !A.live) return;
   [293.66, 440, 587.33, 739.99, 1318.5].forEach((f, i)=>kinoPing(f, 0.08/(1+i*0.4), 6 + i));
 }
+function vgrAudioOpen(L){                                          // filtr otwiera się z ujęciem; najszerzej w pościgu
+  return { zmierzch:300, nadawanie:520, poscig:900, przylot:650, kropka:420 }[L.shot.id] +
+         (L.shot.id === 'poscig' ? 1300*Math.sin(Math.PI*L.f) : 0);
+}
 function vgrAudioTick(L, gate){
   const A = kino.audio; if(!A || !A.live) return;
   const ctx = A.ctx;
-  const open = { zmierzch:300, nadawanie:520, poscig:900, przylot:650, kropka:420 }[L.shot.id] +
-               (L.shot.id === 'poscig' ? 1300*Math.sin(Math.PI*L.f) : 0);
-  A.lp.frequency.setTargetAtTime(open, ctx.currentTime, 0.35);
+  A.lp.frequency.setTargetAtTime(vgrAudioOpen(L), ctx.currentTime, 0.35);
   if(A.vgrBeepFor !== A.oscs){                                      // ton Morse'a (bramkowany), na nowo po każdym starcie dźwięku
     const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sine'; o.frequency.value = 660; g.gain.value = 0;
     o.connect(g); g.connect(A.out); o.start(); A.oscs.push(o); A.vgrBeep = g; A.vgrBeepFor = A.oscs;
