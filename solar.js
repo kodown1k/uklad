@@ -5642,6 +5642,9 @@ addEventListener('keydown', e=>{ if(e.key==='Escape'){
 Object.assign(kino, { t0:0, raf:0, crossMs:0, downMs:0, ld:null, mk:null, saved:null, cues:null,
   lastClock:NaN, lastHour:-1, audio:null, ready:false });
 const KINO_PROBE = 'voyager1';
+// Akcja NASA „Shine Bright for Voyager's Light-Day" (17.11.2026 po zmroku) — zaproszenie na karcie końcowej
+// znika po 19.11, żeby film nie wołał do akcji, która się skończyła. Źródło: science.nasa.gov/…/shine-bright-for-voyagers-light-day/
+const KINO_VGR_UNTIL = Date.UTC(2026, 10, 19);
 
 function placeBodiesAt(ms){
   const jd = Ephemeris.julianDate(ms);
@@ -5701,6 +5704,8 @@ function kinoBuildDom(){
     <div class="k-ctl"><button id="kFull" type="button" hidden>⛶ Pełny ekran</button><button id="kSound" type="button">🔈 Dźwięk</button><button id="kSkip" type="button">Pomiń ⏭</button></div>
     <div class="k-end" id="kEnd"><div class="k-eye">Koniec</div><div class="k-h1">Voyager 1</div>
       <div class="k-sub">Dane: NASA/JPL Horizons · film i scena na żywo: <a href="https://voyager.kodownik.co/">voyager.kodownik.co</a></div>
+      ${Date.now() < KINO_VGR_UNTIL ? `<div class="k-sub k-vgr">17 listopada po zachodzie słońca NASA zaprasza: wymrugaj w niebo znak Voyagera <span class="k-morse">V-G-R</span> alfabetem Morse'a
+        (<span class="k-morse">···– ––· ·–·</span>) — latarką albo migaczem w telefonie: <a href="https://go.nasa.gov/vgr" target="_blank" rel="noopener">go.nasa.gov/vgr</a></div>` : ''}
       <div class="k-btns"><button id="kAgain" type="button">↻ Jeszcze raz</button><button id="kStay" type="button">Zostań w scenie</button></div></div>
     <div class="k-load" id="kLoad">wczytywanie sceny…</div>
     <div class="k-rot">↻ obróć telefon poziomo — cały kadr</div>`;
