@@ -5701,7 +5701,7 @@ function kinoBuildDom(){
     <div class="k-vig"></div><div class="k-grain"></div><div class="k-flash" id="kFlash"></div><div class="k-fade" id="kFade"></div>
     <div class="k-slot k-title" data-slot="title"></div><div class="k-slot k-chapter" data-slot="chapter"></div>
     <div class="k-slot k-line" data-slot="line"></div><div class="k-slot k-counter" data-slot="counter"></div>
-    <div class="k-ctl"><button id="kFull" type="button" hidden>⛶ Pełny ekran</button><button id="kSound" type="button">🔈 Dźwięk</button><button id="kSkip" type="button">Pomiń ⏭</button></div>
+    <div class="k-ctl"><button id="kFull" type="button" hidden>⛶ Pełny ekran</button><button id="kPause" type="button">⏸ Pauza</button><button id="kSound" type="button">🔈 Dźwięk</button><button id="kSkip" type="button">Pomiń ⏭</button></div>
     <div class="k-end" id="kEnd"><div class="k-eye">Koniec</div><div class="k-h1">Voyager 1</div>
       <div class="k-sub">Dane: NASA/JPL Horizons · film i scena na żywo: <a href="https://voyager.kodownik.co/">voyager.kodownik.co</a></div>
       ${Date.now() < KINO_VGR_UNTIL ? `<div class="k-sub k-vgr">17 listopada po zachodzie słońca NASA zaprasza: wymrugaj w niebo znak Voyagera <span class="k-morse">V-G-R</span> alfabetem Morse'a
@@ -5715,6 +5715,7 @@ function kinoBuildDom(){
   document.getElementById('kStay').onclick = ()=>{ document.getElementById('kino').classList.remove('end');
     document.body.classList.remove('kino-on'); };
   document.getElementById('kSound').onclick = ()=>kinoAudioToggle();
+  document.getElementById('kPause').onclick = ()=>kinoPauseToggle();
   // pełny ekran: tylko gdzie przeglądarka go daje (iPhone Safari nie — tam przycisk się nie pokazuje)
   const kFull = document.getElementById('kFull');
   kFull.hidden = !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
@@ -5739,6 +5740,7 @@ const _kUp = new THREE.Vector3();
 function kinoLoop(now){
   if(!kino.active) return;
   kino.raf = requestAnimationFrame(kinoLoop);
+  if(kino.paused) return;                                              // pauza: kadr, zegar filmu i napisy stoją
   const t = (now - kino.t0)/1000, T = Kino.total();
   if(t >= T){ kinoEnd(false); return; }
   // zegar filmu → sondy/membrana (updateProbes) i planety (Ziemia = środek membrany)
@@ -5789,13 +5791,14 @@ function kinoStart(){
   document.getElementById('kino').classList.remove('end', 'loading');
   document.body.classList.add('kino-on', 'kino-run');
   kino.active = true; kino.lastClock = NaN; kino.lastHour = -1;
-  kino.t0 = performance.now();
+  kinoPauseSet(false); kino.t0 = performance.now();
   if(kino.audio && kino.audio.on) kinoAudioStart();
   cancelAnimationFrame(kino.raf); kino.raf = requestAnimationFrame(kinoLoop);
 }
 
 function kinoEnd(skipped){
   if(!kino.active) return;
+  kinoPauseSet(false);
   kino.active = false; cancelAnimationFrame(kino.raf);
   placeBodiesAt(reality.clockMs); updateProbes();                       // z powrotem na „teraz" 1:1
   kino.ld.film.material.color.setScalar(1); kino.ld.label.visible = true;
@@ -5810,6 +5813,17 @@ function kinoEnd(skipped){
   document.getElementById('kino').classList.add('end');
   kinoAudioStop(skipped ? 0.4 : 3);
 }
+
+/* ---------- pauza (przycisk i spacja): t0 przesuwane o czas postoju, więc oś czasu filmu się nie rozjeżdża ---------- */
+function kinoPauseSet(on){
+  if(!!kino.paused === on) return;
+  if(on) kino.pausedAt = performance.now(); else if(kino.pausedAt) kino.t0 += performance.now() - kino.pausedAt;
+  kino.paused = on;
+  const b = document.getElementById('kPause'); if(b) b.textContent = on ? '▶ Wznów' : '⏸ Pauza';
+  const el = document.getElementById('kino'); if(el) el.classList.toggle('paused', on);
+  const A = kino.audio; if(A && A.ctx && A.live){ if(on) A.ctx.suspend(); else A.ctx.resume(); }
+}
+function kinoPauseToggle(){ if(kino.active) kinoPauseSet(!kino.paused); }
 
 /* ---------- pełny ekran (przycisk w filmie; gest użytkownika wymagany przez przeglądarki) ---------- */
 function kinoFsElement(){ return document.fullscreenElement || document.webkitFullscreenElement || null; }
@@ -5885,6 +5899,7 @@ if(/[?&](film|kino)\b/.test(location.search)){
   kinoBuildDom(); document.body.classList.add('kino-on', 'kino-run'); document.getElementById('kino').classList.add('loading');
   // Kino w capture: Esc pomija film (bez goSystem z globalnego handlera)
   addEventListener('keydown', e=>{ if(e.key==='Escape' && kino.active){ kinoEnd(true); e.stopImmediatePropagation(); } }, true);
+  addEventListener('keydown', e=>{ if(e.key===' ' && kino.active && !(e.target.closest && e.target.closest('button'))){ kinoPauseToggle(); e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   const boot = ()=>{
     if(!document.getElementById('loader').classList.contains('hide') || !PROBE_EPHEM){ setTimeout(boot, 120); return; }
     if(!probes.active){ startProbes(); setToggle('tProbes', true); }
