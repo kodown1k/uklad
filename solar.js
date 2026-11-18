@@ -1505,7 +1505,7 @@ function _fmtWhen(iso, ms){
 // Fakty karty: stałe z PROBES + żywe z efemeryd (odległości, czas lotu światła, chwile dnia świetlnego)
 // Deep Space Network na żywo (dsn-feed.js): które anteny odbierają TERAZ które sondy. Feed opisuje chwilę obecną,
 // więc działa tylko przy zegarze sceny ≈ teraz (nie w filmie ani pod warpem lotu).
-const DSN_URL = 'https://eyes.nasa.gov/dsn/data/dsn.xml', DSN_TICK_MS = 15000, DSN_PACKETS = 48;
+const DSN_URL = 'https://eyes.nasa.gov/dsn/data/dsn.xml', DSN_TICK_MS = 15000;
 const DSN_PROBES = new Set(Object.values(DsnFeed.PROBE_IDS));
 const dsn = { links:null, err:null, timer:null, token:0 };
 function pollDsn(){
@@ -1515,8 +1515,8 @@ function pollDsn(){
     .then(x=>{ if(token !== dsn.token) return; dsn.links = DsnFeed.links(DsnFeed.parseDsn(x)); dsn.err = null; })
     .catch(e=>{ if(token !== dsn.token) return; dsn.links = null; dsn.err = /^HTTP \d+$/.test(e.message) ? e.message : 'sieć'; });
 }
-function startDsn(){ stopDsn(); pollDsn(); dsn.timer = setInterval(pollDsn, DSN_TICK_MS); }
-function stopDsn(){ dsn.token++; if(dsn.timer){ clearInterval(dsn.timer); dsn.timer = null; } dsn.links = null; dsn.err = null; }
+function startDsn(){ stopDsn(); pollDsn(); dsn.timer = setInterval(pollDsn, DSN_TICK_MS); dsnFx.raf = requestAnimationFrame(dsnFxFrame); }
+function stopDsn(){ dsn.token++; if(dsn.timer){ clearInterval(dsn.timer); dsn.timer = null; } dsn.links = null; dsn.err = null; dsnFxStop(); }
 function dsnLive(ms){ return !kino.active && Math.abs(ms - Date.now()) < 120000; }
 function dsnLink(id, ms){ return (dsnLive(ms) && dsn.links && dsn.links.find(l=>l.probeId===id)) || null; }
 // Fakty karty z DSN; brak danych z feedu ≠ brak łącza — oba stany nazwane wprost
@@ -1526,6 +1526,103 @@ function dsnFacts(p, ms){
   if(!dsn.links) return {'Łącze DSN': 'wczytywanie…'};
   const l = dsnLink(p.id, ms);
   return l ? DsnFeed.linkFacts(l) : {'Łącze DSN': 'teraz żadna antena DSN nie odbiera'};
+}
+
+// --- Efekt DSN w scenie: czasze na globusie (pulsują, gdy odbierają), wiązka antena→sonda, paczki LOD płynące
+// sonda→Ziemia z prędkością światła. Własny rAF (jak film) — gałąź pasywna animate nietknięta. ---
+const DSN_GOLD = new THREE.Color(0xffd27a), DSN_PTS_MAX = 1024;
+const DSN_B_MIN = 0.02;            // najdrobniejsze pasmo paczek w j. sceny (~10 promieni Ziemi w prawdziwej skali)
+const dsnFx = { sites:null, beams:new Map(), pts:null, dotTex:null, raf:0, box:null };
+const _dsnA = new THREE.Vector3(), _dsnB = new THREE.Vector3(), _dsnD = new THREE.Vector3();
+function dsnFxBuild(){
+  if(dsnFx.sites) return true;
+  const e = bodies.find(b=>b.data.earth); if(!e) return false;
+  const glow = glowTexture('rgba(255,250,236,1)', 'rgba(255,190,110,0.5)');
+  dsnFx.dotTex = glowTexture('rgba(255,252,240,1)', 'rgba(255,200,120,0.4)');
+  dsnFx.sites = {};
+  dsnFx.box = document.createElement('div');
+  dsnFx.box.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:7';
+  document.body.appendChild(dsnFx.box);
+  Object.entries(DsnFeed.SITES).forEach(([id, s])=>{
+    const at = lonlatToLocal(s.lon, s.lat, e.data.radius*1.003);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({map:glow, color:DSN_GOLD, sizeAttenuation:false,
+      transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
+    spr.position.copy(at); spr.visible = false; e.mesh.add(spr);
+    // podpis w DOM nad etykietami warstwy geo (te są DOM z-index 6 — podpis w scenie zawsze by pod nimi ginął)
+    const lab = document.createElement('div'); lab.className = 'dsn-lab'; lab.style.display = 'none'; dsnFx.box.appendChild(lab);
+    dsnFx.sites[id] = { name:s.name, spr, lab, text:'', parent:e.mesh };
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(DSN_PTS_MAX*3), 3));
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(DSN_PTS_MAX*3), 3));
+  dsnFx.pts = new THREE.Points(g, new THREE.PointsMaterial({map:dsnFx.dotTex, size:8, sizeAttenuation:false,
+    vertexColors:true, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
+  dsnFx.pts.frustumCulled = false; scene.add(dsnFx.pts);
+  return true;
+}
+// Podpis czaszy: nazwa kompleksu + aktywne łącza („DSS63 ← New Horizons · 501,3 bit/s”); textContent (dane z feedu)
+function drawDsnSiteLabel(S, act){
+  const text = S.name + '\n' + act.map(l=>`${l.dish} ← ${(PROBES.find(p=>p.id===l.probeId)||{name:l.craft}).name} · ${String(l.downRate).replace('.', ',')} bit/s`).join('\n');
+  if(text !== S.text){ S.text = text; S.lab.textContent = text; }
+}
+function dsnFxFrame(){
+  dsnFx.raf = requestAnimationFrame(dsnFxFrame);
+  if(!probes.active || !dsnFxBuild()) return;
+  const ms = probeClockMs(), live = dsnLive(ms) && !!dsn.links;
+  const links = live ? dsn.links.filter(l=>l.probeId && probes.byId[l.probeId] && dsnFx.sites[l.site]) : [];
+  // czasze: widoczne przy Ziemi; aktywna pulsuje i ma podpis z bliska
+  const ec = worldPos(bodies.find(b=>b.data.earth));
+  const rr = Object.values(dsnFx.sites)[0].spr.getWorldPosition(_dsnA).distanceTo(ec) / 1.003;
+  const dCam = camera.position.distanceTo(ec), near = dCam < rr*80, close = dCam < rr*14;
+  const pulse = 1 + 0.35*Math.sin(performance.now()/1000 * Math.PI*2/1.4);
+  Object.entries(dsnFx.sites).forEach(([id, S])=>{
+    const act = links.filter(l=>l.site===id);
+    S.spr.visible = near && live;
+    S.spr.material.opacity = act.length ? 1 : 0.35;
+    const k = act.length ? 0.03*pulse : 0.014; S.spr.scale.set(k, k, 1);
+    // podpis tylko z bliska, dla aktywnej czaszy po stronie zwróconej do kamery
+    let show = close && act.length > 0;
+    if(show){
+      S.spr.getWorldPosition(_dsnB); _dsnD.copy(camera.position).sub(_dsnB);
+      show = _dsnD.dot(_dsnA.copy(_dsnB).sub(ec)) > 0;
+      if(show){ _dsnB.project(camera); show = Math.abs(_dsnB.x) < 1 && Math.abs(_dsnB.y) < 1 && _dsnB.z < 1; }
+    }
+    S.lab.style.display = show ? 'block' : 'none';
+    if(show){ drawDsnSiteLabel(S, act);
+      S.lab.style.left = ((_dsnB.x+1)/2*innerWidth + 14) + 'px'; S.lab.style.top = ((1-_dsnB.y)/2*innerHeight) + 'px'; }
+  });
+  // wiązki antena→sonda + paczki LOD (sonda→Ziemia, prędkość światła w j. sceny/s)
+  const c = AU_SCALE * ProbeEphem.AU_PER_SEC, seen = new Set();
+  const pa = dsnFx.pts.geometry.attributes.position, ca = dsnFx.pts.geometry.attributes.color;
+  let n = 0;
+  links.forEach(l=>{
+    const key = l.dish + '|' + l.craft; seen.add(key);
+    let bm = dsnFx.beams.get(key);
+    if(!bm){
+      bm = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3)),
+        new THREE.LineBasicMaterial({color:DSN_GOLD, transparent:true, opacity:0.28, depthWrite:false, blending:THREE.AdditiveBlending}));
+      bm.frustumCulled = false; scene.add(bm); dsnFx.beams.set(key, bm);
+    }
+    const a = dsnFx.sites[l.site].spr.getWorldPosition(_dsnA), b = _dsnB.copy(probes.byId[l.probeId].mk.position);
+    const bp = bm.geometry.attributes.position; bp.setXYZ(0, a.x, a.y, a.z); bp.setXYZ(1, b.x, b.y, b.z); bp.needsUpdate = true;
+    _dsnD.copy(b).sub(a); const L = _dsnD.length(); _dsnD.divideScalar(L);
+    DsnFeed.lodPackets(L, c, ms, DSN_B_MIN).forEach(p=>{
+      if(n >= DSN_PTS_MAX) return;
+      pa.setXYZ(n, a.x + _dsnD.x*p.x, a.y + _dsnD.y*p.x, a.z + _dsnD.z*p.x);
+      ca.setXYZ(n, DSN_GOLD.r*p.a, DSN_GOLD.g*p.a, DSN_GOLD.b*p.a); n++;
+    });
+  });
+  dsnFx.beams.forEach((bm, key)=>{ if(!seen.has(key)){ scene.remove(bm); bm.geometry.dispose(); bm.material.dispose(); dsnFx.beams.delete(key); } });
+  dsnFx.pts.geometry.setDrawRange(0, n); pa.needsUpdate = true; ca.needsUpdate = true;
+}
+function dsnFxStop(){
+  if(dsnFx.raf){ cancelAnimationFrame(dsnFx.raf); dsnFx.raf = 0; }
+  dsnFx.beams.forEach(bm=>{ scene.remove(bm); bm.geometry.dispose(); bm.material.dispose(); }); dsnFx.beams.clear();
+  if(dsnFx.sites) Object.values(dsnFx.sites).forEach(S=>{ S.parent.remove(S.spr); S.spr.material.dispose(); });
+  if(dsnFx.box){ dsnFx.box.remove(); dsnFx.box = null; }
+  if(dsnFx.pts){ scene.remove(dsnFx.pts); dsnFx.pts.geometry.dispose(); dsnFx.pts.material.dispose(); }
+  if(dsnFx.dotTex) dsnFx.dotTex.dispose();
+  dsnFx.sites = null; dsnFx.pts = null; dsnFx.dotTex = null;
 }
 function probeFacts(p, ms){
   const e = probeEphem(p); if(!e) return Object.assign({}, p.facts, dsnFacts(p, ms));
@@ -2312,11 +2409,7 @@ function updateProbes(){
     m.group.position.copy(earth); m.group.quaternion.setFromUnitVectors(_ldZ, _ldDir);
     const b = m.beam.geometry.attributes.position;
     b.setXYZ(0, earth.x, earth.y, earth.z); b.setXYZ(1, mk.position.x, mk.position.y, mk.position.z); b.needsUpdate = true;
-    // DSN odbiera teraz tę sondę → paczki danych płyną sonda→Ziemia (złote); inaczej znaczniki godzin świetlnych
-    const link = dsnLink(m.id, ms);
-    const fr = link ? DsnFeed.packetFractions(link.rtlt/2, ms, DSN_PACKETS) : ProbeEphem.pulseFractions(d/AU_SCALE, ms, 3600);
-    m.pulses.material.color.setHex(link ? 0xffd27a : 0xcff6ff);
-    const pa = m.pulses.geometry.attributes.position;
+    const fr = ProbeEphem.pulseFractions(d/AU_SCALE, ms, 3600), pa = m.pulses.geometry.attributes.position;
     const n = Math.min(fr.length, pa.count);
     for(let i=0; i<n; i++) pa.setXYZ(i, earth.x+_ldDir.x*d*fr[i], earth.y+_ldDir.y*d*fr[i], earth.z+_ldDir.z*d*fr[i]);
     m.pulses.geometry.setDrawRange(0, n); pa.needsUpdate = true;
@@ -2332,9 +2425,8 @@ function updateProbes(){
     else (dsn.links||[]).filter(l=>l.probeId).forEach(l=>{ const p = PROBES.find(x=>x.id===l.probeId);
       html += `<br>📡 ${p.name} ← ${l.siteName} ${l.dish} · ${String(l.downRate).replace('.', ',')} bit/s`; });
   }
-  html += probes.lightDay.some(m=>dsnLink(m.id, ms))
-    ? '<br>złote paczki na promieniu = dane odbierane teraz przez DSN<br>kliknij sondę po szczegóły'
-    : '<br>znaczniki na promieniu = 1 godzina świetlna<br>kliknij sondę po szczegóły';
+  if(dsnFx.beams.size) html += '<br>złota wiązka z paczkami = dane odbierane teraz przez DSN';
+  html += '<br>znaczniki na promieniu = 1 godzina świetlna<br>kliknij sondę po szczegóły';
   if(html !== probes.statHtml){ document.getElementById('probeStat').innerHTML = html; probes.statHtml = html; }
   // żywa karta otwartej sondy
   const shown = elInfo.classList.contains('show') && document.getElementById('iName').textContent;

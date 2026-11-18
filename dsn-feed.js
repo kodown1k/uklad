@@ -79,13 +79,40 @@
     return m.toFixed(1).replace('.', ',') + '·10' + String(e).replace(/./g, function (c) { return SUP[c]; }) + ' W';
   }
 
-  // Paczki danych na odcinku sonda→Ziemia: n paczek równo rozłożonych w czasie lotu oneWaySec, każda leci
-  // z prędkością światła ku Ziemi. Zwraca ułamki drogi liczone OD ZIEMI (0 = dotarła), w (0,1].
-  // Uproszczenie: strumień ciągły na całej długości (feed mówi tylko, co antena odbiera TERAZ).
-  function packetFractions(oneWaySec, nowMs, n) {
-    if (!(oneWaySec > 0) || !(n > 0)) return [];
-    var step = oneWaySec / n, phase = (((nowMs / 1000) % step) + step) % step / step, out = [];
-    for (var i = 0; i < n; i++) out.push((i + 1 - phase) / n);
+  // Kompleksy DSN (stopnie; długość dodatnia na wschód) — klucze jak <station name> w feedzie
+  var SITES = {
+    gdscc: { name: 'Goldstone', lat: 35.4267, lon: -116.8900 },
+    mdscc: { name: 'Madryt',    lat: 40.4314, lon: -4.2481 },
+    cdscc: { name: 'Canberra',  lat: -35.4014, lon: 148.9817 }
+  };
+
+  // Paczki danych sonda→Ziemia z poziomami szczegółowości (LOD), żeby coś płynęło w KAŻDYM kadrze — przy antenie
+  // (skala promienia Ziemi) i przy sondzie (skala AU). Pasmo k obejmuje odległość e od bliższego końca łącza
+  // do B_k = bMin·4^k i ma paczki co B_k/perBand; każda paczka leci ze stałą prędkością c ku Ziemi
+  // (przylot w chwilach j·τ_k). Na granicach pasm alfa wygasza się płynnie (bez przeskoków).
+  // Zwraca [{x, a}]: x = odległość od Ziemi (te same jednostki co L), a = alfa (0,1].
+  function lodPackets(L, c, nowMs, bMin, perBand) {
+    var out = [];
+    if (!(L > 0) || !(c > 0) || !(bMin > 0)) return out;
+    perBand = perBand || 8;
+    var t = nowMs / 1000;
+    for (var B = bMin, Bprev = 0; Bprev < L / 2; Bprev = B, B *= 4) {
+      var tau = B / perBand / c, last = B >= L / 2;
+      var ranges = [[0, Math.min(B, L)], [Math.max(L - B, Math.min(B, L)), L]];
+      for (var r = 0; r < 2; r++) {
+        var j0 = Math.floor((t + ranges[r][0] / c) / tau) + 1, j1 = Math.ceil((t + ranges[r][1] / c) / tau) - 1;
+        if (r === 1 && ranges[1][0] === ranges[0][1]) j0 = Math.max(j0, Math.floor((t + ranges[0][1] / c) / tau) + 1);
+        for (var j = j0; j <= j1; j++) {
+          var x = c * (j * tau - t);
+          if (!(x > 0 && x < L)) continue;
+          var e = Math.min(x, L - x);
+          var aIn = Bprev > 0 ? Math.min(1, Math.max(0, (e - 0.5 * Bprev) / (0.5 * Bprev))) : 1;
+          var aOut = last ? 1 : Math.min(1, Math.max(0, (B - e) / (0.25 * B)));
+          var al = aIn * aOut;
+          if (al > 0) out.push({ x: x, a: al });
+        }
+      }
+    }
     return out;
   }
 
@@ -100,7 +127,7 @@
 
   var DsnFeed = { PROBE_IDS: PROBE_IDS, parseDsn: parseDsn, links: links,
     bitsInFlight: bitsInFlight, dbmToWatts: dbmToWatts, fmtBits: fmtBits, fmtWatts: fmtWatts,
-    packetFractions: packetFractions, linkFacts: linkFacts };
+    SITES: SITES, lodPackets: lodPackets, linkFacts: linkFacts };
   if (typeof module !== 'undefined' && module.exports) module.exports = DsnFeed;
   else root.DsnFeed = DsnFeed;
 })(typeof window !== 'undefined' ? window : globalThis);
