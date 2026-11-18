@@ -1450,7 +1450,7 @@ const PROBES = [
    wiki:{lang:'pl', title:'Voyager 1'},
    desc:'Najdalszy ludzki obiekt — w przestrzeni międzygwiezdnej od 2012.',
    facts:{Start:'1977', Cel:'Jowisz/Saturn → przestrzeń międzygwiezdna', Status:'aktywna (słaby sygnał)'}},
-  {id:'voyager2', name:'Voyager 2', color:0xb8e0ff,
+  {id:'voyager2', name:'Voyager 2', color:0xb8e0ff, lightDayAlways:true,   // membrana 24 h od dziś, przebicie 1.11.2035
    wiki:{lang:'pl', title:'Voyager 2'},
    desc:'Jedyna sonda, która odwiedziła Urana i Neptuna; w przestrzeni międzygwiezdnej od 2018.',
    facts:{Start:'1977', Cel:'Jowisz/Saturn/Uran/Neptun → poza heliosferą', Status:'aktywna'}},
@@ -1490,7 +1490,8 @@ const probeEphemReady = fetch('probes/ephem.json?v='+APP_VER)
   .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
   .then(d=>{ PROBE_EPHEM = d; })
   .catch(e=>console.error('probes/ephem.json', e));
-const LIGHT_DAY_WINDOW_MS = 365.25*86400000;   // membrana dnia świetlnego: ±1 rok od chwili przekroczenia
+const LIGHT_DAY_WINDOW_MS = 365.25*86400000;   // membrana dnia świetlnego: ±1 rok od chwili przekroczenia (PROBES.lightDayAlways: zawsze)
+const LD_FAR_GAP = 100;                        // j. sceny: sonda dalej przed błoną → inny kadr focusu (focusProbe)
 const PROBE_TICK_MS = 250;                     // repozycja sond/membrany/karty — poza animate (gałąź pasywna nietknięta)
 // zegar sceny: w filmie (?film) przyspieszony, w locie warpowany, poza nimi realny 1:1
 const kino = { active:false, clockMs:0, earthMs:0, film:'voyager' };   // stan trybu filmowego (pełny w sekcji „Tryb filmowy” na końcu pliku)
@@ -1502,8 +1503,32 @@ function _fmtWhen(iso, ms){
     + ' (' + ProbeEphem.relativeTo(Date.parse(iso), ms) + ')';
 }
 // Fakty karty: stałe z PROBES + żywe z efemeryd (odległości, czas lotu światła, chwile dnia świetlnego)
+// Deep Space Network na żywo (dsn-feed.js): które anteny odbierają TERAZ które sondy. Feed opisuje chwilę obecną,
+// więc działa tylko przy zegarze sceny ≈ teraz (nie w filmie ani pod warpem lotu).
+const DSN_URL = 'https://eyes.nasa.gov/dsn/data/dsn.xml', DSN_TICK_MS = 15000, DSN_PACKETS = 48;
+const DSN_PROBES = new Set(Object.values(DsnFeed.PROBE_IDS));
+const dsn = { links:null, err:null, timer:null, token:0 };
+function pollDsn(){
+  const token = dsn.token;
+  fetch(DSN_URL + '?r=' + Date.now(), {cache:'no-store'})
+    .then(r=>{ if(!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+    .then(x=>{ if(token !== dsn.token) return; dsn.links = DsnFeed.links(DsnFeed.parseDsn(x)); dsn.err = null; })
+    .catch(e=>{ if(token !== dsn.token) return; dsn.links = null; dsn.err = /^HTTP \d+$/.test(e.message) ? e.message : 'sieć'; });
+}
+function startDsn(){ stopDsn(); pollDsn(); dsn.timer = setInterval(pollDsn, DSN_TICK_MS); }
+function stopDsn(){ dsn.token++; if(dsn.timer){ clearInterval(dsn.timer); dsn.timer = null; } dsn.links = null; dsn.err = null; }
+function dsnLive(ms){ return !kino.active && Math.abs(ms - Date.now()) < 120000; }
+function dsnLink(id, ms){ return (dsnLive(ms) && dsn.links && dsn.links.find(l=>l.probeId===id)) || null; }
+// Fakty karty z DSN; brak danych z feedu ≠ brak łącza — oba stany nazwane wprost
+function dsnFacts(p, ms){
+  if(!DSN_PROBES.has(p.id) || !dsnLive(ms)) return {};
+  if(dsn.err) return {'Łącze DSN': 'brak danych z feedu NASA (' + dsn.err + ')'};
+  if(!dsn.links) return {'Łącze DSN': 'wczytywanie…'};
+  const l = dsnLink(p.id, ms);
+  return l ? DsnFeed.linkFacts(l) : {'Łącze DSN': 'teraz żadna antena DSN nie odbiera'};
+}
 function probeFacts(p, ms){
-  const e = probeEphem(p); if(!e) return p.facts;
+  const e = probeEphem(p); if(!e) return Object.assign({}, p.facts, dsnFacts(p, ms));
   const jd = Ephemeris.julianDate(ms);
   const pos = ProbeEphem.positionAt(e.samples, jd);
   const earth = Ephemeris.positionAt(Ephemeris.REAL_PLANETS.find(x=>x.id==='earth'), jd);
@@ -1516,7 +1541,7 @@ function probeFacts(p, ms){
     f['1 dzień świetlny od Ziemi'] = _fmtWhen(e.lightDay.geometric, ms);
     if(e.lightDay.downlink) f['Sygnał od sondy leci ≥ 24 h od'] = _fmtWhen(e.lightDay.downlink, ms);
   }
-  return f;
+  return Object.assign(f, dsnFacts(p, ms));
 }
 
 // --- Proceduralne sylwetki sond (prymitywy THREE; widoczne bez oświetlenia) ---
@@ -2143,6 +2168,7 @@ function startProbes(){
   const el = document.getElementById('probeStat');
   el.style.display='block'; el.textContent = '🚀 wczytywanie trajektorii (JPL Horizons)…'; probes.statHtml='';
   probeEphemReady.then(()=>{ if(token===probes.token && probes.active) buildProbes(); });
+  startDsn();
 }
 
 function buildProbes(){
@@ -2171,7 +2197,7 @@ function buildProbes(){
     scene.add(mk); probes.markers.push(mk);
     probes.byId[p.id] = { p, mk, line };
     const e = probeEphem(p);
-    if(e && e.lightDay && Math.abs(Date.parse(e.lightDay.geometric) - ms) < LIGHT_DAY_WINDOW_MS)
+    if(e && e.lightDay && (p.lightDayAlways || Math.abs(Date.parse(e.lightDay.geometric) - ms) < LIGHT_DAY_WINDOW_MS))
       probes.lightDay.push(buildLightDayMembrane(p));
   });
   if(missing) console.error(`probes/ephem.json: brak trajektorii dla ${missing} sond`);
@@ -2286,7 +2312,11 @@ function updateProbes(){
     m.group.position.copy(earth); m.group.quaternion.setFromUnitVectors(_ldZ, _ldDir);
     const b = m.beam.geometry.attributes.position;
     b.setXYZ(0, earth.x, earth.y, earth.z); b.setXYZ(1, mk.position.x, mk.position.y, mk.position.z); b.needsUpdate = true;
-    const fr = ProbeEphem.pulseFractions(d/AU_SCALE, ms, 3600), pa = m.pulses.geometry.attributes.position;
+    // DSN odbiera teraz tę sondę → paczki danych płyną sonda→Ziemia (złote); inaczej znaczniki godzin świetlnych
+    const link = dsnLink(m.id, ms);
+    const fr = link ? DsnFeed.packetFractions(link.rtlt/2, ms, DSN_PACKETS) : ProbeEphem.pulseFractions(d/AU_SCALE, ms, 3600);
+    m.pulses.material.color.setHex(link ? 0xffd27a : 0xcff6ff);
+    const pa = m.pulses.geometry.attributes.position;
     const n = Math.min(fr.length, pa.count);
     for(let i=0; i<n; i++) pa.setXYZ(i, earth.x+_ldDir.x*d*fr[i], earth.y+_ldDir.y*d*fr[i], earth.z+_ldDir.z*d*fr[i]);
     m.pulses.geometry.setDrawRange(0, n); pa.needsUpdate = true;
@@ -2297,15 +2327,23 @@ function updateProbes(){
   let html = `🚀 ${nFree} sond z JPL Horizons · ${PROBES.length-nFree} przy planetach`;
   probes.lightDay.forEach(m=>{ const p = probes.byId[m.id].p, ld = probeEphem(p).lightDay;
     html += `<br>${p.name}: 1 dzień świetlny od Ziemi ${ProbeEphem.relativeTo(Date.parse(ld.geometric), ms)}`; });
-  html += '<br>znaczniki na promieniu = 1 godzina świetlna<br>kliknij sondę po szczegóły';
+  if(dsnLive(ms)){
+    if(dsn.err) html += `<br>📡 DSN: brak danych z feedu NASA (${dsn.err})`;
+    else (dsn.links||[]).filter(l=>l.probeId).forEach(l=>{ const p = PROBES.find(x=>x.id===l.probeId);
+      html += `<br>📡 ${p.name} ← ${l.siteName} ${l.dish} · ${String(l.downRate).replace('.', ',')} bit/s`; });
+  }
+  html += probes.lightDay.some(m=>dsnLink(m.id, ms))
+    ? '<br>złote paczki na promieniu = dane odbierane teraz przez DSN<br>kliknij sondę po szczegóły'
+    : '<br>znaczniki na promieniu = 1 godzina świetlna<br>kliknij sondę po szczegóły';
   if(html !== probes.statHtml){ document.getElementById('probeStat').innerHTML = html; probes.statHtml = html; }
   // żywa karta otwartej sondy
   const shown = elInfo.classList.contains('show') && document.getElementById('iName').textContent;
   const cur = shown && Object.values(probes.byId).find(x=>x.p.name===shown);
-  if(cur && probeEphem(cur.p)) renderProbeStats(cur.p, ms);
+  if(cur && (probeEphem(cur.p) || DSN_PROBES.has(cur.p.id))) renderProbeStats(cur.p, ms);
 }
 
 function stopProbes(){
+  stopDsn();
   removeProbeRail();
   if(probes.timer){ clearInterval(probes.timer); probes.timer = null; }
   probes.markers.forEach(m=>{ m.traverse(o=>{ if(o.geometry) o.geometry.dispose(); if(o.material) o.material.dispose(); }); scene.remove(m); });
@@ -2338,7 +2376,12 @@ function focusProbe(id){
     const side = new THREE.Vector3().crossVectors(u, new THREE.Vector3(0,1,0));
     if(side.lengthSq() < 1e-6) side.set(1,0,0);
     side.normalize();
-    startTween(wp.clone().addScaledVector(side, 14).addScaledVector(u, -8).add(new THREE.Vector3(0,5,0)), wp);
+    // sonda daleko przed błoną (V2: ~28 AU) → kamera za sondą, wzdłuż osi: błona jako odległa tarcza za nią,
+    // punkt przebicia i podpis w kadrze obok sondy (z boku byłyby ~60° poza osią widoku)
+    const far = ld.R - wp.distanceTo(ld.group.position) > LD_FAR_GAP;
+    // (−side: przebicie wypada na lewo od sondy, podpis rośnie w prawo — nie pod kartę #info w prawym rogu)
+    startTween(far ? wp.clone().addScaledVector(side, -8).addScaledVector(u, -30).add(new THREE.Vector3(0,4,0))
+                   : wp.clone().addScaledVector(side, 14).addScaledVector(u, -8).add(new THREE.Vector3(0,5,0)), wp);
     controls.minDistance = 2; controls.maxDistance = 60000;
   } else frameMarker(wp);
   showCard('probe', p);
@@ -5694,6 +5737,7 @@ function kinoBuildDom(){
       <div class="k-sub">Dane: NASA/JPL Horizons · film i scena na żywo: <a href="https://voyager.kodownik.co/">voyager.kodownik.co</a></div>
       ${Date.now() < KINO_VGR_UNTIL ? `<div class="k-sub k-vgr">17 listopada po zachodzie słońca NASA zaprasza: wymrugaj w niebo znak Voyagera <span class="k-morse">V-G-R</span> alfabetem Morse'a
         (<span class="k-morse">···– ––· ·–·</span>) — latarką albo migaczem w telefonie: <a href="https://go.nasa.gov/vgr" target="_blank" rel="noopener">go.nasa.gov/vgr</a></div>` : ''}
+      <div class="k-sub k-next">Film 2: <a href="https://voyager.kodownik.co/?mrugniecie">Mrugnięcie — V-G-R z Ziemi do Voyagera 1</a></div>
       <div class="k-btns"><button id="kAgain" type="button">↻ Jeszcze raz</button><button id="kStay" type="button">Zostań w scenie</button></div></div>
     <div class="k-load" id="kLoad">wczytywanie sceny…</div>
     <div class="k-rot">↻ obróć telefon poziomo — cały kadr</div>`;
@@ -6165,7 +6209,8 @@ if(/[?&]mrugniecie\b/.test(location.search)){
   kinoBuildDom(); document.body.classList.add('kino-on', 'kino-run'); document.getElementById('kino').classList.add('loading');
   { const end = document.getElementById('kEnd');                       // karta końcowa tego filmu
     end.querySelector('.k-h1').textContent = 'Mrugnięcie';
-    end.querySelector('.k-sub').innerHTML = 'Dane: NASA/JPL Horizons · film 1: <a href="https://voyager.kodownik.co/">Voyager 1 na granicy dnia świetlnego</a>'; }
+    end.querySelector('.k-sub').innerHTML = 'Dane: NASA/JPL Horizons · film 1: <a href="https://voyager.kodownik.co/">Voyager 1 na granicy dnia świetlnego</a>';
+    end.querySelector('.k-next').remove(); }                           // link „Film 2” tylko na karcie filmu 1
   addEventListener('keydown', e=>{ if(e.key==='Escape' && kino.active){ kinoEnd(true); e.stopImmediatePropagation(); } }, true);
   addEventListener('keydown', e=>{ if(e.key===' ' && kino.active && !(e.target.closest && e.target.closest('button'))){ kinoPauseToggle(); e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   fetch('geo/edu-data.json?v='+APP_VER).then(r=>r.json()).then(vgrBuild).catch(err=>console.error('mrugniecie: edu-data', err));
