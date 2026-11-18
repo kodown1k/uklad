@@ -2,7 +2,7 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- iPhone nie daje Fullscreen API stronie: dodana do ekranu początkowego otwiera się bez pasków Safari -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -113,11 +113,25 @@
   .moon-btn.active{background:var(--panel);color:var(--text)}
 
   /* info card (bottom-right) */
-  #info{right:24px;bottom:24px;width:312px;background:var(--panel);backdrop-filter:blur(16px);
+  /* ukryta karta: visibility (nie tylko opacity) — inaczej .hud>* łapie dotyk przez niewidzialny panel */
+  #info{right:24px;bottom:24px;width:312px;max-height:min(60vh,calc(100vh - 48px));overflow-y:auto;
+    background:var(--panel);backdrop-filter:blur(16px);
     border:1px solid var(--border);border-radius:16px;padding:20px;opacity:0;transform:translateY(12px);
-    visibility:hidden;transition:opacity .45s cubic-bezier(.2,.7,.2,1),transform .45s cubic-bezier(.2,.7,.2,1)}
-  #info.show{opacity:1;transform:none;visibility:visible}
-  #info.show ~ #hint{opacity:0;pointer-events:none}
+    visibility:hidden;
+    transition:opacity .45s cubic-bezier(.2,.7,.2,1),transform .45s cubic-bezier(.2,.7,.2,1),visibility 0s linear .45s}
+  #info.show{opacity:1;transform:none;visibility:visible;transition-delay:0s}
+  #info.show ~ #hint{opacity:0;visibility:hidden}
+  #iTex{margin-top:14px}
+  #iTex .l{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--muted)}
+
+  /* przycisk zamknięcia (karta planety + modal) — przyklejony do górnej krawędzi przewijanej treści */
+  .x-btn{float:right;position:sticky;top:0;z-index:2;margin:-8px -8px 6px 12px;
+    width:32px;height:32px;display:grid;place-items:center;border-radius:10px;cursor:pointer;
+    background:var(--panel-solid);border:1px solid var(--border);color:var(--muted);transition:color .15s,border-color .15s}
+  .x-btn:hover{color:var(--text);border-color:rgba(255,255,255,.28)}
+  .x-btn svg{display:block}
+  button:focus-visible,select:focus-visible,summary:focus-visible,.lab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   #info .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.2em;
     text-transform:uppercase;color:var(--accent)}
   #info h2{font-size:27px;font-weight:600;margin:6px 0 2px;letter-spacing:-.01em}
@@ -131,6 +145,8 @@
   #panel{top:22px;right:24px;width:248px;background:var(--panel);backdrop-filter:blur(16px);
     border:1px solid var(--border);border-radius:16px;padding:16px 18px;
     max-height:calc(100vh - 44px);overflow-y:auto}
+  /* gdy karta planety jest otwarta, panel (ten sam prawy brzeg) kończy się 12 px nad nią; --info-h ustawia ResizeObserver */
+  body:has(#info.show) #panel{max-height:calc(100vh - 58px - var(--info-h,0px))}
   .ctl{margin-bottom:15px}
   .ctl:last-child{margin-bottom:0}
   .ctl .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
@@ -254,9 +270,6 @@
   #objModal .modal-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
     width:min(440px,calc(100vw - 32px));max-height:84vh;overflow-y:auto;background:var(--panel-solid);
     border:1px solid var(--border);border-radius:16px;padding:22px;box-shadow:0 20px 70px rgba(0,0,0,.6)}
-  #objModal .modal-x{position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:8px;
-    background:var(--panel);border:1px solid var(--border);color:var(--text);cursor:pointer;font-size:13px}
-  #objModal .modal-x:hover{background:var(--panel-solid)}
   #objModal .modal-eye{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;
     text-transform:uppercase;color:var(--accent)}
   #objModal .modal-name{font-size:25px;font-weight:600;margin:6px 0 12px}
@@ -280,13 +293,13 @@
   .lab:hover{color:#fff}
 
   /* ===== HUD lotu (M1b-3) ===== */
-  #flight-orbit{top:84px;left:24px;width:212px;background:var(--panel);backdrop-filter:blur(16px);
+  #flight-orbit{top:84px;left:224px;width:236px;background:var(--panel);backdrop-filter:blur(16px);
     border:1px solid var(--border);border-radius:16px;padding:16px 18px;opacity:0;transform:translateY(-8px);
     visibility:hidden;transition:opacity .25s ease,transform .25s ease;pointer-events:none}
   #flight-orbit.show{opacity:1;transform:none;visibility:visible}
   #flight-orbit .fo-title,#flight-maneuver .fm-title{font-family:"IBM Plex Mono",monospace;font-size:10px;
     letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:12px}
-  #flight-orbit .fo-grid{grid-template-columns:1fr 1fr}
+  #flight-orbit .fo-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
   #flight-orbit .stat .l{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.1em;
     text-transform:uppercase;color:var(--muted)}
   #flight-orbit .stat .v{font-size:14px;font-weight:500;margin-top:2px}
@@ -350,43 +363,94 @@
     opacity:0;pointer-events:none;transition:opacity .3s}
   #menuBackdrop.show{opacity:1;pointer-events:auto}
 
-  @media (max-width:760px){
+  /* ===== Mobile (wąski ekran albo telefon w poziomie) ===== */
+  @media (max-width:760px), (max-height:520px) and (pointer:coarse){
     #hint{display:none}
     #credit{display:none}
-    #brand{left:16px;top:14px}
+    #brand{left:16px;top:calc(14px + env(safe-area-inset-top))}
     #brand h1{font-size:18px}
     #brand .k{font-size:10px}
-    #menuToggle{display:flex}
+    #menuToggle{display:flex;top:calc(12px + env(safe-area-inset-top));min-height:44px;padding:0 16px}
 
     /* sterowanie -> wysuwany arkusz (bottom sheet), przewijalny */
-    #panel{top:auto;right:0;left:0;bottom:0;width:auto;max-height:80vh;overflow-y:auto;
-      -webkit-overflow-scrolling:touch;border-radius:18px 18px 0 0;border-bottom:none;
+    #panel{top:auto;right:0;left:0;bottom:0;width:auto;max-height:80vh;max-height:80dvh;overflow-y:auto;
+      -webkit-overflow-scrolling:touch;overscroll-behavior:contain;border-radius:18px 18px 0 0;border-bottom:none;
       padding:18px 18px calc(20px + env(safe-area-inset-bottom));z-index:30;
       transform:translateY(110%);transition:transform .34s cubic-bezier(.2,.7,.2,1)}
     #panel.open{transform:translateY(0)}
+    body:has(#info.show) #panel{max-height:80vh;max-height:80dvh}
     #panel::before{content:"";display:block;width:42px;height:4px;border-radius:4px;
       background:rgba(255,255,255,.22);margin:-2px auto 16px}
+    /* cele dotyku ≥ 40 px */
+    .toggle{padding:10px 0}
+    details.sec>summary{padding:14px 2px}
+    .grp-h{padding:10px 2px}
+    .leaf{padding:9px 2px 9px 22px}
+    .leaf .iso{opacity:1}
 
-    /* planety -> poziomy pasek przewijany u góry */
-    #rail{top:60px;left:0;right:0;transform:none;flex-direction:row;gap:6px;
-      padding:4px 14px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
-      scrollbar-width:none;
-      -webkit-mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent)}
+    /* planety -> poziomy pasek przewijany u góry; księżyce dołączają w tym samym rzędzie */
+    #rail{top:calc(66px + env(safe-area-inset-top));left:0;right:0;transform:none;flex-direction:row;
+      align-items:center;gap:6px;padding:2px 16px;overflow-x:auto;overflow-y:hidden;
+      -webkit-overflow-scrolling:touch;scrollbar-width:none;overscroll-behavior-x:contain;
+      -webkit-mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent);
+      mask-image:linear-gradient(90deg,transparent,#000 16px,#000 calc(100% - 16px),transparent)}
     #rail::-webkit-scrollbar{display:none}
-    .rail-btn{width:auto;flex:0 0 auto;white-space:nowrap;padding:7px 13px;
+    .rail-group{flex-direction:row;align-items:center;gap:6px;flex:0 0 auto}
+    .rail-sub{flex-direction:row;align-items:center;gap:4px;margin:0}
+    .rail-btn{width:auto;flex:0 0 auto;white-space:nowrap;min-height:40px;padding:0 14px 0 12px;gap:8px;
       background:var(--panel);border:1px solid var(--border);border-radius:20px;font-size:13px}
     .rail-btn .au{display:none}
+    .rail-btn .chev{order:3;width:auto;margin-left:2px;font-size:10px}
+    .rail-btn .chev.empty{display:none}
+    .rail-btn.active{border-color:rgba(127,180,255,.45);background:var(--panel-solid)}
+    .moon-btn{width:auto;flex:0 0 auto;white-space:nowrap;min-height:34px;padding:0 12px 0 10px;gap:7px;
+      font-size:12px;border:1px dashed rgba(255,255,255,.14);border-radius:17px}
+    .moon-btn.active{border-style:solid;border-color:rgba(127,180,255,.45)}
 
-    #info{width:auto;left:14px;right:14px;bottom:14px}
-    #flight-orbit{top:auto;bottom:120px;left:14px;width:160px;padding:12px;font-size:11px}
-    #flight-maneuver{width:auto;left:14px;right:14px;bottom:14px;transform:none}
+    /* karta planety -> zwarty arkusz u dołu, przewijany, z zamknięciem */
+    #info{width:auto;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));
+      max-height:44vh;max-height:44dvh;overscroll-behavior:contain;padding:16px 16px 14px;border-radius:18px}
+    #info .eyebrow{font-size:9.5px;letter-spacing:.14em}
+    #info h2{font-size:22px;margin:4px 0 2px}
+    #info .sub{font-size:12.5px;line-height:1.45;margin-bottom:12px}
+    #info .stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px}
+    #info .stat .l{font-size:8.5px;letter-spacing:.08em}
+    #info .stat .v{font-size:13.5px}
+    #iTex:not(:empty){display:flex;align-items:center;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+    #iTex .l{margin:0 !important;flex:none}
+    #iTex select{flex:1;min-height:40px}
+    .x-btn{width:40px;height:40px;margin:-10px -10px 4px 12px}
+
+    /* modal „Informacje" -> arkusz od dołu */
+    #objModal .modal-card{left:0;right:0;top:auto;bottom:0;transform:none;width:auto;
+      max-height:88vh;max-height:88dvh;overscroll-behavior:contain;border-radius:20px 20px 0 0;border-bottom:none;
+      padding:18px 18px calc(22px + env(safe-area-inset-bottom))}
+    #objModal .modal-name{font-size:22px}
+
+    /* lot: orbita jako pas pod paskiem planet, manewr u dołu, warp nad manewrem — bez nakładania */
+    #flight-orbit{top:calc(170px + env(safe-area-inset-top));bottom:auto;left:10px;right:10px;width:auto;
+      padding:10px 14px 12px;border-radius:14px}
+    #flight-orbit .fo-title{margin-bottom:8px}
+    #flight-orbit .fo-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 10px}
+    #flight-orbit .stat .l{font-size:8px;letter-spacing:.06em}
+    #flight-orbit .stat .v{font-size:12.5px}
+    #flight-orbit .fo-dv{margin-top:8px}
+    #flight-orbit .fo-dv b{display:inline;font-size:13px;margin-left:6px}
+    #flight-maneuver{width:auto;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));transform:none}
     #flight-maneuver.show{transform:none}
-    #flight-warp{top:auto;bottom:300px}
+    #flight-maneuver .pbtn{min-height:40px}
+    /* warp w rzędzie #topbar (w locie jest w nim tylko „Widok układu”), z prawej — MANEWR na dole bywa wysoki */
+    #flight-warp{top:calc(122px + env(safe-area-inset-top));bottom:auto;left:auto;right:10px;transform:none}
 
-    /* górny pasek pod poziomym railem planet */
-    #topbar{top:104px;gap:8px;max-width:calc(100vw - 28px)}
+    /* górny pasek (Widok układu + ścieżka + galaktyki) pod poziomym paskiem planet */
+    #topbar{top:calc(118px + env(safe-area-inset-top));gap:8px;max-width:calc(100vw - 20px)}
+    #back,#crumb,#galaxyMenu .gx-btn{min-height:40px;white-space:nowrap}
     #galaxyMenu .gx-btn{font-size:12px;padding:8px 13px}
     #galaxyMenu .gx-panel{min-width:0;width:min(320px,calc(100vw - 28px))}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    #info,#panel,#menuBackdrop{transition:none}
   }
 
   /* ===== Tryb filmowy ?film (solar.js „Tryb filmowy”, kino.js) ===== */
@@ -544,12 +608,13 @@
   </details>
 </div>
 
-<div id="info" class="hud">
+<div id="info" class="hud" role="region" aria-labelledby="iName">
+  <button class="x-btn" id="infoClose" aria-label="Zamknij kartę"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
   <div class="eyebrow" id="iEye">Planeta</div>
   <h2 id="iName">—</h2>
   <div class="sub" id="iSub">—</div>
   <div class="stats" id="iStats"></div>
-  <div id="iTex" style="margin-top:14px"></div>
+  <div id="iTex"></div>
 </div>
 
 <div id="hint" class="hud">
@@ -609,7 +674,7 @@
 <div id="objModal">
   <div class="modal-backdrop"></div>
   <div class="modal-card">
-    <button class="modal-x" aria-label="Zamknij">✕</button>
+    <button class="modal-x x-btn" aria-label="Zamknij"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
     <div class="modal-eye" id="omEye"></div>
     <h2 class="modal-name" id="omName"></h2>
     <img class="modal-thumb" id="omThumb" alt="" hidden>
@@ -633,9 +698,26 @@
   }
   btn.addEventListener('click',function(){ set(!panel.classList.contains('open')); });
   bd.addEventListener('click',function(){ set(false); });
-  // zamknij arkusz po wyborze planety z paska (rail wypełnia solar.js)
+  // zamknij arkusz po wyborze planety z paska (rail wypełnia solar.js);
+  // na wąskim ekranie przewiń wybraną pigułkę do środka paska
+  var narrow=window.matchMedia('(max-width:760px), (max-height:520px) and (pointer:coarse)');
   document.getElementById('rail').addEventListener('click',function(e){
-    if(e.target.closest('.rail-btn')) set(false);
+    var b=e.target.closest('.rail-btn,.moon-btn');
+    if(!b) return;
+    set(false);
+    if(narrow.matches) setTimeout(function(){
+      b.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'});
+    },60);
+  });
+  // ✕ na karcie planety chowa samą kartę; kamera zostaje przy ciele.
+  // Ponowne dotknięcie planety w pasku pokazuje kartę znowu (solar.js dodaje .show przy każdym focusie).
+  var info=document.getElementById('info');
+  if(window.ResizeObserver) new ResizeObserver(function(){
+    document.documentElement.style.setProperty('--info-h', info.offsetHeight+'px');
+  }).observe(info);
+  document.getElementById('infoClose').addEventListener('click',function(e){
+    e.stopPropagation();
+    info.classList.remove('show');
   });
 })();
 </script>
@@ -672,6 +754,7 @@
 <script src="star-phys.js"></script>
 <script src="system-scale.js"></script>
 <script src="mrugniecie.js"></script>
+<script src="selectables.js"></script>
 <script src="solar.js"></script>
 <!-- Cloudflare Web Analytics: liczy wejścia na voyager.kodownik.co i kodownik.co/uklad/ (bez ciasteczek; test/analytics.test.js) --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "e8ab645d2daa4c95b7802a3a5f306a18"}'></script><!-- End Cloudflare Web Analytics -->
 </body>

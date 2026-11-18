@@ -903,7 +903,7 @@ PLANETS.forEach(p=>{
 
 /* sun label */
 const sunLabel=document.createElement('div'); sunLabel.className='lab'; sunLabel.textContent='Słońce';
-sunLabel.style.color='#ffcf7a'; labelLayer.appendChild(sunLabel);
+sunLabel.style.color='#ffcf7a'; sunLabel.onclick=()=>focusSun(); labelLayer.appendChild(sunLabel);
 
 /* ============================================================
    Asteroid belt (between Mars and Jupiter)
@@ -2318,34 +2318,13 @@ function stopProbes(){
 
 /* ---------- Sondy: lista (rail) + focus + karta info ---------- */
 function addProbeRail(){
-  const rail = document.getElementById('rail');
-  PROBES.forEach(p=>{
-    const b=document.createElement('button'); b.className='rail-btn probe-rail'; b.dataset.probeId=p.id;
-    b.innerHTML=`<span class="dot" style="background:#${new THREE.Color(p.color).getHexString()}"></span>
-      <span class="nm">🚀 ${p.name}</span>`;
-    b.onclick=()=>focusProbe(p.id);
-    rail.appendChild(b);
-  });
+  PROBES.forEach(p=> rail.appendChild(railButton({ cls:'probe-rail', data:{probeId:p.id},
+    color:'#'+new THREE.Color(p.color).getHexString(), label:'🚀 '+p.name, onClick:()=>focusProbe(p.id) })));
 }
 function removeProbeRail(){ document.querySelectorAll('.probe-rail').forEach(b=>b.remove()); }
 
-function showProbeInfo(p){
-  document.querySelectorAll('.moon-btn.active').forEach(b=>b.classList.remove('active'));
-  document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active', b.dataset.probeId===p.id));
-  document.getElementById('iEye').textContent = 'Sonda · ' + p.facts['Status'];
-  document.getElementById('iName').textContent = p.name;
-  document.getElementById('iSub').textContent = p.desc;
-  renderProbeStats(p, probeClockMs());
-  const _t=document.getElementById('iTex'); if(_t) _t.innerHTML='';   // sondy nie mają skinów
-  elInfo.classList.add('show'); elBack.classList.add('show');
-}
-function renderProbeStats(p, ms){
-  const s=document.getElementById('iStats'); s.innerHTML='';
-  Object.entries(probeFacts(p, ms)).forEach(([k,v])=>{
-    const d=document.createElement('div'); d.className='stat';
-    d.innerHTML=`<div class="l">${k}</div><div class="v">${v}</div>`; s.appendChild(d);
-  });
-}
+// żywe fakty sondy (zegar sond) — wołane z pętli sond dla otwartej karty; karta: showCard('probe', p)
+function renderProbeStats(p, ms){ fillStats(Object.entries(probeFacts(p, ms))); }
 
 function focusProbe(id){
   const p = PROBES.find(x=>x.id===id); if(!p) return;
@@ -2353,67 +2332,35 @@ function focusProbe(id){
   focused = null; focusedMoon = null; focusedShip = false;
   const wp = mk.position.clone();
   const ld = probes.lightDay.find(m=>m.id===id);
-  let toP;
   if(ld){
     // membrana dnia świetlnego: kamera z boku i od strony Ziemi → błona jako ściana za sondą, sonda tuż przed nią
     const u = wp.clone().sub(ld.group.position).normalize();
     const side = new THREE.Vector3().crossVectors(u, new THREE.Vector3(0,1,0));
     if(side.lengthSq() < 1e-6) side.set(1,0,0);
     side.normalize();
-    toP = wp.clone().addScaledVector(side, 14).addScaledVector(u, -8).add(new THREE.Vector3(0,5,0));
-  } else {
-    const dir = tmpV.copy(camera.position).sub(wp).normalize();
-    if(dir.lengthSq()<0.001) dir.set(0,0.3,1).normalize();
-    toP = wp.clone().add(dir.multiplyScalar(40)).add(new THREE.Vector3(0,12,0));
-  }
-  startTween(toP, wp);
-  controls.minDistance = 2; controls.maxDistance = 60000;
-  showProbeInfo(p);
+    startTween(wp.clone().addScaledVector(side, 14).addScaledVector(u, -8).add(new THREE.Vector3(0,5,0)), wp);
+    controls.minDistance = 2; controls.maxDistance = 60000;
+  } else frameMarker(wp);
+  showCard('probe', p);
   document.querySelectorAll('.rail-group.open').forEach(grp=>expandGroup(grp, false));
   updateMoonOrbits();
 }
 
 /* ---------- Komety: lista (rail) + focus + karta info ---------- */
 function addCometRail(){
-  const rail = document.getElementById('rail');
-  COMETS.forEach(c=>{
-    const b=document.createElement('button'); b.className='rail-btn comet-rail'; b.dataset.cometId=c.id;
-    b.innerHTML=`<span class="dot" style="background:#${new THREE.Color(c.color).getHexString()}"></span>
-      <span class="nm">☄ ${c.pl}</span>`;
-    b.onclick=()=>focusComet(c.id);
-    rail.appendChild(b);
-  });
+  COMETS.forEach(c=> rail.appendChild(railButton({ cls:'comet-rail', data:{cometId:c.id},
+    color:'#'+new THREE.Color(c.color).getHexString(), label:'☄ '+c.pl, onClick:()=>focusComet(c.id) })));
 }
 function removeCometRail(){
   document.querySelectorAll('.comet-rail').forEach(b=>b.remove());
-}
-
-function showCometInfo(c){
-  document.querySelectorAll('.moon-btn.active').forEach(b=>b.classList.remove('active'));
-  document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active', b.dataset.cometId===c.id));
-  document.getElementById('iEye').textContent = 'Kometa · ' + c.facts['Typ'];
-  document.getElementById('iName').textContent = c.pl;
-  document.getElementById('iSub').textContent = c.desc;
-  const s=document.getElementById('iStats'); s.innerHTML='';
-  Object.entries(c.facts).forEach(([k,v])=>{
-    const d=document.createElement('div'); d.className='stat';
-    d.innerHTML=`<div class="l">${k}</div><div class="v">${v}</div>`; s.appendChild(d);
-  });
-  const _t=document.getElementById('iTex'); if(_t) _t.innerHTML='';   // komety nie mają skinów
-  elInfo.classList.add('show'); elBack.classList.add('show');
 }
 
 function focusComet(id){
   const c = COMETS.find(x=>x.id===id); if(!c) return;
   const mk = reality.cometMarkers.find(m=>m.userData.cometId===id); if(!mk) return;
   focused = null; focusedMoon = null; focusedShip = false;
-  const wp = mk.position.clone();
-  const dir = tmpV.copy(camera.position).sub(wp).normalize();
-  if(dir.lengthSq()<0.001) dir.set(0,0.3,1).normalize();
-  const toP = wp.clone().add(dir.multiplyScalar(40)).add(new THREE.Vector3(0,12,0));
-  startTween(toP, wp);
-  controls.minDistance = 2; controls.maxDistance = 60000;
-  showCometInfo(c);
+  frameMarker(mk.position.clone());
+  showCard('comet', c);
   document.querySelectorAll('.rail-group.open').forEach(grp=>expandGroup(grp, false));
   updateMoonOrbits();
 }
@@ -2463,18 +2410,134 @@ function openOnlyMoonGroup(planetId){
   });
 }
 function clearRailActive(){ document.querySelectorAll('.rail-btn.active,.moon-btn.active').forEach(b=>b.classList.remove('active')); }
-function setMoonActive(planetId, idx){
+/* ---------- Słońce: dane karty + pigułka na początku paska ---------- */
+const SUN_INFO = {
+  eye: 'Gwiazda · typ widmowy G2V',
+  desc: 'Gwiazda ciągu głównego, ok. 4,6 mld lat. Skupia 99,86% masy Układu Słonecznego.',
+  color: '#ffcf7a',
+  facts: { 'Średnica':'1 392 700 km', 'Masa':'333 000 Ziem', 'Powierzchnia':'5 772 K',
+           'Jądro':'~15,7 mln K', 'Obrót (równik)':'25,38 dnia', 'Światło do Ziemi':'8 min 20 s' },
+  wiki: { lang:'pl', title:'Słońce' },
+};
+rail.appendChild(railButton({ data:{id:'sun'}, chev:'', color:SUN_INFO.color, label:'Słońce', au:'0 AU', onClick:()=>focusSun() }));
+
+/* ============================================================
+   Rejestr obiektów do wybrania (Selectables) — JEDNO źródło prawdy dla:
+   etykiety w oknie „Informacje" (openInfoModal), akcji kliknięcia (pointerup)
+   i karty #info (showCard). Nowy rodzaj = wpis tutaj + cel raycastu w pickAt;
+   test/selectables.test.js pilnuje, że oba zbiory rodzajów są równe.
+   ============================================================ */
+const KINDS = Selectables.defineKinds({
+  sun: { label:'Gwiazda', select:()=>focusSun(),
+    card:()=>({ eye:SUN_INFO.eye, name:'Słońce', sub:SUN_INFO.desc, facts:SUN_INFO.facts, rail:'.rail-btn[data-id="sun"]' }) },
+  planet: { label:'Planeta', select:r=>focusBody(r.id),
+    card:p=>({ eye:'Planeta · '+p.facts['Odległość']+' od Słońca', name:p.pl, sub:subtitleFor(p.id), facts:p.facts,
+               rail:`.rail-btn[data-id="${p.id}"]`, skins:p.id }) },
+  moon: { label:'Księżyc', select:r=>focusMoon(r.planetId, r.idx),
+    card:r=>{ const pd=bodies.find(b=>b.data.id===r.planetId).data, mn=pd._moons[r.idx].data;
+      return { eye:'Księżyc · '+pd.pl, name:mn.n, sub:'Naturalny satelita',
+               facts:{ Rodzic:pd.pl, 'Okres orbitalny':MoonFormat.fmtPeriod(mn.days), 'Średnica':MoonFormat.fmtKm(mn.km) },
+               rail:`.moon-btn[data-moon="${r.planetId}:${r.idx}"]` }; } },
+  comet: { label:'Kometa', select:r=>focusComet(r.id),
+    card:c=>({ eye:'Kometa · '+c.facts['Typ'], name:c.pl, sub:c.desc, facts:c.facts, rail:`.rail-btn[data-comet-id="${c.id}"]` }) },
+  probe: { label:'Sonda', select:r=>focusProbe(r.id),
+    card:p=>({ eye:'Sonda · '+p.facts['Status'], name:p.name, sub:p.desc, facts:probeFacts(p, probeClockMs()),
+               rail:`.rail-btn[data-probe-id="${p.id}"]` }) },
+  ship: { label:'Statek', select:()=>focusShip() },
+  sat: { label:'Satelita Ziemi', select:(r,o)=>selectSat({idx:r.idx, name:o.name}) },
+  geo: { label:'Obiekt na Ziemi', select:r=>{
+    if(r.empty){ deselectEdu(); deselectSat(); }
+    else if(r.range) selectRange(r.range);
+    else if(r.country) selectCountry(r.country);
+    else selectEdu(r.label); } },
+  asteroid: { label:'Pas planetoid', select:null },     // klik bez akcji (brak tożsamości); „Informacje" działa
+  star: { label:'Gwiazdozbiór', select:r=>selectConstellation(r.asterism) },
+  // --- skale kosmiczne (Droga Mleczna, galaktyki, obce układy) ---
+  mwsun: { label:'Gwiazda', select:()=>exitGalactic() },                      // afordancja powrotu D→B (spec §3)
+  mwfeature: { label:'Struktura Drogi Mlecznej', select:(r,o)=>mwOpenFeature(o) },   // podświetlenie + kadr + karta (spec §4.2)
+  mwobject: { label:'Obiekt Drogi Mlecznej', select:(r,o)=>mwOpenObject(o) },
+  gxreturn: { label:'Nawigacja', select:()=>exitExgalaxy() },                 // marker powrotu E→(A|B)
+  gxlandmark: { label:'Obiekt w galaktyce', select:(r,o)=>{                   // landmark katalogowy w god-view galaktyki
+    const mf = o.facts ? Object.assign({}, o.facts) : {};
+    if(r && r.lmKind === 'companion') mf['Uwaga'] = 'pozycja rzutowana; głębia l.o.s. nieokreślona';
+    showGlow(o.worldPos, o.color, false);
+    openInfoModal(Object.assign({}, o, { facts:Object.keys(mf).length ? mf : null })); } },
+  galaxy: { label:'Galaktyka', select:r=>enterExgalaxy(r.id) },              // prawy klik → „ℹ Informacje" otwiera kartę BEZ dolotu
+  starsystem: { label:'Układ gwiazdowy', select:(r,o,{e})=>{
+    // Touch nie ma hoveru → 1. tap = nazwa+poświata, 2. tap w TĘ SAMĄ gwiazdę = dolot (finding #6).
+    if(e && e.pointerType === 'touch' && _tapArm !== r.id){
+      _tapArm = r.id;
+      showGlow(o.worldPos, o.color, false);
+      showHoverName(o.name, o.color, e.clientX, e.clientY);
+      return;
+    }
+    _tapArm = null; hideHover();
+    if(typeof navigateToSystem === 'function') navigateToSystem(r.id); } },
+  alienstar: { label:'Gwiazda', select:null },                                // bez focusu (hover + menu „Informacje" wystarczą)
+  alienplanet: { label:'Planeta', select:r=>{ if(typeof focusStarPlanet === 'function') focusStarPlanet(r.idx); } },
+  aliencompanion: { label:'Gwiazda towarzysząca', select:(r,o)=>openInfoModal(o) },  // parytet z klikiem etykiety
+});
+
+// Jedyny renderer karty #info — model z rejestru (Selectables.cardModel), treść przez textContent.
+function showCard(kind, ref){
+  const m = Selectables.cardModel(KINDS, kind, ref);
   clearRailActive();
-  const mb=document.querySelector(`.moon-btn[data-moon="${planetId}:${idx}"]`); if(mb) mb.classList.add('active');
+  if(m.rail){ const b=document.querySelector(m.rail); if(b) b.classList.add('active'); }
+  document.getElementById('iEye').textContent = m.eye;
+  document.getElementById('iName').textContent = m.name;
+  document.getElementById('iSub').textContent = m.sub;
+  fillStats(m.stats);
+  if(m.skins) buildSkinSelector(m.skins);
+  else { const t=document.getElementById('iTex'); if(t) t.textContent=''; }
+  elInfo.classList.add('show'); elBack.classList.add('show');
+}
+
+// Statystyki karty #info: [[etykieta, wartość]] → .stat (textContent, bez innerHTML).
+function fillStats(entries){
+  const s=document.getElementById('iStats'); s.textContent='';
+  entries.forEach(([k,v])=>{
+    const d=document.createElement('div'); d.className='stat';
+    const l=document.createElement('div'); l.className='l'; l.textContent=k;
+    const val=document.createElement('div'); val.className='v'; val.textContent=String(v);
+    d.appendChild(l); d.appendChild(val); s.appendChild(d);
+  });
+}
+
+// Kadr kuli (planeta/księżyc/Słońce): z bieżącej strony kamery, lekko z góry, granice zoomu świadome near-plane.
+function frameSphere(wp, r, minMul){
+  const dir = tmpV.copy(camera.position).sub(wp);
+  if(dir.lengthSq()<1e-6) dir.set(0,0.3,1);
+  dir.normalize();
+  const bounds = FocusScale.zoomBounds(r, camera.near, minMul);
+  const dist = Math.max(r*4.2, bounds.min);             // nie bliżej, niż near-plane pozwala
+  startTween(wp.clone().add(dir.multiplyScalar(dist)).add(new THREE.Vector3(0, r*0.7, 0)), wp);
+  controls.minDistance = bounds.min;
+  controls.maxDistance = bounds.max;
+}
+// Kadr znacznika punktowego (sonda/kometa): stały odstęp, szeroki zakres zoomu.
+function frameMarker(wp){
+  const dir = tmpV.copy(camera.position).sub(wp).normalize();
+  if(dir.lengthSq()<0.001) dir.set(0,0.3,1).normalize();
+  startTween(wp.clone().add(dir.multiplyScalar(40)).add(new THREE.Vector3(0,12,0)), wp);
+  controls.minDistance = 2; controls.maxDistance = 60000;
+}
+
+// Pigułka paska (planety, Słońce, sondy, komety). chev: null = bez strzałki, '' = puste miejsce, '▸' = rozwijanie.
+function railButton({ cls='', data={}, color, label, au='', chev=null, onClick }){
+  const b=document.createElement('button'); b.className=('rail-btn '+cls).trim();
+  Object.assign(b.dataset, data);
+  if(chev!==null){ const c=document.createElement('span'); c.className='chev'+(chev?'':' empty'); c.textContent=chev; b.appendChild(c); }
+  const dot=document.createElement('span'); dot.className='dot'; dot.style.background=color; b.appendChild(dot);
+  const nm=document.createElement('span'); nm.className='nm'; nm.textContent=label; b.appendChild(nm);
+  if(au){ const a=document.createElement('span'); a.className='au'; a.textContent=au; b.appendChild(a); }
+  if(onClick) b.onclick=onClick;
+  return b;
 }
 PLANETS.forEach(p=>{
   const hasMoons = p.moons && p.moons.length;
   const grp=document.createElement('div'); grp.className='rail-group'; grp.dataset.id=p.id;
-  const b=document.createElement('button'); b.className='rail-btn'; b.dataset.id=p.id;
-  b.innerHTML=`<span class="chev${hasMoons?'':' empty'}">${hasMoons?'▸':''}</span>
-    <span class="dot" style="background:#${new THREE.Color(p.color).getHexString()}"></span>
-    <span class="nm">${p.pl}</span><span class="au">${p.facts['Odległość']}</span>`;
-  b.onclick=()=>focusBody(p.id);   // rozwijanie robi openOnlyMoonGroup w focusBody
+  const b=railButton({ data:{id:p.id}, chev:hasMoons?'▸':'', color:'#'+new THREE.Color(p.color).getHexString(),
+    label:p.pl, au:p.facts['Odległość'], onClick:()=>focusBody(p.id) });   // rozwijanie robi openOnlyMoonGroup w focusBody
   grp.appendChild(b);
   if(hasMoons){
     b.querySelector('.chev').onclick=(e)=>{ e.stopPropagation(); expandGroup(grp, !grp.classList.contains('open')); };
@@ -2527,17 +2590,7 @@ function updateMoonOrbits(){
 function focusBody(id){
   const body = bodies.find(b=>b.data.id===id); if(!body) return;
   focused = body.data; focusedMoon = null; focusedShip = false;
-  const wp = worldPos(body);
-  const r = effRadius(body.data);
-  // offset: come in from current camera side, slightly above
-  const dir = tmpV.copy(camera.position).sub(wp).normalize();
-  if(dir.lengthSq()<0.001) dir.set(0,0.3,1).normalize();
-  const bounds = FocusScale.zoomBounds(r, camera.near, id==='earth' ? 1.03 : 1.25);   // Ziemia schodzi nisko nad powierzchnię
-  const dist = Math.max(r*4.2, bounds.min);            // nie bliżej, niż near-plane pozwala
-  const toP = wp.clone().add(dir.multiplyScalar(dist)).add(new THREE.Vector3(0, r*0.7, 0));
-  startTween(toP, wp);
-  controls.minDistance = bounds.min;
-  controls.maxDistance = bounds.max;
+  frameSphere(worldPos(body), effRadius(body.data), id==='earth' ? 1.03 : 1.25);   // Ziemia schodzi nisko nad powierzchnię
   openOnlyMoonGroup(id);
   updateUI(body.data);
   updateMoonOrbits();
@@ -2566,32 +2619,19 @@ function focusMoon(planetId, idx){
   const fm = pb.data._moons && pb.data._moons[idx]; if(!fm) return;
   fm.pivot.visible = true;                              // wymuś widoczność (np. ukryte w trueScale)
   focused = null; focusedMoon = { mesh:fm.mesh, data:fm.data, parentData:pb.data }; focusedShip = false;
-  const wp = moonWorldPos(focusedMoon);
-  const r = fm.data.r;                                  // promień meshu księżyca (skala sceny)
-  const dir = tmpV.copy(camera.position).sub(wp);
-  if(dir.lengthSq()<1e-6) dir.set(0,0.3,1);
-  dir.normalize();
-  const bounds = FocusScale.zoomBounds(r, camera.near);
-  const dist = Math.max(r*4.2, bounds.min);
-  startTween(wp.clone().add(dir.multiplyScalar(dist)).add(new THREE.Vector3(0, r*0.7, 0)), wp);
-  controls.minDistance = bounds.min;
-  controls.maxDistance = bounds.max;
+  frameSphere(moonWorldPos(focusedMoon), fm.data.r);   // promień meshu księżyca (skala sceny)
   openOnlyMoonGroup(planetId);
-  showMoonInfo(fm.data, pb.data);
-  setMoonActive(planetId, idx);
+  showCard('moon', { planetId, idx });                  // karta + aktywna pigułka księżyca
   updateMoonOrbits();
 }
 
-function showMoonInfo(mn, parent){
-  document.getElementById('iEye').textContent = 'Księżyc · ' + parent.pl;
-  document.getElementById('iName').textContent = mn.n;
-  document.getElementById('iSub').textContent = 'Naturalny satelita';
-  const s=document.getElementById('iStats'); s.innerHTML='';
-  const facts = { Rodzic:parent.pl, 'Okres orbitalny':MoonFormat.fmtPeriod(mn.days), 'Średnica':MoonFormat.fmtKm(mn.km) };
-  Object.entries(facts).forEach(([k,v])=>{ const d=document.createElement('div'); d.className='stat';
-    d.innerHTML=`<div class="l">${k}</div><div class="v">${v}</div>`; s.appendChild(d); });
-  const _t=document.getElementById('iTex'); if(_t) _t.innerHTML='';   // księżyce bez selektora tekstur
-  elInfo.classList.add('show'); elBack.classList.add('show');
+// Focus na Słońcu (zawsze w początku układu): kadr wg bieżącego promienia (poglądowy ↔ prawdziwa skala).
+function focusSun(){
+  focused = null; focusedMoon = null; focusedShip = false; deselectEdu(); deselectSat();
+  frameSphere(new THREE.Vector3(0,0,0), SUN_RADIUS * sun.scale.x);   // Słońce zawsze w początku układu
+  document.querySelectorAll('.rail-group.open').forEach(grp=>expandGroup(grp, false));
+  showCard('sun', null);
+  updateMoonOrbits();
 }
 
 function goSystem(){
@@ -2748,22 +2788,9 @@ function startTween(toP, toT){
    ============================================================ */
 const elInfo=document.getElementById('info'), elBack=document.getElementById('back');
 function updateUI(p){
-  document.querySelectorAll('.moon-btn.active').forEach(b=>b.classList.remove('active'));   // focus planety/system → zdejmij aktywny księżyc
-  document.querySelectorAll('.rail-btn').forEach(b=>b.classList.toggle('active', p && b.dataset.id===p.id));
-  if(p){
-    document.getElementById('iEye').textContent = 'Planeta · ' + p.facts['Odległość'] + ' od Słońca';
-    document.getElementById('iName').textContent = p.pl;
-    document.getElementById('iSub').textContent = subtitleFor(p.id);
-    const s=document.getElementById('iStats'); s.innerHTML='';
-    Object.entries(p.facts).forEach(([k,v])=>{
-      const d=document.createElement('div'); d.className='stat';
-      d.innerHTML=`<div class="l">${k}</div><div class="v">${v}</div>`; s.appendChild(d);
-    });
-    buildSkinSelector(p.id);
-    elInfo.classList.add('show'); elBack.classList.add('show');
-  }else{
-    elInfo.classList.remove('show'); elBack.classList.remove('show');
-  }
+  if(p){ showCard('planet', p); return; }
+  clearRailActive();
+  elInfo.classList.remove('show'); elBack.classList.remove('show');
 }
 
 /* ---------- HUD lotu (M1b-3): czysty KONSUMENT ship.coe/r/v — nigdy nie pisze do ship.* ---------- */
@@ -4324,7 +4351,9 @@ function updateEduLabels(now){
     _eduLabelT = now;
     // K rośnie gładko od dali (rr*14) do bliska (rr*2): ~24 → 240. BEZ kolizji z magiczną rr*9 (stary kod).
     const t = Math.max(0, Math.min(1, (rr*14 - dist) / (rr*12)));
-    const K = (dist > rr*14) ? 0 : Math.round(24 + t*166);     // cap ~190 (mniej tłoku etykiet przy zbliżeniu)
+    // budżet skalowany powierzchnią ekranu (odniesienie 1400×900): telefon 390×844 → ~¼ (≤ ~50 etykiet)
+    const areaK = Math.max(0.25, Math.min(1, (innerWidth*innerHeight)/(1400*900)));
+    const K = (dist > rr*14) ? 0 : Math.max(8, Math.round((24 + t*166)*areaK));   // cap ~190 na desktopie
     const cands=[], Nmax=Math.min(eduLabels.length, 1500);
     const consider = (L)=>{ if(!band(L) || !labelShown(L.cat)) return;
       _wp.copy(L.pos); e.mesh.localToWorld(_wp);
@@ -4340,9 +4369,11 @@ function updateEduLabels(now){
     const placed=[]; _eduShown.length=0; let pi=0;
     const gapX = showMin ? 62 : 52;                             // blisko: większy odstęp (mniej tłoku)
     for(const c of cands){ if(pi>=K) break;
-      if(placed.some(p=> Math.abs(p.sx-c.sx)<gapX && Math.abs(p.sy-c.sy)<14)) continue;   // declutter O(K²)
+      // declutter O(K²) z szacowaną szerokością etykiety (600 11px Space Grotesk ≈ 6,3 px/znak + padding 12 px)
+      const w = c.L._w || (c.L._w = c.L.name.length*6.3 + 12);
+      if(placed.some(p=> Math.abs(p.sx-c.sx) < Math.max(gapX, (p.w+w)/2 + 4) && Math.abs(p.sy-c.sy) < 17)) continue;
       const el=eduLabelEls[pi++]; el.textContent=c.L.name; el.style.color=c.L.color;
-      _eduShown.push({L:c.L, el}); placed.push(c);
+      c.w = w; _eduShown.push({L:c.L, el}); placed.push(c);
     }
     for(let i=pi;i<eduLabelEls.length;i++) eduLabelEls[i].style.display='none';
   }
@@ -4962,7 +4993,7 @@ function pickAt(clientX, clientY){
   if(bodyHit){
     const o=bodyHit.object;
     if(o===sun) return { kind:'sun', name:'Słońce', color:'#ffcf7a',
-      worldPos:sun.getWorldPosition(new THREE.Vector3()), wiki:{lang:'pl',title:'Słońce'}, facts:null, ref:{sun:true}, occluded:false };
+      worldPos:sun.getWorldPosition(new THREE.Vector3()), wiki:SUN_INFO.wiki, facts:SUN_INFO.facts, ref:{sun:true}, occluded:false };
     const ud=o.userData;
     if(ud && ud.moonParent!==undefined){
       const pb=bodies.find(b=>b.data.id===ud.moonParent); const fm=pb.data._moons[ud.moonIdx]; const mn=fm.data;
@@ -5065,45 +5096,7 @@ renderer.domElement.addEventListener('pointerup', e=>{
   if(!o || o.kind!=='star') deselectConstellation();   // klik w pustkę / inny obiekt → zdejmij wybór konstelacji
   if(!o){ _tapArm = null; return; }
   if(o.kind !== 'starsystem') _tapArm = null;          // tap w coś innego rozbraja dwustopniowy dolot (touch)
-  switch(o.kind){
-    case 'sat':    selectSat({idx:o.ref.idx, name:o.name}); break;
-    case 'geo':    if(o.ref.empty){ deselectEdu(); deselectSat(); }
-                   else if(o.ref.range){ selectRange(o.ref.range); }
-                   else if(o.ref.country){ selectCountry(o.ref.country); }
-                   else { selectEdu(o.ref.label); } break;
-    case 'sun':    goSystem(); break;
-    case 'planet': focusBody(o.ref.id); break;
-    case 'moon':   focusMoon(o.ref.planetId, o.ref.idx); break;
-    case 'comet':  focusComet(o.ref.id); break;
-    case 'ship':   focusShip(); break;
-    case 'probe':  focusProbe(o.ref.id); break;
-    case 'star':   selectConstellation(o.ref.asterism); break;
-    case 'mwsun':     exitGalactic(); break;                             // afordancja powrotu D→B (spec §3)
-    case 'mwfeature': mwOpenFeature(o); break;                           // podświetlenie + kadr + karta (spec §4.2)
-    case 'mwobject':  mwOpenObject(o); break;
-    case 'gxreturn':  exitExgalaxy(); break;                             // marker powrotu E→(A|B)
-    case 'gxlandmark': {                                                  // landmark katalogowy w god-view galaktyki
-      const mf = o.facts ? Object.assign({}, o.facts) : {};
-      if(o.ref && o.ref.lmKind === 'companion') mf['Uwaga'] = 'pozycja rzutowana; głębia l.o.s. nieokreślona';
-      showGlow(o.worldPos, o.color, false);
-      openInfoModal(Object.assign({}, o, { facts:Object.keys(mf).length ? mf : null })); break; }
-    case 'galaxy': enterExgalaxy(o.ref.id); break;                       // Sol i interstellar → god-view galaktyki (prawy klik → „ℹ Informacje" otwiera kartę BEZ dolotu)
-    case 'starsystem': {
-      // Touch nie ma hoveru → 1. tap = nazwa+poświata, 2. tap w TĘ SAMĄ gwiazdę = dolot (finding #6).
-      if(e.pointerType === 'touch' && _tapArm !== o.ref.id){
-        _tapArm = o.ref.id;
-        showGlow(o.worldPos, o.color, false);
-        showHoverName(o.name, o.color, e.clientX, e.clientY);
-        break;
-      }
-      _tapArm = null; hideHover();
-      if(typeof navigateToSystem === 'function') navigateToSystem(o.ref.id);
-      break; }
-    case 'alienstar':  break;                                                   // gwiazda centralna obcego układu — bez focusu (hover + menu „Informacje" wystarczą)
-    case 'alienplanet': if(typeof focusStarPlanet === 'function') focusStarPlanet(o.ref.idx); break;   // planeta obcego układu → focus (jak klik etykiety)
-    case 'aliencompanion': openInfoModal(o); break;              // towarzysz pary → karta „Informacje" (parytet z klikiem etykiety)
-    // 'asteroid' — klik bez akcji focus (brak tożsamości); menu kontekstowe obsłuży
-  }
+  Selectables.select(KINDS, o, { e });                  // akcja z rejestru KINDS (rodzaj spoza rejestru → głośny błąd)
 });
 // hover cursor — tani raycast ciał (bez satelitów/pasa), wystarczający do zmiany kursora
 renderer.domElement.addEventListener('pointermove', e=>{
@@ -5167,11 +5160,6 @@ addEventListener('keydown', e=>{ if(e.key==='Escape') closeContextMenu(); });
    Modal „Informacje"
    ============================================================ */
 const omEl=document.getElementById('objModal');
-const OM_EYE={ planet:'Planeta', moon:'Księżyc', sun:'Gwiazda', comet:'Kometa',
-  probe:'Sonda', sat:'Satelita Ziemi', geo:'Obiekt na Ziemi', asteroid:'Pas planetoid', star:'Gwiazdozbiór', galaxy:'Galaktyka', starsystem:'Układ gwiazdowy',
-  alienstar:'Gwiazda', alienplanet:'Planeta', aliencompanion:'Gwiazda towarzysząca',
-  mwsun:'Gwiazda', mwfeature:'Struktura Drogi Mlecznej', mwobject:'Obiekt Drogi Mlecznej',
-  gxlandmark:'Obiekt w galaktyce' };
 function closeInfoModal(){ omEl.classList.remove('show'); deselectConstellation(); }
 function omBuildStats(facts){
   if(!facts) return;
@@ -5193,7 +5181,7 @@ function fetchWikiSummary(wiki){
 }
 function openInfoModal(obj){
   closeContextMenu();
-  document.getElementById('omEye').textContent = OM_EYE[obj.kind] || 'Obiekt';
+  document.getElementById('omEye').textContent = Selectables.label(KINDS, obj.kind);
   document.getElementById('omName').textContent = obj.name || 'Obiekt';
   const thumb=document.getElementById('omThumb'); thumb.hidden=true; thumb.src='';
   const extract=document.getElementById('omExtract'); extract.textContent='';
