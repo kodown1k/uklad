@@ -463,6 +463,46 @@
     } else o.warp = s.warp;
     return o;
   }
+  /* ---------- ciągłość wielkości wspólnych dla kroków (glob, pierścień, słońce) ----------
+     Pokazana = cel + przesunięcie. Skok celu (zmiana kroku: inna faza, prędkość, kierunek) przenosi różnicę do
+     przesunięcia, które wygasa z czasem TAU — bez przeskoku obrazu; płynny ruch celu jest śledzony dokładnie (bez
+     opóźnienia). dt = 0 (pauza, smoke, pierwsza scena przenikania) nie zmienia stanu: obie sceny przenikania widzą
+     ten sam glob i to samo słońce. Pierwszy cel — bez przesunięcia. Próg skoku rośnie z dt (rzadkie klatki). */
+  var TAU_CIAGLOSCI = 1.0, POKOLENIE = 0;
+  // Przewinięcie filmu (skok w czasie) to nie zmiana kroku: następny odczyt każdego stanu ustawia się od razu na cel.
+  function resetCiaglosci() { POKOLENIE++; }
+  function _zawin(a) { return Math.atan2(Math.sin(a), Math.cos(a)); }
+  function ciaglyKat(stan, cel, dt) {
+    if (stan.pokazany == null || stan.pokolenie !== POKOLENIE) { stan.pokolenie = POKOLENIE; stan.cel = cel; stan.przes = 0; stan.pokazany = cel; return cel; }
+    if (!(dt > 0)) return stan.pokazany;
+    if (Math.abs(_zawin(cel - stan.cel)) > Math.max(0.15, dt)) stan.przes = _zawin(stan.pokazany - cel);
+    stan.przes *= Math.exp(-dt / TAU_CIAGLOSCI);
+    stan.cel = cel; stan.pokazany = cel + stan.przes;
+    return stan.pokazany;
+  }
+  function _norm(v) { var l = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; }
+  function _obroc(v, os, k) {                 // Rodrigues: v obrócony o k wokół jednostkowej osi
+    var c = Math.cos(k), s = Math.sin(k), d = (os[0] * v[0] + os[1] * v[1] + os[2] * v[2]) * (1 - c);
+    return [v[0] * c + (os[1] * v[2] - os[2] * v[1]) * s + os[0] * d,
+            v[1] * c + (os[2] * v[0] - os[0] * v[2]) * s + os[1] * d,
+            v[2] * c + (os[0] * v[1] - os[1] * v[0]) * s + os[2] * d];
+  }
+  function ciaglyKierunek(stan, cel, dt) {
+    cel = _norm(cel);
+    if (!stan.pokazany || stan.pokolenie !== POKOLENIE) { stan.pokolenie = POKOLENIE; stan.cel = cel; stan.kat = 0; stan.os = [0, 1, 0]; stan.pokazany = cel; return cel.slice(); }
+    if (!(dt > 0)) return stan.pokazany.slice();
+    var dot = function (a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
+    if (Math.acos(Math.max(-1, Math.min(1, dot(cel, stan.cel)))) > Math.max(0.1, dt)) {
+      var p = stan.pokazany, x = [cel[1] * p[2] - cel[2] * p[1], cel[2] * p[0] - cel[0] * p[2], cel[0] * p[1] - cel[1] * p[0]];
+      var xl = Math.sqrt(dot(x, x));
+      stan.kat = Math.acos(Math.max(-1, Math.min(1, dot(cel, p))));
+      stan.os = xl > 1e-9 ? [x[0] / xl, x[1] / xl, x[2] / xl] : _norm(Math.abs(cel[1]) < 0.9 ? [cel[2], 0, -cel[0]] : [0, -cel[2], cel[1]]);
+    }
+    stan.kat *= Math.exp(-dt / TAU_CIAGLOSCI);
+    stan.cel = cel; stan.pokazany = _norm(_obroc(cel, stan.os, stan.kat));
+    return stan.pokazany.slice();
+  }
+
   // Hak podglądu przejść (smoke): kopia definicji z jednym typem przejścia w każdym kroku poza pierwszym.
   function zPrzejsciami(def, typ) {
     return Object.assign({}, def, { kroki: def.kroki.map(function (k, i) { return i ? Object.assign({}, k, { przejscie: typ }) : k; }) });
@@ -573,7 +613,7 @@
     parsujHash: parsujHash, parsujZapytanie: parsujZapytanie, budujHash: budujHash,
     ograniczKrok: ograniczKrok, przejscie: przejscie, akcjaKlawisza: akcjaKlawisza,
     uzupelnijKroki: uzupelnijKroki, TYPY_PRZEJSC: TYPY_PRZEJSC, przejscieKroku: przejscieKroku, wersyFilmu: wersyFilmu,
-    obrazJednej: obrazJednej, obrazPrzejscia: obrazPrzejscia, zPrzejsciami: zPrzejsciami, rozdzialyFilmu: rozdzialyFilmu, celPrzewiniecia: celPrzewiniecia, OBROT_MAX: OBROT_MAX, OBROT_MOST: OBROT_MOST, osCzasuFilmu: osCzasuFilmu, lokalizujFilm: lokalizujFilm, stanPrzejscia: stanPrzejscia, mieszajWokol: mieszajWokol, pozaFilmu: pozaFilmu,
+    ciaglyKat: ciaglyKat, ciaglyKierunek: ciaglyKierunek, resetCiaglosci: resetCiaglosci, obrazJednej: obrazJednej, obrazPrzejscia: obrazPrzejscia, zPrzejsciami: zPrzejsciami, rozdzialyFilmu: rozdzialyFilmu, celPrzewiniecia: celPrzewiniecia, OBROT_MAX: OBROT_MAX, OBROT_MOST: OBROT_MOST, osCzasuFilmu: osCzasuFilmu, lokalizujFilm: lokalizujFilm, stanPrzejscia: stanPrzejscia, mieszajWokol: mieszajWokol, pozaFilmu: pozaFilmu,
     wygladz: wygladz, mieszaj3: mieszaj3, tempoRuchu: tempoRuchu, petla: petla, odcinek: odcinek,
     RYC4: RYC4, strefaPierscienia: strefaPierscienia, pozycjaNaOsi: pozycjaNaOsi, przemiatanie: przemiatanie,
     skretOdbitej: skretOdbitej, amplitudaUmowna: amplitudaUmowna,

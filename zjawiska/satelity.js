@@ -285,6 +285,15 @@
       var sloncePrz = new T.Group(); sloncePrz.add(sloncePosw); sloncePrz.add(slonceSp); zew.add(sloncePrz);
       var S = new T.Vector3(1, 0, 0), lok = new T.Vector3(), q = new T.Quaternion(), OSY = new T.Vector3(0, 1, 0);
       var obrot = 0, faza = 0, odlSlonca = 160;
+      // ciągłość między krokami (logika.ciaglyKat/ciaglyKierunek): kąt globu i kierunek słońca bez przeskoku przy
+      // zmianie kroku; `slonce()` ustawia CEL, a widoczny kierunek (cień, poświata, shader) liczy `animuj`
+      var katStan = {}, slStan = {}, slCel = [1, 0.22, 0.32];
+      function zastosujSlonce(d) {
+        S.set(d[0], d[1], d[2]); uni.uSlonce.value.copy(S);
+        lok.copy(S).applyQuaternion(q.copy(g.quaternion).invert()).negate();
+        cien.quaternion.setFromUnitVectors(OSY, lok);
+        sloncePrz.position.copy(S).multiplyScalar(odlSlonca).add(g.position);
+      }
       var api = { grupa: zew, ziemia: g, glob: glob, R: 1, kat: 0,
         ustaw: function (o) {
           o = o || {};
@@ -300,15 +309,13 @@
           sloncePrz.visible = !!o.slonceWidoczne; odlSlonca = o.odlSlonca || 160;
           api.slonce(o.slonce || [1, 0.22, 0.32]);
         },
-        // kierunek słońca w świecie (jednostkowy); cień liczony w układzie grupy Ziemi
-        slonce: function (s) {
-          S.set(s[0], s[1], s[2]).normalize(); uni.uSlonce.value.copy(S);
-          lok.copy(S).applyQuaternion(q.copy(g.quaternion).invert()).negate();
-          cien.quaternion.setFromUnitVectors(OSY, lok);
-          sloncePrz.position.copy(S).multiplyScalar(odlSlonca).add(g.position);
-        },
+        // kierunek słońca w świecie (cel; widoczny kierunek płynnie za nim — animuj); cień liczony w układzie grupy Ziemi
+        slonce: function (s) { slCel = [s[0], s[1], s[2]]; },
         sila: function (x) { uniA.uSila.value = 0.55 * x; },
-        animuj: function (t) { api.kat = faza + obrot * t; glob.rotation.y = api.kat; uni.uCzas.value = t; }
+        animuj: function (t, dt) {
+          api.kat = L.ciaglyKat(katStan, faza + obrot * t, dt); glob.rotation.y = api.kat; uni.uCzas.value = t;
+          zastosujSlonce(L.ciaglyKierunek(slStan, slCel, dt));
+        }
       };
       api.ustaw({});
       return api;
@@ -408,11 +415,11 @@
       var T = c.THREE, g = new T.Group(), R = 2.55;
       g.add(orbita(c, R, 'atrament-3', { krycie: 0.45 }));
       var st = stacja(c, 0.55); g.add(st);
-      var stan = { predkosc: 0.09, faza: 1.15 };
+      var stan = { predkosc: 0.09, faza: 1.15 }, katStan = {};
       var api = { grupa: g, stacja: st, R: R, kat: 0,
         ustaw: function (o) { o = o || {}; stan.predkosc = o.predkosc == null ? 0.09 : o.predkosc; stan.faza = o.faza == null ? 1.15 : o.faza; },
-        animuj: function (t) {
-          var th = stan.faza + stan.predkosc * t; api.kat = th;
+        animuj: function (t, dt) {
+          var th = L.ciaglyKat(katStan, stan.faza + stan.predkosc * t, dt); api.kat = th;   // bez przeskoku przy zmianie kroku
           st.position.set(R * Math.cos(th), 0, -R * Math.sin(th));
           st.rotation.y = th;                                       // kratownica w poprzek kierunku lotu
         } };
@@ -491,15 +498,15 @@
       g.add(cmentarz);
       var ZD = 2, LAT = 52 * Math.PI / 180;        // promień Ziemi w tej scenie i szerokość „sąsiada” (umowna)
       var A = new T.Vector3(), B = new T.Vector3(), N = new T.Vector3();
-      var stan = { obrot: 0.1, faza: 0, cmentarz: false, lacze: true };
+      var stan = { obrot: 0.1, faza: 0, cmentarz: false, lacze: true }, katStan = {};
       var api = { grupa: g, satelita: sat, talerz: talerz, R: RG, kat: 0,
         ustaw: function (o) {
           o = o || {}; stan.obrot = o.obrot == null ? 0.1 : o.obrot; stan.faza = o.faza || 0;
           stan.cmentarz = !!o.cmentarz; cmentarz.visible = stan.cmentarz; stan.lacze = o.lacze !== false;
           lacze.visible = stan.lacze; talerz.visible = stan.lacze; sat.visible = o.satelita !== false;
         },
-        animuj: function (t) {
-          var th = stan.faza + stan.obrot * t; api.kat = th;
+        animuj: function (t, dt) {
+          var th = L.ciaglyKat(katStan, stan.faza + stan.obrot * t, dt); api.kat = th;   // bez przeskoku przy zmianie kroku
           sat.position.set(RG * Math.cos(th), 0, -RG * Math.sin(th)); sat.rotation.y = th;
           // talerz na tej samej długości co satelita (obraca się razem z Ziemią)
           N.set(Math.cos(LAT) * Math.cos(th), Math.sin(LAT), -Math.cos(LAT) * Math.sin(th));

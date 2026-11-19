@@ -654,6 +654,7 @@
   function przewinFilm(t, wymus) {
     if (!film || !biez) return;
     film.t = Math.max(0, Math.min(film.os.calosc, t));
+    L.resetCiaglosci();                         // skok w czasie: glob/pierścień/słońce od razu w stanie celu, bez dokręcania
     var n = L.lokalizujFilm(film.os, film.t).krok;
     if (wymus || biez.pokazany !== n) krokFilmu(n);
   }
@@ -930,6 +931,8 @@
       kadr: { tryb: kadr.tryb, x: kadr.x, w: kadr.w, h: kadr.h, y: kadr.y }, post: !!post && jakosc === 'pelna', jakosc: jakosc, fps: Math.round(fps.wart), klatki: Z.klatki || 0,
       kamera: gl ? { poz: gl.kamera.position.toArray(), fov: stanKamery.fov, komp: stanKamery.komp } : null };
   };
+  // Kąt zestawu (glob, pierścień, stacja) — przyrząd ciągłości faz między krokami (shot-zjawiska-film).
+  Z.katZestawu = function (nazwa) { var z = biez && biez.zestawy[nazwa]; return z && typeof z.kat === 'number' ? z.kat : null; };
   // Liczniki zasobów — test „tam i z powrotem” ma dać te same liczby po drugim przejściu co po pierwszym.
   Z.diagnostyka = function () {
     if (!gl) return null;
