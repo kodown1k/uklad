@@ -21,6 +21,9 @@
               animuj?(ctx, t, wlasne, z), tPogl?, strefa?[x,y,z,r] }   (strefa = bryła, w którą kamera ujęcia nie wchodzi; pilnuje test „kontrakt kina”)
    Bez `animuj` widok co klatkę woła `krok(t, z)` z wyniku `zbuduj` (jeśli jest); `animuj` go zastępuje.
    `ctx.doKamery(obiekt)` → obiekt co klatkę zwrócony do kamery (po animacji kroku), bez lookAt w kodzie zjawiska.
+   Film w przejściu rysuje DWA kroki w jednej klatce i przełącza między nimi zawartość, więc: `ustaw` (zestawu i kroku)
+   ma być idempotentne (pełny stan z parametrów, bez przyrostów), a `krok`/`animuj` kroku funkcją czasu `t` — stan
+   przyrostowy (np. malowanie płótna) sam się resetuje, gdy `t` wraca. `dt` dostają tylko zestawy, raz na klatkę.
    Sceny budowane leniwie przy pierwszym wejściu w krok; przy wyjściu tylko `visible = false` (zero realokacji).
    Haki testowe: `?smoke&zjawisko=<id>&krok=N[&t=0..1]` — kamera od razu w kadrze końcowym ujęcia (albo w postępie t),
    napisy w całości, UI widoczne, bez ziarna i cięć; marker `ZJAWISKA_READY <id> <krok> <liczba>`. */
@@ -66,6 +69,7 @@
   var slupki = null;             // { min, max, paski[] } bieżącego przyrządu
   var napisy = { h: [], el: [], idx: -1, caly: false };
   var seans = { pauza: false };
+  var obrazKlatki = null;        // obraz ostatniej klatki (diagnostyka Z.stan)
   var film = null;               // Seans = film zjawiska: { os, t } — zegar filmu, oś czasu z logika.osCzasuFilmu (null = tryb kroków)
   var dzwiek = null;             // { ctx, osc[], wzm } po pierwszym włączeniu
   var smoke = false, smokeT = null, gotowosc = null;
@@ -159,18 +163,26 @@
   function zbudujPost(T, renderer) {
     var WIERZ = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
     var opcje = { minFilter: T.LinearFilter, magFilter: T.LinearFilter, format: T.RGBAFormat, depthBuffer: false, stencilBuffer: false };
+    function rtPelny() {
+      return renderer.capabilities.isWebGL2
+        ? new T.WebGLMultisampleRenderTarget(4, 4, { minFilter: T.LinearFilter, magFilter: T.LinearFilter, format: T.RGBAFormat })
+        : new T.WebGLRenderTarget(4, 4, { minFilter: T.LinearFilter, magFilter: T.LinearFilter, format: T.RGBAFormat });
+    }
     var rtScena = renderer.capabilities.isWebGL2
       ? new T.WebGLMultisampleRenderTarget(4, 4, { minFilter: T.LinearFilter, magFilter: T.LinearFilter, format: T.RGBAFormat })
       : new T.WebGLRenderTarget(4, 4, { minFilter: T.LinearFilter, magFilter: T.LinearFilter, format: T.RGBAFormat });
     var rtA = new T.WebGLRenderTarget(2, 2, opcje), rtB = new T.WebGLRenderTarget(2, 2, opcje);
+    // druga scena przejścia filmu (przenikanie: drugi krok; most: same gwiazdy) — tworzona leniwie przy pierwszym
+    // przejściu i zwalniana po filmie: pełnoekranowy bufor z MSAA to dziesiątki–setki MB, a przejścia trwają sekundy
+    var rtDrugi = null;
     var kam = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1), sc = new T.Scene();
     var siatka = new T.Mesh(new T.PlaneGeometry(2, 2), null); siatka.frustumCulled = false; sc.add(siatka);
     function mat(frag, uni) { return new T.ShaderMaterial({ uniforms: uni, vertexShader: WIERZ, fragmentShader: frag, depthTest: false, depthWrite: false }); }
     var mJasne = mat([
-      'uniform sampler2D tD; uniform vec2 uTex; uniform float uProg; varying vec2 vUv;',
-      'vec3 j(vec2 o){ vec3 c = texture2D(tD, vUv + o * uTex).rgb; float l = max(c.r, max(c.g, c.b)); return c * smoothstep(uProg, uProg + 0.26, l); }',
+      'uniform sampler2D tD; uniform sampler2D tD2; uniform float uMiks; uniform vec2 uTex; uniform float uProg; varying vec2 vUv;',
+      'vec3 j(vec2 o){ vec2 q = vUv + o * uTex; vec3 c = mix(texture2D(tD2, q).rgb, texture2D(tD, q).rgb, uMiks); float l = max(c.r, max(c.g, c.b)); return c * smoothstep(uProg, uProg + 0.26, l); }',
       'void main(){ gl_FragColor = vec4((j(vec2(-1.0,-1.0)) + j(vec2(1.0,-1.0)) + j(vec2(-1.0,1.0)) + j(vec2(1.0,1.0))) * 0.25, 1.0); }'
-    ].join('\n'), { tD: { value: null }, uTex: { value: new T.Vector2() }, uProg: { value: 0.74 } });
+    ].join('\n'), { tD: { value: null }, tD2: { value: null }, uMiks: { value: 1 }, uTex: { value: new T.Vector2() }, uProg: { value: 0.74 } });
     var mRozm = mat([
       'uniform sampler2D tD; uniform vec2 uKier; varying vec2 vUv;',
       'void main(){ vec3 c = texture2D(tD, vUv).rgb * 0.227027;',
@@ -179,33 +191,53 @@
       '  gl_FragColor = vec4(c, 1.0); }'
     ].join('\n'), { tD: { value: null }, uKier: { value: new T.Vector2() } });
     var mKon = mat([
-      'uniform sampler2D tScena; uniform sampler2D tBloom; uniform float uBloom; uniform float uWinieta; uniform float uZiarno; uniform float uCzas; uniform vec2 uRozm; varying vec2 vUv;',
+      'uniform sampler2D tScena; uniform sampler2D tDrugi; uniform float uMiks; uniform float uWarp; uniform sampler2D tBloom; uniform float uBloom; uniform float uWinieta; uniform float uZiarno; uniform float uCzas; uniform vec2 uRozm; varying vec2 vUv;',
       'float los(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233)) + uCzas * 7.13) * 43758.5453); }',
+      // poza przejściem (uMiks = 1) bez próbkowania drugiej sceny
+      'vec3 obraz(vec2 q){ vec3 b = texture2D(tScena, q).rgb; if (uMiks > 0.999) return b; return mix(texture2D(tDrugi, q).rgb, b, uMiks); }',
       'void main(){',
-      '  vec3 c = texture2D(tScena, vUv).rgb + texture2D(tBloom, vUv).rgb * uBloom;',
+      '  vec3 c = obraz(vUv);',
+      // przelot: radialna smuga od środka kadru (12 próbek wzdłuż promienia), jaśniejsza przy krawędziach
+      // (16 próbek z losowym przesunięciem per piksel — bez schodków „duchów” przy równych odstępach)
+      '  if (uWarp > 0.001) { vec2 d = vUv - 0.5; vec3 s = vec3(0.0); float j = los(vUv * uRozm);',
+      '    for (int i = 0; i < 16; i++) s += obraz(0.5 + d * (1.0 - uWarp * 0.034 * (float(i) + j)));',
+      '    c = mix(c, s / 16.0 * (1.0 + 0.6 * uWarp * length(d)), uWarp); }',
+      '  c += texture2D(tBloom, vUv).rgb * uBloom;',
       '  vec2 d = (vUv - 0.5) * vec2(1.0, 0.72);',
       '  c *= 1.0 - uWinieta * smoothstep(0.30, 0.62, length(d));',
       '  c += (los(floor(vUv * uRozm / 1.5)) - 0.5) * uZiarno;',
       '  gl_FragColor = vec4(c, 1.0); }'
-    ].join('\n'), { tScena: { value: null }, tBloom: { value: null }, uBloom: { value: 0.7 }, uWinieta: { value: 0.5 }, uZiarno: { value: 0.045 }, uCzas: { value: 0 }, uRozm: { value: new T.Vector2(1, 1) } });
+    ].join('\n'), { tScena: { value: null }, tDrugi: { value: null }, uMiks: { value: 1 }, uWarp: { value: 0 }, tBloom: { value: null }, uBloom: { value: 0.7 }, uWinieta: { value: 0.5 }, uZiarno: { value: 0.045 }, uCzas: { value: 0 }, uRozm: { value: new T.Vector2(1, 1) } });
     var rozm = new T.Vector2();
     function przebieg(m, cel) { siatka.material = m; renderer.setRenderTarget(cel); renderer.render(sc, kam); }
     return {
       rozmiar: function () {
         renderer.getDrawingBufferSize(rozm);
         var w = Math.max(2, rozm.x), h = Math.max(2, rozm.y), mw = Math.max(2, Math.round(w / 4)), mh = Math.max(2, Math.round(h / 4));
-        rtScena.setSize(w, h); rtA.setSize(mw, mh); rtB.setSize(mw, mh);
+        rtScena.setSize(w, h); if (rtDrugi) rtDrugi.setSize(w, h); rtA.setSize(mw, mh); rtB.setSize(mw, mh);
+        this.w = w; this.h = h;
         mJasne.uniforms.uTex.value.set(1 / w, 1 / h); mKon.uniforms.uRozm.value.set(w, h);
         this.mw = mw; this.mh = mh;
       },
-      renderuj: function (scena, kamera, czas, ziarno) {
+      // pierwsza z dwóch scen przejścia (składana w `renderuj` z udziałem 1 − miks)
+      renderujDrugi: function (scena, kamera) {
+        if (!rtDrugi) { rtDrugi = rtPelny(); rtDrugi.setSize(this.w || 4, this.h || 4); }
+        renderer.setRenderTarget(rtDrugi); renderer.render(scena, kamera);
+      },
+      zwolnijDrugi: function () { if (rtDrugi) { rtDrugi.dispose(); rtDrugi = null; } },
+      // `opcje.miks` = udział tej sceny wobec `renderujDrugi` (1 = sama ta; bez wywołania renderujDrugi zawsze 1), `opcje.warp` = smuga
+      renderuj: function (scena, kamera, czas, ziarno, opcje) {
+        var miks = opcje && opcje.miks != null ? opcje.miks : 1;
         renderer.setRenderTarget(rtScena); renderer.render(scena, kamera);
-        mJasne.uniforms.tD.value = rtScena.texture; przebieg(mJasne, rtA);
+        if (!rtDrugi) miks = 1;
+        var drugi = rtDrugi ? rtDrugi.texture : rtScena.texture;
+        mJasne.uniforms.tD.value = rtScena.texture; mJasne.uniforms.tD2.value = drugi; mJasne.uniforms.uMiks.value = miks; przebieg(mJasne, rtA);
         for (var i = 0; i < 2; i++) {
           mRozm.uniforms.tD.value = rtA.texture; mRozm.uniforms.uKier.value.set((1 + i) / this.mw, 0); przebieg(mRozm, rtB);
           mRozm.uniforms.tD.value = rtB.texture; mRozm.uniforms.uKier.value.set(0, (1 + i) / this.mh); przebieg(mRozm, rtA);
         }
-        mKon.uniforms.tScena.value = rtScena.texture; mKon.uniforms.tBloom.value = rtA.texture;
+        mKon.uniforms.tScena.value = rtScena.texture; mKon.uniforms.tDrugi.value = drugi; mKon.uniforms.uMiks.value = miks;
+        mKon.uniforms.uWarp.value = (opcje && opcje.warp) || 0; mKon.uniforms.tBloom.value = rtA.texture;
         mKon.uniforms.uCzas.value = czas; mKon.uniforms.uZiarno.value = ziarno;
         przebieg(mKon, null);
       }
@@ -295,7 +327,8 @@
   }
   var KOTWICE = { gora: [-50, -100, 0, -6], dol: [-50, 0, 0, 6], lewo: [-100, -50, -8, 0], prawo: [0, -50, 8, 0], srodek: [-50, -50, 0, 0] };
   function widocznyWGore(o) { for (; o; o = o.parent) if (!o.visible) return false; return true; }
-  function rzutujEtykiety(t) {
+  function rzutujEtykiety(t, krycie) {
+    if (krycie == null) krycie = 1;
     var w = kadr.w, h = kadr.h, k = gl.kamera, prost = [], i, e;
     for (i = 0; i < etAkt.length; i++) {
       e = etAkt[i]; var z = e.zrodlo; prost.push(null);
@@ -318,7 +351,7 @@
     for (i = 0; i < etAkt.length; i++) {
       e = etAkt[i];
       if (!ulozone[i]) { e.el.style.opacity = 0; continue; }
-      e.el.style.opacity = 1;
+      e.el.style.opacity = krycie;
       e.el.style.transform = 'translate(' + ulozone[i].x.toFixed(1) + 'px,' + ulozone[i].y.toFixed(1) + 'px)';
     }
   }
@@ -510,26 +543,36 @@
 
   /* ---------- kroki ---------- */
   // Zawartość 3D + etykiety + napisy kroku n. `plynnie` = dojazd kamery z bieżącego stanu; inaczej cięcie.
-  function wejdzWScene(n, plynnie) {
-    var p = biez, k = p.def.kroki[n - 1], i = n - 1, nazwa;
+  // Zawartość 3D kroku n w scenie (widoczność zestawów i grupy kroku + ich ustawienia). `tylkoGwiazdy` = sam zestaw
+  // `gwiazdy` (środek mostu gwiezdnego), także gdy krok go nie ma (łąka). Film w przejściu przełącza zawartość między
+  // dwoma renderami jednej klatki, dlatego to osobna, tania funkcja; zapamiętuje, co jest zastosowane.
+  function pokazZawartosc(p, n, tylkoGwiazdy) {
+    var k = p.def.kroki[n - 1], i = n - 1, nazwa;
     for (nazwa in p.zestawy) if (p.zestawy[nazwa].grupa) p.zestawy[nazwa].grupa.visible = false;
     for (var j = 0; j < p.kroki.length; j++) if (p.kroki[j] && p.kroki[j].grupa) p.kroki[j].grupa.visible = false;
     p.aktywne = [];
-    var z = {};
-    (k.zestawy || []).forEach(function (nz) {
+    var z = {}, nazwy = tylkoGwiazdy ? ((p.def.zestawy && p.def.zestawy.gwiazdy) ? ['gwiazdy'] : []) : (k.zestawy || []);
+    nazwy.forEach(function (nz) {
       var zz = zestaw(p, nz);
       if (zz.grupa) zz.grupa.visible = true;
       if (zz.ustaw) zz.ustaw({});            // powrót do ustawień domyślnych (krok nadpisuje je w `ustaw`)
       z[nz] = zz; p.aktywne.push(zz);
     });
-    if (k.zbuduj && !p.kroki[i]) {
-      var w = k.zbuduj(p.ctx) || {};
-      if (w.grupa) p.korzen.add(w.grupa);
-      p.kroki[i] = w;
+    if (!tylkoGwiazdy) {
+      if (k.zbuduj && !p.kroki[i]) {
+        var w = k.zbuduj(p.ctx) || {};
+        if (w.grupa) p.korzen.add(w.grupa);
+        p.kroki[i] = w;
+      }
+      if (p.kroki[i] && p.kroki[i].grupa) p.kroki[i].grupa.visible = true;
     }
-    if (p.kroki[i] && p.kroki[i].grupa) p.kroki[i].grupa.visible = true;
     p.z = z;
-    if (k.ustaw) k.ustaw(p.ctx, z, p.kroki[i]);
+    if (!tylkoGwiazdy && k.ustaw) k.ustaw(p.ctx, z, p.kroki[i]);
+    p.zastosowany = n; p.zastosowaneGwiazdy = !!tylkoGwiazdy;
+  }
+  function wejdzWScene(n, plynnie) {
+    var p = biez, k = p.def.kroki[n - 1], i = n - 1;
+    pokazZawartosc(p, n, false);
 
     czyscEtykiety();
     (k.etykiety || []).forEach(dodajEtykiete);
@@ -590,7 +633,7 @@
     if (el.start) el.start.hidden = true;
     if (wl && document.activeElement && document.activeElement.tagName === 'BUTTON') el.korzen.focus({ preventScroll: true });   // spacja ma pauzować, nie klikać
     if (wl) {
-      var os = L.osCzasuFilmu(biez.def, { dlugosc: 'skrot' });
+      var os = L.osCzasuFilmu(smoke && q && q.przejscie ? L.zPrzejsciami(biez.def, q.przejscie) : biez.def, { dlugosc: 'skrot' });   // hak smoke: &przejscie=<typ>
       var t = typeof t0 === 'number' ? t0 : (biez.krok >= biez.def.kroki.length ? 0 : L.celPrzewiniecia(os, os.kroki[biez.krok - 1].start, { idz: biez.krok }));
       if (ciecie) { clearTimeout(ciecie.zegar); ciecie = null; }
       el.czern.classList.remove('on');
@@ -602,6 +645,7 @@
     } else if (film) {
       film = null;
       el.czern.style.opacity = '';
+      if (post) post.zwolnijDrugi();
       el.postep.replaceChildren(document.createElement('i'));
       if (!bezPowrotu && biez && biez.pokazany) wejdzWScene(biez.krok, true);   // z powrotem w krokach: płynny dojazd do ujęcia kroku
     }
@@ -683,7 +727,7 @@
     var dtSur = (teraz - ostatnia) / 1000, dtR = Math.min(dtSur, 0.1); ostatnia = teraz;
     var p = biez, g = gl;
     if (!p.pokazany) return;
-    var k = p.def.kroki[p.pokazany - 1], uj = k.ujecie, wolno = ograniczonyRuch(), dt, u;
+    var k = p.def.kroki[p.pokazany - 1], uj = k.ujecie, wolno = ograniczonyRuch();
     fps.n++;
     if (teraz - fps.t0 >= 1000) {
       fps.wart = fps.n * 1000 / (teraz - fps.t0); fps.n = 0; fps.t0 = teraz;
@@ -692,51 +736,16 @@
       if (fps.slabe >= 3 && jakosc === 'pelna') { jakosc = 'oszczedna'; g.renderer.setPixelRatio(1); dopasuj(); }
     }
 
-    if (film) {
-      // film: jeden zegar; zawartość, kamera, czerń i napisy wyprowadzone z osi czasu (smoke: zegar stoi w chwili `t`)
-      // zegar filmu = czas rzeczywisty (dźwięk i napisy muszą iść równo także przy kilku klatkach na sekundę);
-      // obcięcie 1 s tylko na wypadek długiej przerwy, a schowana karta i tak pauzuje film (visibilitychange)
-      if (!smoke && !seans.pauza) film.t = Math.min(film.os.calosc, film.t + Math.min(dtSur, 1));
-      var lok = L.lokalizujFilm(film.os, film.t);
-      if (p.pokazany !== lok.krok) { krokFilmu(lok.krok); k = p.def.kroki[p.pokazany - 1]; uj = k.ujecie; }
-      var kr = film.os.kroki[lok.i];
-      dt = (smoke || seans.pauza) ? 0 : dtR;
-      tKrok = Math.max(0, lok.tKrok); tGlob = film.t; tReal += dt; tNapisy = film.t;
-      u = L.postepUjecia(film.t - kr.ruch.start, kr.ruch.czas);
-      var sp = lok.przejscie ? L.stanPrzejscia(lok.przejscie.typ, lok.przejscie.f) : null;
-      el.czern.style.opacity = sp ? String(sp.czern) : '0';
-    } else if (smoke) { tKrok = (typeof k.tPogl === 'number') ? k.tPogl : 5; tGlob = tKrok; dt = 0; u = smokeT == null ? 1 : smokeT; tNapisy = 0; }
-    else {
-      dt = dtR * L.tempoRuchu(wolno);
-      tGlob += dt; tKrok += dt; tReal += dtR; tNapisy += dtR; tDojazd += dtR;
-      u = L.postepUjecia(tKrok, uj.czas);
-    }
-
-    // kamera: reżyseria (ujęcie + dojazd + oddech) albo swobodne rozglądanie
-    if (rezyseria && film) ustawKamere(L.pozaFilmu(p.def, film.os, film.t), !smoke && !wolno);
-    else if (rezyseria) {
-      var s = L.stanUjecia(uj, u, { bezDollyZoom: wolno });
-      if (zrodloDojazdu && !smoke) {
-        var e = L.wygladz(tDojazd / (L.KINO.DOJAZD * (wolno ? 1.6 : 1)));
-        if (e >= 1) zrodloDojazdu = null; else s = mieszajStan(zrodloDojazdu, s, e);
-      }
-      ustawKamere(s, !smoke && !wolno);
-    } else g.sterowanie.update();
-    Z.u = u;
-
-    // tło przygaszane w ujęciu (przybliżenie „rack focus” bez postprocessingu głębi)
-    var tlo = uj.tlo == null ? 1 : (typeof uj.tlo === 'number' ? uj.tlo : uj.tlo[0] + (uj.tlo[1] - uj.tlo[0]) * u);
-    if (p.z.gwiazdy && p.z.gwiazdy.jasnosc) p.z.gwiazdy.jasnosc(tlo);
-
-    for (var i = 0; i < p.aktywne.length; i++) if (p.aktywne[i].animuj) p.aktywne[i].animuj(tGlob, dt);
-    var wlasne = p.kroki[p.pokazany - 1];
-    if (k.animuj) k.animuj(p.ctx, tKrok, wlasne, p.z, dt);
-    else if (wlasne && wlasne.krok) wlasne.krok(tKrok, p.z);       // domyślnie: ruch sceny kroku z jego `zbuduj`
-    for (var b = 0; b < p.doKamery.length; b++) p.doKamery[b].lookAt(g.kamera.position);
-
-    if (post && jakosc === 'pelna') post.renderuj(g.scena, g.kamera, smoke ? 0 : tReal, (smoke || wolno) ? 0 : 0.045);
-    else { g.renderer.setRenderTarget(null); g.renderer.render(g.scena, g.kamera); }
-    rzutujEtykiety(tKrok);
+    // Opis klatki — jeden kształt dla kroków i filmu: krok zawartości, czasy, poza kamery i obraz (sceny, miks,
+    // smuga, czerń). Kamera, animacja i render niżej czytają go bez pytania o tryb.
+    var opis = film ? opisFilmu(p, dtR, dtSur, wolno) : opisKrokow(p, k, uj, dtR, wolno);
+    tKrok = opis.tKrok; tGlob = opis.tGlob;
+    if (rezyseria) ustawKamere(opis.poza, !smoke && !wolno); else g.sterowanie.update();
+    Z.u = opis.u;
+    if (film) el.czern.style.opacity = String(opis.obraz.czern);
+    rysuj(p, opis, wolno);
+    obrazKlatki = opis.obraz;
+    rzutujEtykiety(tKrok, opis.obraz.etykiety);
 
     if (!smoke) {
       pokazNapis(tNapisy);
@@ -747,6 +756,75 @@
     }
     Z.klatki = (Z.klatki || 0) + 1;
     if (gotowosc) { console.log('ZJAWISKA_READY ' + gotowosc.id + ' ' + gotowosc.krok + ' ' + gotowosc.m); gotowosc = null; }
+  }
+  // Kroki: czas kroku, ujęcie z dojazdem z poprzedniej kamery, jedna scena.
+  function opisKrokow(p, k, uj, dtR, wolno) {
+    var dt, u;
+    if (smoke) { tKrok = (typeof k.tPogl === 'number') ? k.tPogl : 5; tGlob = tKrok; dt = 0; u = smokeT == null ? 1 : smokeT; tNapisy = 0; }
+    else {
+      dt = dtR * L.tempoRuchu(wolno);
+      tGlob += dt; tKrok += dt; tReal += dtR; tNapisy += dtR; tDojazd += dtR;
+      u = L.postepUjecia(tKrok, uj.czas);
+    }
+    var poza = null;
+    if (rezyseria) {
+      poza = L.stanUjecia(uj, u, { bezDollyZoom: wolno });
+      if (zrodloDojazdu && !smoke) {
+        var e = L.wygladz(tDojazd / (L.KINO.DOJAZD * (wolno ? 1.6 : 1)));
+        if (e >= 1) zrodloDojazdu = null; else poza = mieszajStan(zrodloDojazdu, poza, e);
+      }
+    }
+    var tk = tKrok, uu = u;
+    return { tKrok: tKrok, tGlob: tGlob, dt: dt, u: u, poza: poza,
+      obraz: L.obrazJednej(p.pokazany - 1),
+      czasy: function () { return { tKrok: tk, u: uu }; } };
+  }
+  // Film: jeden zegar (czas rzeczywisty; obcięcie 1 s tylko na długą przerwę, schowana karta pauzuje) — zawartość,
+  // kamera, obraz przejścia i napisy z osi czasu. Smoke: zegar stoi w chwili `t`.
+  function opisFilmu(p, dtR, dtSur, wolno) {
+    if (!smoke && !seans.pauza) film.t = Math.min(film.os.calosc, film.t + Math.min(dtSur, 1));
+    var os = film.os, lok = L.lokalizujFilm(os, film.t);
+    if (p.pokazany !== lok.krok) krokFilmu(lok.krok);
+    var dt = (smoke || seans.pauza) ? 0 : dtR;
+    tReal += dt; tNapisy = film.t;
+    var czasy = function (i) {
+      var kr = os.kroki[i];
+      return { tKrok: Math.max(0, film.t - kr.start), u: L.postepUjecia(film.t - kr.ruch.start, kr.ruch.czas) };
+    };
+    var c = czasy(lok.i), zPassem = !!post && jakosc === 'pelna';
+    var obraz = lok.przejscie
+      ? L.obrazPrzejscia(lok.przejscie.typ, lok.przejscie.f, lok.przejscie.do - 1, lok.przejscie.do, zPassem)
+      : L.obrazJednej(lok.i);
+    return { tKrok: c.tKrok, tGlob: film.t, dt: dt, u: c.u, poza: rezyseria ? L.pozaFilmu(p.def, os, film.t) : null, obraz: obraz, czasy: czasy };
+  }
+  // Zawartość sceny `sc` ({i, gwiazdy}) w chwili klatki: tło ujęcia, animacje zestawów i kroku, obiekty do kamery.
+  // `dtZestawow`: zestawy są wspólne dla obu scen przejścia, więc przyrost czasu dostają raz na klatkę (scena ostatnia).
+  function animujScene(p, sc, opis, dtZestawow) {
+    if (p.zastosowany !== sc.i + 1 || p.zastosowaneGwiazdy !== !!sc.gwiazdy) pokazZawartosc(p, sc.i + 1, sc.gwiazdy);
+    var k = p.def.kroki[sc.i], uj = k.ujecie, c = opis.czasy(sc.i);
+    // tło przygaszane w ujęciu (przybliżenie „rack focus” bez postprocessingu głębi)
+    var tlo = uj.tlo == null ? 1 : (typeof uj.tlo === 'number' ? uj.tlo : uj.tlo[0] + (uj.tlo[1] - uj.tlo[0]) * c.u);
+    if (p.z.gwiazdy && p.z.gwiazdy.jasnosc) p.z.gwiazdy.jasnosc(sc.gwiazdy ? 1 : tlo);
+    for (var i = 0; i < p.aktywne.length; i++) if (p.aktywne[i].animuj) p.aktywne[i].animuj(opis.tGlob, dtZestawow);
+    if (!sc.gwiazdy) {
+      var wlasne = p.kroki[sc.i];
+      if (k.animuj) k.animuj(p.ctx, c.tKrok, wlasne, p.z, opis.dt);
+      else if (wlasne && wlasne.krok) wlasne.krok(c.tKrok, p.z);       // domyślnie: ruch sceny kroku z jego `zbuduj`
+    }
+    for (var b = 0; b < p.doKamery.length; b++) p.doKamery[b].lookAt(gl.kamera.position);
+  }
+  // Render klatki: jedna scena albo dwie (przenikanie, most) złożone w passie obrazu; smuga przelotu w passie.
+  function rysuj(p, opis, wolno) {
+    var g = gl, o = opis.obraz, czas = smoke ? 0 : tReal, ziarno = (smoke || wolno) ? 0 : 0.045;
+    if (post && jakosc === 'pelna') {
+      // sceny w kolejności z obrazPrzejscia: krok zawartości ostatni (po renderze w scenie zostaje on — etykiety DOM)
+      if (o.sceny.length === 2) { animujScene(p, o.sceny[0], opis, 0); post.renderujDrugi(g.scena, g.kamera); }
+      animujScene(p, o.sceny[o.sceny.length - 1], opis, opis.dt);
+      post.renderuj(g.scena, g.kamera, czas, ziarno, { miks: o.sceny.length === 2 ? o.miks : 1, warp: o.warp });
+    } else {
+      animujScene(p, o.sceny[0], opis, opis.dt);
+      g.renderer.setRenderTarget(null); g.renderer.render(g.scena, g.kamera);
+    }
   }
   function start() { if (!raf) { ostatnia = performance.now(); fps.t0 = ostatnia; fps.n = 0; raf = requestAnimationFrame(klatka); } }
 
@@ -848,7 +926,7 @@
   Z.stan = function () {
     return { tryb: tryb, id: biez && tryb === 'prezentacja' ? biez.def.id : null, krok: biez ? biez.krok : 0, pokazany: biez ? biez.pokazany : 0,
       liczba: biez ? biez.def.kroki.length : 0, tween: !!zrodloDojazdu || !!ciecie, ciecie: !!ciecie, rezyseria: rezyseria,
-      seans: !!film, pauza: seans.pauza, film: film ? { t: film.t, calosc: film.os.calosc, krok: biez && biez.pokazany } : null, u: Z.u || 0, napis: napisy.idx, wersow: napisy.h.length, cisza: el.korzen.classList.contains('zj-cisza'),
+      seans: !!film, pauza: seans.pauza, obraz: obrazKlatki ? { sceny: obrazKlatki.sceny.length, miks: obrazKlatki.miks, warp: obrazKlatki.warp, czern: obrazKlatki.czern, etykiety: obrazKlatki.etykiety } : null, film: film ? { t: film.t, calosc: film.os.calosc, krok: biez && biez.pokazany } : null, u: Z.u || 0, napis: napisy.idx, wersow: napisy.h.length, cisza: el.korzen.classList.contains('zj-cisza'),
       kadr: { tryb: kadr.tryb, x: kadr.x, w: kadr.w, h: kadr.h, y: kadr.y }, post: !!post && jakosc === 'pelna', jakosc: jakosc, fps: Math.round(fps.wart), klatki: Z.klatki || 0,
       kamera: gl ? { poz: gl.kamera.position.toArray(), fov: stanKamery.fov, komp: stanKamery.komp } : null };
   };

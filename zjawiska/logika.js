@@ -59,6 +59,7 @@
     if ('film' in p) {
       o.film = true;
       if (_chwila(p.t) !== undefined) o.t = _chwila(p.t);
+      if (TYPY_PRZEJSC.indexOf(p.przejscie) >= 0) o.przejscie = p.przejscie;   // podgląd: każde przejście tego typu
     }
     return o;
   }
@@ -428,12 +429,43 @@
   function stanPrzejscia(typ, f) {
     f = f < 0 ? 0 : (f > 1 ? 1 : f);
     var szczyt = wygladz(1 - Math.abs(2 * f - 1));
-    var o = { czern: 0, miks: f < 0.5 ? 0 : 1, zawartosc: 1, warp: 0 };
+    var o = { czern: 0, miks: f < 0.5 ? 0 : 1, zawartosc: 1, warp: 0, szczyt: szczyt };
     if (typ === 'czern') o.czern = szczyt;
     else if (typ === 'przenikanie') o.miks = wygladz(f);
     else if (typ === 'most') o.zawartosc = f < 0.35 ? 1 - wygladz(f / 0.35) : (f > 0.65 ? wygladz((f - 0.65) / 0.35) : 0);
     else if (typ === 'przelot') { o.warp = szczyt; o.zawartosc = 1 - 0.6 * szczyt; }
     return o;
+  }
+  // Obraz klatki bez przejścia: jedna scena kroku i, etykiety w pełni.
+  function obrazJednej(i, czern) { return { sceny: [{ i: i, gwiazdy: false }], miks: 1, warp: 0, czern: czern || 0, etykiety: 1 }; }
+  // Co rysuje klatka przejścia z kroku iA do iB w fazie f. `sceny` w kolejności renderu — krok zawartości (iA przed
+  // zmianą, iB po) ZAWSZE ostatni (po renderze w scenie zostaje on: etykiety DOM liczą się z jego obiektów); `miks` =
+  // udział ostatniej sceny w obrazie; `gwiazdy` = sam zestaw gwiazdy. Przenikanie = oba kroki naraz; most = krok gaśnie
+  // do samych gwiazd i nowy się z nich wyłania; przelot = smuga `warp`. `etykiety` = krycie etykiet DOM (gasną ku
+  // zmianie zawartości i wracają). Bez passu obrazu (słaby sprzęt) jedna scena: przenikanie → przygaszenie do 0,6,
+  // most i przelot → czerń (spec §3 p. 6).
+  function obrazPrzejscia(typ, f, iA, iB, zPassem) {
+    var s = stanPrzejscia(typ, f), biez = f < 0.5 ? iA : iB, inny = biez === iA ? iB : iA;
+    var o = obrazJednej(biez, s.czern);
+    o.etykiety = 1 - s.szczyt;
+    if (!zPassem) {
+      if (typ === 'przenikanie') o.czern = 0.6 * s.szczyt;
+      else if (typ === 'most') o.czern = 1 - s.zawartosc;
+      else if (typ === 'przelot') o.czern = s.szczyt;
+      return o;
+    }
+    if (typ === 'przenikanie' && s.miks > 0 && s.miks < 1) {
+      o.sceny = [{ i: inny, gwiazdy: false }, { i: biez, gwiazdy: false }];
+      o.miks = biez === iB ? s.miks : 1 - s.miks;
+    } else if (typ === 'most' && s.zawartosc < 1) {
+      o.sceny = [{ i: biez, gwiazdy: true }, { i: biez, gwiazdy: false }];
+      o.miks = s.zawartosc;
+    } else o.warp = s.warp;
+    return o;
+  }
+  // Hak podglądu przejść (smoke): kopia definicji z jednym typem przejścia w każdym kroku poza pierwszym.
+  function zPrzejsciami(def, typ) {
+    return Object.assign({}, def, { kroki: def.kroki.map(function (k, i) { return i ? Object.assign({}, k, { przejscie: typ }) : k; }) });
   }
   // Interpolacja pozycji wokół środka `s` (np. Ziemi): kierunek po łuku wielkiego koła, promień logarytmicznie —
   // tor nie przechodzi przez kulę, w którą liniowe `mieszaj3` potrafi wejść. Bez `s` = liniowo.
@@ -541,7 +573,7 @@
     parsujHash: parsujHash, parsujZapytanie: parsujZapytanie, budujHash: budujHash,
     ograniczKrok: ograniczKrok, przejscie: przejscie, akcjaKlawisza: akcjaKlawisza,
     uzupelnijKroki: uzupelnijKroki, TYPY_PRZEJSC: TYPY_PRZEJSC, przejscieKroku: przejscieKroku, wersyFilmu: wersyFilmu,
-    rozdzialyFilmu: rozdzialyFilmu, celPrzewiniecia: celPrzewiniecia, OBROT_MAX: OBROT_MAX, OBROT_MOST: OBROT_MOST, osCzasuFilmu: osCzasuFilmu, lokalizujFilm: lokalizujFilm, stanPrzejscia: stanPrzejscia, mieszajWokol: mieszajWokol, pozaFilmu: pozaFilmu,
+    obrazJednej: obrazJednej, obrazPrzejscia: obrazPrzejscia, zPrzejsciami: zPrzejsciami, rozdzialyFilmu: rozdzialyFilmu, celPrzewiniecia: celPrzewiniecia, OBROT_MAX: OBROT_MAX, OBROT_MOST: OBROT_MOST, osCzasuFilmu: osCzasuFilmu, lokalizujFilm: lokalizujFilm, stanPrzejscia: stanPrzejscia, mieszajWokol: mieszajWokol, pozaFilmu: pozaFilmu,
     wygladz: wygladz, mieszaj3: mieszaj3, tempoRuchu: tempoRuchu, petla: petla, odcinek: odcinek,
     RYC4: RYC4, strefaPierscienia: strefaPierscienia, pozycjaNaOsi: pozycjaNaOsi, przemiatanie: przemiatanie,
     skretOdbitej: skretOdbitej, amplitudaUmowna: amplitudaUmowna,
