@@ -22,56 +22,9 @@
   /* =====================================================================
      Narzędzia budowy scen (wołane tylko w przeglądarce, z ctx.THREE)
      ===================================================================== */
-  function pol(T, r, fi, y) { return new T.Vector3(r * Math.cos(fi), y || 0, -r * Math.sin(fi)); }
-  function mat(c, kolor, o) { return new c.THREE.MeshBasicMaterial(Object.assign({ color: c.kolor(kolor) }, o || {})); }
-  function matL(c, kolor, o) { return new c.THREE.MeshLambertMaterial(Object.assign({ color: c.kolor(kolor) }, o || {})); }
-  function przezr(c, kolor, krycie, o) { return mat(c, kolor, Object.assign({ transparent: true, opacity: krycie, depthWrite: false }, o || {})); }
-
-  function linia(c, punkty, kolor, o) {
-    var T = c.THREE; o = o || {};
-    var g = new T.BufferGeometry().setFromPoints(punkty);
-    var m = o.kreski
-      ? new T.LineDashedMaterial({ color: c.kolor(kolor), dashSize: o.kreski[0], gapSize: o.kreski[1], transparent: true, opacity: o.krycie == null ? 1 : o.krycie })
-      : new T.LineBasicMaterial({ color: c.kolor(kolor), transparent: true, opacity: o.krycie == null ? 1 : o.krycie });
-    var l = new T.Line(g, m);
-    if (o.kreski) l.computeLineDistances();
-    return l;
-  }
-  function punktyOkregu(T, r, n, y) { var p = []; for (var i = 0; i <= n; i++) p.push(pol(T, r, i / n * TAU, y)); return p; }
-  function okrag(c, r, kolor, o) { return linia(c, punktyOkregu(c.THREE, r, 128, (o && o.y) || 0), kolor, o); }
-  function rura(c, punkty, promien, kolor, o) {
-    var T = c.THREE;
-    var krzywa = (typeof punkty.getPoint === 'function') ? punkty : new T.CatmullRomCurve3(punkty, !!(o && o.zamknieta));
-    var g = new T.TubeGeometry(krzywa, (o && o.odcinki) || 96, promien, 6, !!(o && o.zamknieta));
-    var m = new T.Mesh(g, (o && o.material) || mat(c, kolor, o && o.mat));
-    m.userData.krzywa = krzywa;
-    return m;
-  }
-  // Miękka poświata (sprite addytywny) — tania namiastka bloomu przy samym obiekcie; tekstura jedna na kolor.
-  function poswiata(c, kolor, rozmiar, krycie) {
-    var T = c.THREE; c._posw = c._posw || {};
-    if (!c._posw[kolor]) {
-      var cv = document.createElement('canvas'); cv.width = cv.height = 64;
-      var x = cv.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32), k = c.kolor(kolor);
-      var rgb = Math.round(k.r * 255) + ',' + Math.round(k.g * 255) + ',' + Math.round(k.b * 255);
-      g.addColorStop(0, 'rgba(' + rgb + ',1)'); g.addColorStop(0.25, 'rgba(' + rgb + ',.45)'); g.addColorStop(1, 'rgba(' + rgb + ',0)');
-      x.fillStyle = g; x.fillRect(0, 0, 64, 64);
-      c._posw[kolor] = new T.CanvasTexture(cv);
-    }
-    var sp = new T.Sprite(new T.SpriteMaterial({ map: c._posw[kolor], transparent: true, opacity: krycie == null ? 0.8 : krycie, depthWrite: false, blending: T.AdditiveBlending }));
-    sp.scale.set(rozmiar, rozmiar, 1);
-    return sp;
-  }
-  function kula(c, r, kolor, o) { return new c.THREE.Mesh(new c.THREE.SphereGeometry(r, 20, 14), (o && o.material) || mat(c, kolor, o)); }
-  var OS_Y = null;
-  function skieruj(T, obiekt, kier) {            // ustaw oś +y obiektu (stożek, walec) wzdłuż `kier`
-    OS_Y = OS_Y || new T.Vector3(0, 1, 0);
-    obiekt.quaternion.setFromUnitVectors(OS_Y, kier.clone().normalize());
-  }
-  function grot(c, kolor, rozmiar) {
-    var s = rozmiar || 0.12;
-    return new c.THREE.Mesh(new c.THREE.ConeGeometry(s * 0.55, s * 1.6, 12), mat(c, kolor));
-  }
+  var R = wNode ? require('./rysunek.js') : root.ZjawiskaRysunek;   // wspólne prymitywy scen (zjawiska/rysunek.js)
+  var pol = R.pol, mat = R.mat, matL = R.matL, przezr = R.przezr, linia = R.linia, okrag = R.okrag,
+    rura = R.rura, poswiata = R.poswiata, kula = R.kula, skieruj = R.skieruj, grot = R.grot;
   // Fala ze skrętem jako helisa wzdłuż lokalnej osi x (0..dl). „Bieg” fali = obrót helisy wokół osi
   // (statyczna geometria, zero realokacji). skret = +1 / −1 (strona skrętu), kier = +1 gdy fala biegnie ku +x.
   function fala(c, o) {
@@ -555,7 +508,6 @@
           } };
       },
       etykiety: [{ tekst: 'wir', poz: [0.9, 0.05, 0.9], kotwica: 'prawo', klasa: 'granat' }],
-      animuj: function (c, t, w) { w.krok(t); }
     },
 
     /* ---------- 2 ---------- */
@@ -663,7 +615,6 @@
         { tekst: 'Ziemia', poz: [-1.6, -1.6, 0], kotwica: 'dol', klasa: 'granat' },
         { tekst: 'żyroskop (w powiększeniu)', poz: [4.1, -0.7, 0], kotwica: 'dol' }
       ],
-      animuj: function (c, t, w) { w.krok(t); }
     },
 
     /* ---------- 5 ---------- */
@@ -701,7 +652,6 @@
           krok: function (t) { ustaw(A, 3.7, 2.75, 0.5, t); ustaw(B, 1.5, 2.3 + t * 0.33, 1.9, t); } };
       },
       etykiety: [{ tekst: 'granica bezruchu', poz: [-1.38, 0, 1.38], kotwica: 'lewo', klasa: 'zloto', dy: 10 }],
-      animuj: function (c, t, w) { w.krok(t); }
     },
 
     /* ---------- 6 ---------- */
@@ -764,7 +714,6 @@
             var u = L.odcinek(f, 0.05, 0.7); kB.getPoint(u, b.position); b.visible = u < 0.995;
           } };
       },
-      animuj: function (c, t, w) { w.krok(t); }
     },
 
     /* ---------- 8 ---------- */
@@ -962,7 +911,6 @@
           } };
       },
       etykiety: [{ tekst: 'miasto', poz: [0, 0.8, -4.5], kotwica: 'gora', klasa: 'w' }],
-      animuj: function (c, t, w) { w.krok(t); }
     },
 
     /* ---------- 14 ---------- */
@@ -1000,7 +948,6 @@
         { tekst: 'pęknięcie, które daje zysk: spory ułamek prędkości światła', poz: [-2.6, -0.35, 0], kotwica: 'prawo', klasa: 'w', dx: -40 },
         { tekst: 'błysk światła', poz: [-2.6, -1.85, 0], kotwica: 'prawo', klasa: 'zar', dx: -40 }
       ],
-      animuj: function (c, t, w) { w.krok(t); }
     },
 
     /* ---------- 15 ---------- */
@@ -1154,7 +1101,6 @@
         { tekst: 'Nottingham, 2017\nfale na wodzie krążącej w wirze', poz: [-2.6, 0.7, -1.5], kotwica: 'gora', klasa: 'w' },
         { tekst: 'Glasgow, 2020\ndźwięk i wirujący, pochłaniający dysk', poz: [2.2, 2.35, 0], kotwica: 'gora', klasa: 'w' }
       ],
-      animuj: function (c, t, w) { w.krok(t); }
     },
 
     /* ---------- 20 ---------- */
@@ -1224,7 +1170,6 @@
         { tekst: 'wzór zmian obiega pierścień:\nobrót syntetyczny', poz: [0, 0.05, 1.45], kotwica: 'dol', klasa: 'granat', dy: 4 },
         { tekst: 'trybuny: nikt nie biega, a fala obiega stadion', poz: [0, 0.9, -2.75], kotwica: 'gora', klasa: 'm', dy: -6 }
       ],
-      animuj: function (c, t, w) { w.krok(t); }
     },
 
     /* ---------- 22 ---------- */
@@ -1323,7 +1268,6 @@
         { tekst: 'pierścień bardziej stratny:\nwzmocnienie większe', poz: [2.4, 0, 1.1], kotwica: 'dol', klasa: 'zar', dy: 8 },
         { tekst: 'elektronika, która kołysze obwodami:\nto ona płaci', poz: [0, 0.5, -3], kotwica: 'gora', klasa: 'zloto', dy: -8 }
       ],
-      animuj: function (c, t, w) { w.krok(t); }
     },
 
     /* ---------- 24 ---------- */
@@ -1355,7 +1299,6 @@
         { tekst: 'zostaje w dziurze na zawsze:\nok. 71% masy', poz: [4.05, -0.7, 0], kotwica: 'prawo', klasa: 'w', dx: 8 },
         { tekst: 'dziura wirująca najszybciej,\njak pozwala teoria', poz: [0, -1.25, 0], kotwica: 'dol', dy: 26 }
       ],
-      animuj: function (c, t, w) { w.krok(t); }
     },
 
     /* ---------- 25 ---------- */
@@ -1402,7 +1345,6 @@
         { tekst: 'wirująca czarna dziura\n(obrót maksymalny)', poz: [-5.4, -1.5, 0], kotwica: 'prawo', klasa: 'w', dy: -38 },
         { tekst: 'ułamek masy zamieniany w energię, skala liniowa', poz: [5.4, -2.3, 0], kotwica: 'lewo', klasa: 'm', dy: 4 }
       ],
-      animuj: function (c, t, w) { w.krok(t); }
     },
 
     /* ---------- 26 ---------- */
@@ -1448,7 +1390,6 @@
         { tekst: 'Gaia BH1: około półtora tysiąca\nlat świetlnych stąd', poz: [6.2, 2.5, -9], kotwica: 'gora', klasa: 'lak', dy: -10 },
         { tekst: 'tu nie ma grawitacji\nani czarnej dziury', poz: [0, 0.05, 1.5], kotwica: 'dol', klasa: 'm', dy: 6 }
       ],
-      animuj: function (c, t, w) { w.krok(t); }
     },
 
     /* ---------- 27 ---------- */
@@ -1494,7 +1435,6 @@
         { tekst: 'linie pola magnetycznego', poz: [-1.2, 3.1, 0], kotwica: 'lewo', klasa: 'zloto', dx: -8 },
         { tekst: 'ten sam silnik?\npewności nie ma', poz: [3.6, 2.2, 0], kotwica: 'prawo', klasa: 'duza' }
       ],
-      animuj: function (c, t, w) { w.krok(t); }
     },
 
     /* ---------- 28 ---------- */

@@ -17,8 +17,9 @@
    Kontrakt pliku zjawiska: `Zjawiska.rejestruj({ id, tytul, zrodla, pochodzenie, zestawy, kroki })`
      zestawy[nazwa](ctx) → { grupa, ustaw?(opcje), animuj?(t, dt) }   — obiekty wspólne dla wielu kroków, budowane raz
      krok = { czesc, tytul, narracja[], ramka?, podpis, przypisy?, scena, ujecie:{ruch,tor,cel,fov,czas,komp?,przechyl?,dollyZoom?,tlo?},
-              zestawy?[], ustaw?(ctx, z), zbuduj?(ctx) → { grupa, etykiety?, ... }, etykiety?[], przyrzad?,
-              animuj?(ctx, t, wlasne, z), tPogl? }
+              zestawy?[], ustaw?(ctx, z), zbuduj?(ctx) → { grupa, etykiety?, krok?(t, z), ... }, etykiety?[], przyrzad?,
+              animuj?(ctx, t, wlasne, z), tPogl?, strefa?[x,y,z,r] }   (strefa = bryła, w którą kamera ujęcia nie wchodzi; pilnuje test „kontrakt kina”)
+   Bez `animuj` widok co klatkę woła `krok(t, z)` z wyniku `zbuduj` (jeśli jest); `animuj` go zastępuje.
    Sceny budowane leniwie przy pierwszym wejściu w krok; przy wyjściu tylko `visible = false` (zero realokacji).
    Haki testowe: `?smoke&zjawisko=<id>&krok=N[&t=0..1]` — kamera od razu w kadrze końcowym ujęcia (albo w postępie t),
    napisy w całości, UI widoczne, bez ziarna i cięć; marker `ZJAWISKA_READY <id> <krok> <liczba>`. */
@@ -632,7 +633,9 @@
     if (p.z.gwiazdy && p.z.gwiazdy.jasnosc) p.z.gwiazdy.jasnosc(tlo);
 
     for (var i = 0; i < p.aktywne.length; i++) if (p.aktywne[i].animuj) p.aktywne[i].animuj(tGlob, dt);
-    if (k.animuj) k.animuj(p.ctx, tKrok, p.kroki[p.pokazany - 1], p.z, dt);
+    var wlasne = p.kroki[p.pokazany - 1];
+    if (k.animuj) k.animuj(p.ctx, tKrok, wlasne, p.z, dt);
+    else if (wlasne && wlasne.krok) wlasne.krok(tKrok, p.z);       // domyślnie: ruch sceny kroku z jego `zbuduj`
 
     if (post && jakosc === 'pelna') post.renderuj(g.scena, g.kamera, smoke ? 0 : tReal, (smoke || wolno) ? 0 : 0.045);
     else { g.renderer.setRenderTarget(null); g.renderer.render(g.scena, g.kamera); }
