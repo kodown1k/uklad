@@ -311,6 +311,20 @@
     return n;
   }
   function _trojka(v) { return Array.isArray(v) && v.length === 3 && v.every(function (x) { return typeof x === 'number' && isFinite(x); }); }
+  // Domyślne pola kroków: `def.domyslne` (np. { zestawy: [...], strefa: [...] }) trafia do każdego kroku, który
+  // tego pola nie ma. Pole obecne w kroku wygrywa, także `null` (krok jawnie bez strefy). Tablice kopiowane, żeby
+  // kroki nie dzieliły jednego obiektu. Plik zjawiska woła to na własnej definicji — widok i testy widzą to samo.
+  function uzupelnijKroki(def) {
+    var d = def && def.domyslne;
+    if (!d || !Array.isArray(def.kroki)) return def;
+    def.kroki = def.kroki.map(function (k) {
+      var o = {};
+      for (var pole in d) if (!(pole in k)) o[pole] = Array.isArray(d[pole]) ? d[pole].slice() : d[pole];
+      for (var w in k) o[w] = k[w];
+      return o;
+    });
+    return def;
+  }
   function sprawdzZjawisko(def) {
     var u = [];
     if (!def || typeof def !== 'object') return ['brak definicji'];
@@ -337,7 +351,7 @@
   var api = {
     parsujHash: parsujHash, parsujZapytanie: parsujZapytanie, budujHash: budujHash,
     ograniczKrok: ograniczKrok, przejscie: przejscie, akcjaKlawisza: akcjaKlawisza,
-    wygladz: wygladz, mieszaj3: mieszaj3, tempoRuchu: tempoRuchu, petla: petla, odcinek: odcinek,
+    uzupelnijKroki: uzupelnijKroki, wygladz: wygladz, mieszaj3: mieszaj3, tempoRuchu: tempoRuchu, petla: petla, odcinek: odcinek,
     RYC4: RYC4, strefaPierscienia: strefaPierscienia, pozycjaNaOsi: pozycjaNaOsi, przemiatanie: przemiatanie,
     skretOdbitej: skretOdbitej, amplitudaUmowna: amplitudaUmowna,
     RYC5: RYC5, ulamekObrotu: ulamekObrotu, dlugosciSlupkow: dlugosciSlupkow, ileRazy: ileRazy,

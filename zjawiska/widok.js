@@ -20,6 +20,7 @@
               zestawy?[], ustaw?(ctx, z), zbuduj?(ctx) → { grupa, etykiety?, krok?(t, z), ... }, etykiety?[], przyrzad?,
               animuj?(ctx, t, wlasne, z), tPogl?, strefa?[x,y,z,r] }   (strefa = bryła, w którą kamera ujęcia nie wchodzi; pilnuje test „kontrakt kina”)
    Bez `animuj` widok co klatkę woła `krok(t, z)` z wyniku `zbuduj` (jeśli jest); `animuj` go zastępuje.
+   `ctx.doKamery(obiekt)` → obiekt co klatkę zwrócony do kamery (po animacji kroku), bez lookAt w kodzie zjawiska.
    Sceny budowane leniwie przy pierwszym wejściu w krok; przy wyjściu tylko `visible = false` (zero realokacji).
    Haki testowe: `?smoke&zjawisko=<id>&krok=N[&t=0..1]` — kamera od razu w kadrze końcowym ujęcia (albo w postępie t),
    napisy w całości, UI widoczne, bez ziarna i cięć; marker `ZJAWISKA_READY <id> <krok> <liczba>`. */
@@ -230,7 +231,7 @@
   function przebieg(def) {
     if (przebiegi[def.id]) return przebiegi[def.id];
     var T = window.THREE, g = zapewnijGL();
-    var p = { def: def, korzen: new T.Group(), zestawy: {}, kroki: [], krok: 0, pokazany: 0, odwiedzone: {}, aktywne: [], z: {} };
+    var p = { def: def, korzen: new T.Group(), zestawy: {}, kroki: [], krok: 0, pokazany: 0, odwiedzone: {}, aktywne: [], z: {}, doKamery: [] };
     p.korzen.name = 'zjawisko:' + def.id;
     g.scena.add(p.korzen);
     p.ctx = {
@@ -240,10 +241,33 @@
       ograniczonyRuch: ograniczonyRuch,
       rozmiar: function () { return { w: kadr.w, h: kadr.h, dpr: g.renderer.getPixelRatio() }; },
       zestaw: function (nazwa) { return zestaw(p, nazwa); },
+      // obiekt zawsze zwrócony do kamery (zegar, tabliczka, szyba): widok robi lookAt co klatkę po animacji kroku
+      doKamery: function (o) { p.doKamery.push(o); return o; },
       przyrzad: ustawSlupki
     };
     przebiegi[def.id] = p;
     return p;
+  }
+  // Zwolnienie zasobów GPU przebiegu (geometrie, materiały, tekstury) i usunięcie go ze sceny. Wołane przy powrocie
+  // do Układu i przy przejściu na inne zjawisko; powrót z listy do TEGO SAMEGO zjawiska dalej korzysta z pamięci.
+  // Geometrii sprite'ów nie zwalniamy: w Three r128 wszystkie Sprite dzielą jedną geometrię (też te w solar.js).
+  function zwolnijPrzebieg(p) {
+    var mats = [];
+    p.korzen.traverse(function (o) {
+      if (o.geometry && !o.isSprite) o.geometry.dispose();
+      if (o.material) mats = mats.concat(o.material);
+    });
+    mats.forEach(function (m) {
+      for (var klucz in m) { var v = m[klucz]; if (v && v.isTexture) v.dispose(); }
+      if (m.uniforms) for (var u in m.uniforms) { var w = m.uniforms[u] && m.uniforms[u].value; if (w && w.isTexture) w.dispose(); }
+      m.dispose();
+    });
+    if (gl) gl.scena.remove(p.korzen);
+    delete przebiegi[p.def.id];
+    if (biez === p) { biez = null; el.kropki.replaceChildren(); czyscEtykiety(); }
+  }
+  function zwolnijWszystkie(oprocz) {
+    Object.keys(przebiegi).forEach(function (id) { if (przebiegi[id] !== oprocz) zwolnijPrzebieg(przebiegi[id]); });
   }
   function zestaw(p, nazwa) {
     if (p.zestawy[nazwa]) return p.zestawy[nazwa];
@@ -636,6 +660,7 @@
     var wlasne = p.kroki[p.pokazany - 1];
     if (k.animuj) k.animuj(p.ctx, tKrok, wlasne, p.z, dt);
     else if (wlasne && wlasne.krok) wlasne.krok(tKrok, p.z);       // domyślnie: ruch sceny kroku z jego `zbuduj`
+    for (var b = 0; b < p.doKamery.length; b++) p.doKamery[b].lookAt(g.kamera.position);
 
     if (post && jakosc === 'pelna') post.renderuj(g.scena, g.kamera, smoke ? 0 : tReal, (smoke || wolno) ? 0 : 0.045);
     else { g.renderer.setRenderTarget(null); g.renderer.render(g.scena, g.kamera); }
@@ -678,6 +703,7 @@
       if (dzwiek && dzwiek.on) ustawDzwiek(false);
       ustawPanel(false);
       if (t === 'uklad' && document.fullscreenElement === el.korzen) { try { document.exitFullscreen(); } catch (_) { /* nic */ } }
+      if (t === 'uklad') zwolnijWszystkie(null);        // Układ renderuje sam — zjawiska nie trzymają pamięci GPU
     }
     obudzUI();
   }
@@ -721,8 +747,8 @@
       el.komunikat.textContent = '';
       ustawTryb('prezentacja');
       try {
+        zwolnijWszystkie(przebiegi[def.id]);       // inne zjawisko: poprzednie sceny zwolnione
         var p = przebieg(def);
-        if (biez && biez !== p) biez.korzen.visible = false;
         p.korzen.visible = true;
         if (biez !== p || !el.kropki.children.length) { biez = p; zbudujStalePanelu(p); }
         dopasuj();

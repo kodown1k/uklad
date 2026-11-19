@@ -642,7 +642,7 @@
         'I nagle gaśnie w połowie drogi, jakby ktoś ją zdmuchnął. Zapamiętaj ten moment, bo w nim jest schowane wszystko.'
       ],
       podpis: 'Łąka po zachodzie słońca: satelita sunie i gaśnie. Kadr poglądowy, tempo przelotu przyspieszone; w naturze trwa to kilka minut.',
-      scena: 'laka',
+      scena: 'laka', strefa: null,
       ujecie: { ruch: 'tilt: z trawy w niebo, z perspektywy człowieka na łące', tor: [[0, 1.3, 0.5], [0, 1.48, 0.25], [0, 1.6, 0]], cel: [[0, 3, -60], [0, 22, -60], [0, 46, -56]], fov: 55, czas: 16, komp: [0, -0.04] }, tPogl: 8,
       zestawy: ['laka'],
       zbuduj: function (c) {
@@ -660,9 +660,8 @@
         'Gaśnie w chwili, gdy sam wlatuje w cień planety. Przez te kilka minut patrzyłeś na coś, co było jeszcze w dniu, kiedy ty byłeś już w nocy. Działa ten obraz? Trzymaj go do samego końca.'
       ],
       podpis: 'Ty na nocnej stronie Ziemi, satelita jeszcze w słońcu. Schemat: wysokość orbity mocno wyolbrzymiona, nie w skali.',
-      scena: 'cien', strefa: STREFA2,
+      scena: 'cien',
       ujecie: { ruch: 'crane: dźwig znad łąki w górę, nad nocną stronę Ziemi', tor: [[-1.3, 1.2, 3.9], [-2.6, 4.6, 6.6], [-2.2, 9.2, 6.2]], cel: [[-0.8, 0.6, 1.8], [-1.4, 0.3, 0.9], [-2.4, 0, 0.3]], fov: [42, 40], czas: 16, komp: [0.08, 0] }, tPogl: 5.7,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, cien: true, obrot: 0, slonce: [1, 0, 0], slonceWidoczne: true, odlSlonca: 150, chmury: 0.6 }); },
       zbuduj: function (c) {
         var T = c.THREE, g = new T.Group(), R = 2, RO = 2.9, S = [1, 0, 0];
@@ -713,7 +712,7 @@
         'Zauważ, co się dzieje z ziemią pod nim. Ona się zakrzywia i ucieka w dół, bo planeta jest kulą.'
       ],
       podpis: 'Trzy rzuty z tej samej góry: dwa pierwsze kończą się na ziemi. Schemat: góra i jej wysokość wyolbrzymione, nie w skali; tory policzone z prawa grawitacji.',
-      scena: 'newton', strefa: STREFA2,
+      scena: 'newton',
       ujecie: { ruch: 'pov: z tej samej góry, kamera za ramieniem rzucającego, wzdłuż rzutu', tor: [[-1.6, 3.55, 1.1], [-1.45, 3.45, 0.95], [-1.3, 3.35, 0.85]], cel: [[1.4, 2.1, 0], [1.9, 1.7, 0], [2.3, 1.4, 0]], fov: 46, czas: 14, komp: [0.1, 0.05] }, tPogl: 7,
       zestawy: ['gwiazdy', 'ziemia', 'newton'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0, slonce: [0.5, 0.85, 0.6], siatka: 0.55 }); z.newton.ustaw({ tryb: 'dwa' }); },
@@ -736,7 +735,7 @@
         'Ten obraz wymyślił Newton ponad trzysta lat temu, zanim ktokolwiek mógł sprawdzić, czy to prawda. Potrzebna prędkość to niecałe osiem kilometrów na sekundę: z Warszawy do Krakowa w pół minuty.'
       ],
       podpis: 'Trzy rzuty z tej samej góry. Trzeci nie kończy się wcale: kamień spada w tym samym tempie, w jakim powierzchnia ucieka mu spod spodu. Schemat, nie w skali.',
-      scena: 'newton', strefa: STREFA2,
+      scena: 'newton',
       ujecie: { ruch: 'crane: z tej samej góry w górę, aż widać całe okrążenie', tor: [[-1.3, 3.35, 0.85], [-1.8, 4.4, 3.8], [0, 3.0, 9.6]], cel: [[2.3, 1.4, 0], [0.9, 1.2, 0], [0, 0.1, 0]], fov: [46, 36], czas: 16, komp: [0, 0] }, tPogl: 5.3,
       zestawy: ['gwiazdy', 'ziemia', 'newton'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0, slonce: [0.5, 0.85, 0.6], siatka: 0.55 }); z.newton.ustaw({ tryb: 'trzy' }); },
@@ -760,7 +759,7 @@
         'Przerywana kreska pokazuje, dokąd stacja poleciałaby bez grawitacji, a różnica między nią a torem to właśnie ten spadek. Swobodny spadek, który trwa latami.'
       ],
       podpis: 'Stacja kosmiczna i człowiek w niej spadają razem. Schemat: przekrój modułu powiększony, wysokość orbity wyolbrzymiona, nie w skali.',
-      scena: 'stacja', strefa: STREFA2,
+      scena: 'stacja',
       ujecie: { ruch: 'dolly-in: najazd na przekrój stacji', tor: [[2.6, 2.1, -6.9], [1.9, 1.5, -5.7], [1.5, 1.2, -5.0]], cel: [[0.72, 0.3, -2.45], [0.55, 0.3, -2.48], [0.42, 0.3, -2.51]], fov: [36, 32], czas: 16, komp: [-0.1, 0] }, tPogl: 8,
       zestawy: ['gwiazdy', 'ziemia', 'stacjaNaOrbicie'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0.01, slonce: [0.4, 0.6, -0.7] }); z.stacjaNaOrbicie.ustaw({ predkosc: 0.0125, faza: 1.25 }); },
@@ -811,7 +810,7 @@
         'Niebo nie rozróżnia żywych od martwych. Krążą tak samo; zapamiętaj to zdanie.'
       ],
       podpis: 'Księżyc, satelity czynne i martwe oraz zużyty człon rakiety na swoich orbitach. Rysunek poglądowy: odległości skrócone, nie w skali.',
-      scena: 'stacja', strefa: STREFA2,
+      scena: 'stacja',
       ujecie: { ruch: 'dolly-out: odjazd od stacji aż do Księżyca', tor: [[1.6, 1.0, -4.6], [4.5, 3.6, 3.5], [7.5, 6.2, 12.5]], cel: [[0.5, 0.1, -2.5], [-1.5, 0.6, -3.5], [-3.2, 1.2, -4.4]], fov: [34, 42], czas: 18, komp: [0, 0], tlo: [0.6, 1] }, tPogl: 9,
       zestawy: ['gwiazdy', 'ziemia', 'stacjaNaOrbicie'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0.02, slonce: [0.4, 0.6, -0.7] }); z.stacjaNaOrbicie.ustaw({ predkosc: 0.05, faza: 1.3 }); },
@@ -902,9 +901,8 @@
         'Granica wiedzy przebiega tu przez gęstość powietrza na wysokości kilkuset kilometrów, a ta zmienia się z nastrojem Słońca.'
       ] },
       podpis: 'Vanguard 1 krąży w przyspieszonym upływie czasu, a powietrze oddycha z nastrojem Słońca. Rysunek poglądowy: rozmiar kulki i grubość powietrza wyolbrzymione, nie w skali.',
-      scena: 'vanguard', strefa: STREFA2,
+      scena: 'vanguard',
       ujecie: { ruch: 'orbita: kamera krąży, a lata mijają w przyspieszeniu', tor: [[-6.5, 2.4, 6.2], [0, 3.0, 8.6], [6.2, 3.5, 6.0]], cel: [0, 0.2, 0], fov: 36, czas: 20, komp: [0, 0] }, tPogl: 6,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0.3, slonce: [-0.55, 0.35, -0.75], slonceWidoczne: true, odlSlonca: 160 }); },
       zbuduj: function (c) {
         var T = c.THREE, g = new T.Group(), A = 3.3, E = 0.25, INC = 0.6;
@@ -945,7 +943,6 @@
       podpis: 'Piętra orbit: im wyżej, tym wolniej. Schemat: odległości skrócone, tempo przyspieszone, nie w skali; długości strzałek pokazują tylko kolejność prędkości.',
       scena: 'pietra', strefa: [0, 0, 0, 1.5],
       ujecie: { ruch: 'crane: dźwig nad piętrami orbit', tor: [[1.5, 1.6, 13.5], [1, 6.5, 12.5], [0.5, 12.5, 9]], cel: [[-0.6, 0.6, -1.2], [-0.8, 0, -2.2], [-0.9, 0, -2.6]], fov: [40, 50], czas: 16, komp: [0, 0] }, tPogl: 6,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 1.4, obrot: 0.25, slonce: [1, 0.3, 0.4] }); },
       zbuduj: function (c) {
         var T = c.THREE, g = new T.Group();
@@ -989,7 +986,6 @@
       podpis: 'Wszystko w jednej skali. Jasny pas przy kuli to cały zakres orbit niskich, od 160 do 2000 km; stacja kosmiczna leci na jego dolnym brzegu. Cmentarzysko satelitów geostacjonarnych leży kilkaset kilometrów nad dużym pierścieniem, czyli w tej skali to ta sama kreska.',
       scena: 'skala', strefa: [0, 0, 0, 1.03],
       ujecie: { ruch: 'dolly-out: od kuli do całego układu pięter w jednej skali', tor: [[2.6, 1.6, 3.8], [4.8, 6.2, 9.5], [5.5, 12.5, 14.5]], cel: [[0, 0.2, 0], [0, 0.9, -0.5], [0, 1.4, -0.6]], fov: [38, 42], czas: 18, komp: [0, 0] }, tPogl: 12,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 1, obrot: 0.05, slonce: [1, 0.3, 0.6], atmosfera: false, siatka: 0.7 }); },
       zbuduj: function (c) { return zbudujSkale(c); },
     },
@@ -1005,7 +1001,6 @@
       podpis: 'Wszystko w jednej skali, z bliska: stacja kosmiczna na dolnym brzegu jasnego pasa orbit niskich, tuż nad powierzchnią.',
       scena: 'skala', strefa: [0, 0, 0, 1.03],
       ujecie: { ruch: 'dolly-in: najazd na brzeg Ziemi i kreskę stacji', tor: [[5.5, 9, 13], [1.2, 1.6, 5.2], [0.05, 0.22, 3.4]], cel: [[0, 1.2, -0.5], [0.85, 0.1, 0.4], [1.03, 0.02, 0.28]], fov: [42, 16], czas: 16, komp: [0, 0] }, tPogl: 12,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 1, obrot: 0.05, slonce: [1, 0.3, 0.6], atmosfera: false, siatka: 0.7 }); },
       zbuduj: function (c) { return zbudujSkale(c, true); },
     },
@@ -1019,9 +1014,8 @@
         'Blisko, więc widać szczegóły, a sygnał dociera bez zwłoki.'
       ],
       podpis: 'Stacja kosmiczna nad Ziemią, kamera leci razem z nią, a Ziemia i słońce suną pod spodem. Rysunek poglądowy: tempo okrążenia przyspieszone, rozmiar stacji wyolbrzymiony, nie w skali.',
-      scena: 'leo', strefa: STREFA2,
+      scena: 'leo',
       ujecie: { ruch: 'travelling: kamera leci równo ze stacją, Ziemia i słońce suną pod nią', tor: [[-1.35, 2.62, 1.2], [-1.15, 2.66, 1.1], [-0.95, 2.7, 1.0]], cel: [[1.9, 1.15, -0.1], [2.0, 1.05, -0.1], [2.1, 0.95, -0.1]], fov: 54, czas: 16, komp: [0, 0.06] }, tPogl: 1.5,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0, slonce: [0.3, -1, 0.15], slonceWidoczne: true, odlSlonca: 150, atmosfera: 1.4 }); },
       zbuduj: function (c) {
         var T = c.THREE, g = new T.Group();
@@ -1051,9 +1045,8 @@
         'Dlatego to piętro samo się sprząta. Zapamiętaj to zdanie, wrócimy do niego przy śmieciach.'
       ],
       podpis: 'Hamowanie przez powietrze w przyspieszonym upływie czasu: stacja opada i jest podnoszona silnikami, satelita bez paliwa spiralą schodzi w dół. Schemat: tempo opadania i grubość powietrza wyolbrzymione, nie w skali.',
-      scena: 'leo', strefa: STREFA2,
+      scena: 'leo',
       ujecie: { ruch: 'timelapse: przyspieszony upływ czasu, kamera odjeżdża za opadającym satelitą', tor: [[-5.2, 5.6, 9.6], [-3.6, 4.4, 9.4], [-2.0, 3.4, 9.0]], cel: [[0.2, 0.5, 0], [0.4, 0.4, 0.3], [0.6, 0.3, 0.6]], fov: 36, czas: 18, komp: [0.08, 0] }, tPogl: 10.5,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0.12, slonce: [0.6, 0.5, 0.7], atmosfera: 1.9 }); },
       zbuduj: function (c) {
         var T = c.THREE, g = new T.Group();
@@ -1066,7 +1059,7 @@
         var N = 90, sl = new Float32Array(N * 3), gs = new T.BufferGeometry(); gs.setAttribute('position', new T.BufferAttribute(sl, 3));
         var slad = new T.Line(gs, new T.LineBasicMaterial({ color: c.kolor('zloto'), transparent: true, opacity: 0.7 })); slad.frustumCulled = false; g.add(slad);
         var meteor = poswiata(c, 'lak', 0.9, 0), meteorR = poswiata(c, 'zar', 0.4, 0); g.add(meteor); g.add(meteorR);
-        var z = zegar(c, 'zloto', 0.32); g.add(z);
+        var z = c.doKamery(zegar(c, 'zloto', 0.32)); z.position.set(-2.3, 2.75, 1.2); g.add(z);
         var OKRES = 15, R_ST0 = 2.4, SPADEK = 0.08, CYKL = 5;
         function promienSat(f) { return 2.62 - 0.62 * Math.pow(f, 1.6); }
         function pozSat(tt, out) {
@@ -1093,7 +1086,7 @@
             pozSat(Math.min(tt, 12), meteor.position); meteorR.position.copy(meteor.position);
             meteor.material.opacity = m * (1 - zg) * 0.95; meteorR.material.opacity = m * (1 - zg);
             meteor.scale.setScalar(0.5 + m * 1.2);
-            z.position.set(-2.3, 2.75, 1.2); z.lookAt(c.kamera.position); z.userData.wskazowka.rotation.z = -t * 6;
+            z.userData.wskazowka.rotation.z = -t * 6;
           } };
       },
     },
@@ -1107,9 +1100,8 @@
         'Większość czynnych satelitów na niebie należy dziś do jednej takiej konstelacji, a ich liczba rośnie co miesiąc. Każda liczba, którą bym ci tu podał, zestarzałaby się, zanim ją przeczytasz.'
       ],
       podpis: 'Konstelacja w przyspieszonym upływie czasu: łącze przeskakuje z satelity na satelitę. Schemat: liczba satelitów i ich tory umowne, nie w skali.',
-      scena: 'leo', strefa: STREFA2,
+      scena: 'leo',
       ujecie: { ruch: 'timelapse: orbita nad rojem, łącze przeskakuje do następnego satelity', tor: [[-2.4, 3.4, 7.4], [0, 4.2, 7.6], [2.4, 4.6, 7.0]], cel: [0, 0.9, 0.3], fov: 38, czas: 18, komp: [0, 0] }, tPogl: 11,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0, slonce: [0.6, 0.6, 0.8] }); },
       zbuduj: function (c) {
         var T = c.THREE, g = new T.Group(), NP = 24, NS = 30, RS = 2.3, INC = 0.92, W = 0.75, N = NP * NS;
@@ -1163,7 +1155,7 @@
         'Twój telefon słucha czterech takich głosów naraz i mierzy, o ile każdy się spóźnił. Spóźnienie to odległość, a z czterech odległości wychodzi punkt na mapie.'
       ],
       podpis: 'Cztery satelity nawigacyjne nadają w tej samej chwili, a ich głosy docierają do telefonu po kolei. Schemat: odległości skrócone, sygnał spowolniony, liczba satelitów umowna.',
-      scena: 'gps', strefa: STREFA2,
+      scena: 'gps',
       ujecie: { ruch: 'dolly-in: cztery głosy zbiegają się w punkcie telefonu', tor: [[5, 11, 17], [3.6, 8.8, 14.4], [2.6, 7.2, 12.6]], cel: [[0, 1.4, 0], [0.2, 1.4, 0.7], [0.3, 1.4, 1.0]], fov: [42, 38], czas: 16, komp: [0, 0] }, tPogl: 3.4,
       zestawy: ['gwiazdy', 'ziemia', 'gps'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0, slonce: [0.8, 0.5, 0.6] }); z.gps.ustaw({ obrot: 0 }); },
@@ -1214,13 +1206,13 @@
         'Gdyby inżynierowie tego nie poprawili, błąd w mierzonych odległościach rósłby o około dziesięć kilometrów dziennie. Einstein siedzi w twoim telefonie i codziennie pracuje.'
       ],
       podpis: 'Zegar w górze i zegar na dole, a wokół telefonu krąg błędu, który rósłby bez poprawki. Schemat: różnica tempa zegarów ogromnie wyolbrzymiona, nie w skali.',
-      scena: 'gps', strefa: STREFA2,
+      scena: 'gps',
       ujecie: { ruch: 'dolly-out: od dwóch zegarów do rosnącego kręgu błędu', tor: [[1.4, 3.7, 5.6], [2.2, 4.6, 7.8], [3.0, 5.6, 10]], cel: [[0.6, 2.4, 0.6], [0.5, 2.0, 0.6], [0.4, 1.7, 0.6]], fov: [36, 40], czas: 16, komp: [0, 0] }, tPogl: 8,
       zestawy: ['gwiazdy', 'ziemia', 'gps'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0, slonce: [0.8, 0.5, 0.6] }); z.gps.ustaw({ obrot: 0 }); },
       zbuduj: function (c) {
         var T = c.THREE, g = new T.Group(), G = c.zestaw('gps'), tel = G.telefon.position, s = G.glosy[0];
-        var zG = zegar(c, 'granat', 0.42), zD = zegar(c, 'zar', 0.42);
+        var zG = c.doKamery(zegar(c, 'granat', 0.42)), zD = c.doKamery(zegar(c, 'zar', 0.42));
         zG.position.copy(s.position).lerp(tel, 0.3).add(new T.Vector3(0, 0.5, 0)); zD.position.copy(tel).add(new T.Vector3(0.0, 0.75, 0.35));
         g.add(zG, zD);
         var l = linia(c, [s.position.clone(), zG.position.clone()], 'granat', { krycie: 0.4, kreski: [0.06, 0.06] }); g.add(l);
@@ -1235,7 +1227,6 @@
             { tekst: 'bez poprawki: błąd rośnie\no około dziesięć kilometrów dziennie', cel: krag, kotwica: 'dol', klasa: 'lak', dy: 30 }
           ],
           krok: function (t) {
-            zG.lookAt(c.kamera.position); zD.lookAt(c.kamera.position);
             zD.userData.wskazowka.rotation.z = -t * 1.2;
             zG.userData.wskazowka.rotation.z = -t * 1.2 * 1.06;        // różnica tempa ogromnie wyolbrzymiona
             var r = 0.05 + 0.75 * L.odcinek(L.petla(t, 12), 0.05, 0.9); krg.scale.set(r, r, r);
@@ -1252,7 +1243,7 @@
         'Satelita i ty obracacie się razem, jak dwoje ludzi na tej samej karuzeli. Dla was reszta świata wiruje, a wy jesteście względem siebie nieruchomi.'
       ],
       podpis: 'Karuzela: satelita na półce Clarke\'a i talerz, który w niego celuje, są względem siebie nieruchomi, a gwiazdy i słońce wirują. Schemat: odległość skrócona, nie w skali.',
-      scena: 'geo', strefa: STREFA2,
+      scena: 'geo',
       ujecie: { ruch: 'dolly-zoom: kamera odjeżdża, kąt się zwęża, a satelita i Ziemia trzymają miejsce w kadrze', tor: [[5.7, 3.27, 6.98], [8.1, 5.75, 13.6], [10.5, 8.2, 20.3]], cel: [2.82, 0.3, -1.03], fov: 40, czas: 18, komp: [0, 0], dollyZoom: true }, tPogl: 7,
       zestawy: ['gwiazdy', 'ziemia', 'polka'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0, slonce: [1, 0.15, 0.2], chmury: 0.7 }); z.polka.ustaw({ obrot: 0, faza: 0.35 }); },
@@ -1288,7 +1279,7 @@
         'A cena? Odległość: sygnał leci stamtąd na dół około ósmą część sekundy, więc mówisz i dopiero po pół sekundy wraca odpowiedź. Dlatego internet satelitarny poszedł z powrotem na parter, gdzie ta zwłoka jest kilkadziesiąt razy mniejsza.'
       ],
       podpis: 'Pytanie leci w górę i w dół, odpowiedź wraca tą samą drogą; niżej ta sama rozmowa przez parter. Schemat: odległości skrócone, sygnał spowolniony, nie w skali.',
-      scena: 'geo', strefa: STREFA2,
+      scena: 'geo',
       ujecie: { ruch: 'crane: dźwig od nadajnika na Ziemi do półki Clarke\'a', tor: [[0.6, 1.9, 5.6], [3.0, 3.6, 9.8], [4.2, 5.6, 12.8]], cel: [[1.0, 1.3, 1.2], [2.3, 0.5, -0.4], [2.7, 0.2, -0.9]], fov: [38, 40], czas: 16, komp: [0, 0] }, tPogl: 3.2,
       zestawy: ['gwiazdy', 'ziemia', 'polka'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0, slonce: [0.7, 0.4, 0.6] }); z.polka.ustaw({ obrot: 0, faza: 0.35, lacze: false }); },
@@ -1340,7 +1331,7 @@
         'To jedyny parking na świecie, który obejmuje całą planetę i nie da się go powiększyć.'
       ],
       podpis: 'Pierścień półki Clarke\'a podzielony na miejsca. Schemat: odstępy i liczba miejsc umowne, nie w skali.',
-      scena: 'geo', strefa: STREFA2,
+      scena: 'geo',
       ujecie: { ruch: 'orbita: kamera krąży nad pierścieniem', tor: [[-8.5, 8.5, 8], [0, 10.5, 11.5], [8.5, 9, 8]], cel: [0, -0.4, 0], fov: 44, czas: 20, komp: [0, 0] }, tPogl: 6,
       zestawy: ['gwiazdy', 'ziemia', 'polka'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0.08, slonce: [0.7, 0.4, 0.6] }); z.polka.ustaw({ obrot: 0.08, faza: 0.35 }); },
@@ -1372,7 +1363,7 @@
         'Co zrobić?'
       ],
       podpis: 'Linia wzroku z Moskwy i z bieguna do satelity na półce Clarke\'a. Schemat: odległości skrócone, nie w skali.',
-      scena: 'polnoc', strefa: STREFA2,
+      scena: 'polnoc',
       ujecie: { ruch: 'orbita: kamera obchodzi Ziemię od równika ku biegunowi', tor: [[8.5, 1.6, 6.5], [5.5, 5.5, 8.5], [2, 8.5, 8.5]], cel: [[2.2, 0.9, 0], [1.8, 1.3, 0], [1.4, 1.6, 0]], fov: 38, czas: 18, komp: [0, 0] }, tPogl: 5,
       zestawy: ['gwiazdy', 'ziemia', 'polka'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0, slonce: [0.6, 0.5, 0.7] }); z.polka.ustaw({ obrot: 0, faza: 0, lacze: false }); },
@@ -1422,9 +1413,8 @@
         'Ten kąt wynika z tego, że Ziemia nie jest idealną kulą, a ten sam defekt daje nam jeszcze jedno piętro.'
       ] },
       podpis: 'Orbita Mołnija: trzy satelity na wydłużonej orbicie, jasny łuk to osiem godzin z dwunastu nad północą. Schemat: ruch zgodny z prawem Keplera, odległości skrócone, nie w skali.',
-      scena: 'molnija', strefa: STREFA2,
+      scena: 'molnija',
       ujecie: { ruch: 'orbita: kamera obchodzi jajo, czas przyspieszony', tor: [[-6, 8.5, 12.5], [0, 10.4, 13.6], [6, 9.2, 12.4]], cel: [0, 2.6, -1.2], fov: 44, czas: 20, komp: [0, 0] }, tPogl: 4,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0, slonce: [0.6, 0.5, 0.8] }); },
       zbuduj: function (c) {
         var T = c.THREE, g = new T.Group(), RP = 2.35, RA = 9.2, A = (RP + RA) / 2, E = (RA - RP) / (RA + RP), INC = 63.5 * Math.PI / 180, B = A * Math.sqrt(1 - E * E);
@@ -1485,9 +1475,8 @@
         'Ale zdjęcia robione o różnych porach dnia mają różne cienie. Jeśli chcesz porównać las w tym roku z lasem sprzed dziesięciu lat, musisz fotografować zawsze o tej samej godzinie miejscowej.'
       ],
       podpis: 'Satelita na orbicie nad biegunami i pasy zdjęć, każdy trochę na zachód od poprzedniego. Schemat: szerokość pasów i tempo przyspieszone, nie w skali.',
-      scena: 'helio', strefa: STREFA2,
+      scena: 'helio',
       ujecie: { ruch: 'timelapse: kamera krąży, a pasy zdjęć narastają', tor: [[6.2, 3.2, 5.2], [7.0, 2.6, 2.6], [7.0, 2.2, 0.2]], cel: [0, 0.3, 0], fov: 36, czas: 18, komp: [0, 0] }, tPogl: 30,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0, slonce: [1, 0.12, 0.25] }); },
       zbuduj: function (c) {
         var T = c.THREE, g = new T.Group(), RS = 2.42, WS = 1.6, WZ = 0.11, OKRES = 40;
@@ -1591,7 +1580,7 @@
         'Tam krąży bez celu, w ciszy, w towarzystwie setek poprzedników. Patrz: to nadal satelita Ziemi, tyle że emerytowany.'
       ],
       podpis: 'Ostatnie odpalenie silnika: z półki Clarke\'a na cmentarzysko. Schemat: odstęp między pierścieniami mocno wyolbrzymiony, nie w skali.',
-      scena: 'geo', strefa: STREFA2,
+      scena: 'geo',
       ujecie: { ruch: 'dolly-in: najazd na satelitę w ostatnim odpaleniu', tor: [[12.5, 6.2, 5.2], [10.8, 4.0, 1.6], [9.8, 2.8, 0.2]], cel: [[3.8, 0, -2.0], [4.8, 0, -2.8], [5.2, 0, -3.2]], fov: [40, 34], czas: 16, komp: [-0.1, 0] }, tPogl: 6,
       zestawy: ['gwiazdy', 'ziemia', 'polka'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0.02, slonce: [0.7, 0.4, 0.6] }); z.polka.ustaw({ obrot: 0.02, faza: 0.4, cmentarz: true, satelita: false, lacze: false }); },
@@ -1635,7 +1624,7 @@
         'Granica między „krąży wokół Ziemi” a „krąży razem z Ziemią” jest tam rozmazana, i właśnie tam jest najciekawiej.'
       ] },
       podpis: 'Słońce, Ziemia z Księżycem i teleskop Webba po nocnej stronie, cztery razy dalej niż Księżyc. Schemat: odległości od Słońca skrócone, rozmiary wyolbrzymione, nie w skali.',
-      scena: 'webb',
+      scena: 'webb', strefa: null,
       ujecie: { ruch: 'dolly-out: od Ziemi przez Księżyc do Webba i Słońca', tor: [[-1.6, 1.4, 4.2], [2.2, 3.5, 9.5], [1.5, 7.2, 18]], cel: [[0.5, 0, -0.6], [3, 0, -1.4], [-3, 0, -1.4]], fov: [38, 48], czas: 18, komp: [0, 0] }, tPogl: 8,
       zestawy: ['gwiazdy'],
       zbuduj: function (c) {
@@ -1685,7 +1674,6 @@
       podpis: 'Trzy stanowiska: łączność, nawigacja, obserwacja. Rysunek poglądowy: wysokości i rozmiary umowne, nie w skali.',
       scena: 'robota', strefa: [0, -31.2, 0, 30.3],
       ujecie: { ruch: 'travelling: boczny przejazd wzdłuż trzech stanowisk', tor: [[-6.6, 1.7, 7.4], [0, 1.9, 8], [6.6, 1.7, 7.4]], cel: [[-5, 0.7, 0], [0, 0.9, 0], [5, 0.7, 0]], fov: 36, czas: 21, komp: [0, 0] }, tPogl: 5,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 30, pozycja: [0, -31.2, 0], obrot: 0, slonce: [0.3, 1, 0.5], siatka: 0.35, chmury: 0.5, atmosfera: 0.5 }); },
       zbuduj: function (c) { return zbudujStanowiska(c); },
     },
@@ -1701,7 +1689,6 @@
       podpis: 'Dwa spojrzenia pogody i teleskop pod falującą wodą oraz nad nią. Rysunek poglądowy: powietrze pokazane jak woda w basenie, nie w skali.',
       scena: 'robota', strefa: [0, -31.2, 0, 30.3],
       ujecie: { ruch: 'crane: dźwig spod falującej wody ponad nią', tor: [[2.6, 0.15, 6.2], [2.0, 2.2, 8.6], [0.4, 4.3, 11.6]], cel: [[2.8, 0.75, 0], [2.0, 1.6, 0], [-0.2, 2.5, -0.6]], fov: [40, 46], czas: 16, komp: [0, 0] }, tPogl: 6,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 30, pozycja: [0, -31.2, 0], obrot: 0, slonce: [0.3, 1, 0.5], siatka: 0.35, chmury: 0.5, atmosfera: 0.5 }); },
       zbuduj: function (c) { return zbudujBasen(c); },
     },
@@ -1718,7 +1705,7 @@
         'Opowieść podaje tylko rodzaje: rozpoznawcze, podsłuchujące fale radiowe i ostrzegające przed startem rakiety.'
       ] },
       podpis: 'Kapsuła z filmem na spadochronie i samolot z hakiem nad oceanem. Rysunek poglądowy, nie w skali.',
-      scena: 'wojsko',
+      scena: 'wojsko', strefa: null,
       ujecie: { ruch: 'travelling: kamera leci za samolotem z hakiem', tor: [[-7.5, 3.5, 6.6], [-3.4, 3.3, 6.9], [1.4, 3.4, 6.6]], cel: [[-4.2, 2.8, 0], [-1.8, 2.8, 0], [0.2, 3.0, 0]], fov: 40, czas: 14, komp: [0, 0] }, tPogl: 6.9,
       zestawy: ['gwiazdy'],
       zbuduj: function (c) { return zbudujPrzechwyt(c); },
@@ -1733,7 +1720,7 @@
         'Na samym końcu skali są chipy wielkości znaczka pocztowego. Czy to jeszcze satelity? Technicznie tak, bo krążą.'
       ],
       podpis: 'Od autobusu do kostki i znaczka. Schemat: rozmiary nie w skali, małe obiekty powiększone.',
-      scena: 'rozmiary',
+      scena: 'rozmiary', strefa: null,
       ujecie: { ruch: 'dolly-in: przejazd od największego do najmniejszego', tor: [[-9.5, 2.6, 10], [-1.5, 2.1, 9], [7.6, 1.3, 4.0]], cel: [[-6.2, 0.2, 0], [-0.5, 0.3, 0], [7.4, 0, 0]], fov: [44, 30], czas: 18, komp: [0, 0] }, tPogl: 6,
       zestawy: ['gwiazdy'],
       zbuduj: function (c) { return zbudujRozmiary(c); },
@@ -1748,9 +1735,8 @@
         'Dlatego, że jest ich sto i że można stracić dziesięć bez płaczu.'
       ],
       podpis: 'Sto kostek wypuszczonych z rakiety rozchodzi się w rój, dziesięć gaśnie. Schemat: tempo przyspieszone, rozmiary kostek wyolbrzymione, nie w skali.',
-      scena: 'kostki', strefa: STREFA2,
+      scena: 'kostki',
       ujecie: { ruch: 'timelapse: kamera za rakietą, rój się rozchodzi', tor: [[3.7, 2.2, 3.4], [4.2, 3.6, 4.8], [4.2, 4.8, 5.8]], cel: [[1.6, 0.2, 1.6], [0.6, 0.1, 0.6], [0, -0.2, 0]], fov: 40, czas: 16, komp: [0, 0] }, tPogl: 12,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0.05, slonce: [0.6, 0.5, 0.7] }); },
       zbuduj: function (c) { return zbudujRoj(c); },
     },
@@ -1764,9 +1750,8 @@
         'Drobina farby, mniejsza niż ziarnko piasku, zostawiła kiedyś w szybie wahadłowca krater.'
       ],
       podpis: 'Czynne satelity, martwe, odłamki i drobiny wokół Ziemi; na pierwszym planie szyba z kraterem po drobinie farby. Schemat: liczba punktów i ich rozmiary umowne, nie w skali.',
-      scena: 'smieci', strefa: STREFA2,
+      scena: 'smieci',
       ujecie: { ruch: 'dolly-in: przelot przez chmurę odłamków do szyby z kraterem', tor: [[0.5, 6.2, 12.5], [3.4, 3.6, 8.2], [4.2, 2.4, 5.6]], cel: [[0, 0, 0], [1.4, 0.9, 1.6], [2.4, 1.5, 2.9]], fov: [40, 34], czas: 18, komp: [0, 0] }, tPogl: 7,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0.03, slonce: [0.6, 0.5, 0.7] }); },
       zbuduj: function (c) { return zbudujSmieci(c, 'chmura'); },
     },
@@ -1783,9 +1768,8 @@
         'Wiemy, że od czasu, gdy to napisał, rzeczy na orbicie przybyło wielokrotnie.'
       ] },
       podpis: 'Kaskada Kesslera narasta: każde zderzenie sypie odłamkami, które zderzają się dalej. Schemat: liczba odłamków, zderzenia i tempo umowne, nie w skali.',
-      scena: 'smieci', strefa: STREFA2,
+      scena: 'smieci',
       ujecie: { ruch: 'dolly-out: kaskada rośnie, kamera odjeżdża', tor: [[1.6, 1.3, 4.7], [3.0, 3.0, 8.0], [4.0, 5.0, 11.2]], cel: [[1.2, 0.2, 2.2], [0.5, 0.2, 0.8], [0, 0, 0]], fov: 38, czas: 18, komp: [0, 0] }, tPogl: 10,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0.03, slonce: [0.6, 0.5, 0.7] }); },
       zbuduj: function (c) { return zbudujKaskade(c); },
     },
@@ -1799,9 +1783,8 @@
         'Niebo okazało się pokojem. Dużym, ale skończonym, i wspólnym.'
       ],
       podpis: 'Trzy piętra i trzy losy śmieci w przyspieszonym upływie czasu. Schemat: tempo i wysokości umowne, nie w skali.',
-      scena: 'smieci', strefa: STREFA2,
+      scena: 'smieci',
       ujecie: { ruch: 'crane: dźwig od parteru do półki Clarke\'a', tor: [[2.6, 1.5, 5.4], [4.2, 4.8, 9.4], [3.2, 9.5, 11.8]], cel: [[0.6, 0.6, 1.6], [0, 0.5, 0], [0, 0, 0]], fov: 40, czas: 18, komp: [0, 0] }, tPogl: 8,
-      zestawy: ['gwiazdy', 'ziemia'],
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0.03, slonce: [0.6, 0.5, 0.7], atmosfera: 1.5 }); },
       zbuduj: function (c) { return zbudujSmieci(c, 'losy'); },
     },
@@ -1815,7 +1798,7 @@
         'Może to stacja z ludźmi w środku, może kostka zbudowana przez studentów, może grejpfrutowa kulka z 1958 roku. Zgaśnie za chwilę, wlatując w cień. Ale nie przestanie spadać.'
       ],
       podpis: 'Łąka po zachodzie słońca i ta sama gwiazda, która idzie. Kadr poglądowy: tempo przelotu przyspieszone.',
-      scena: 'laka',
+      scena: 'laka', strefa: null,
       ujecie: { ruch: 'crane: zza ramienia człowieka na łące w niebo', tor: [[0.6, 1.15, 2.7], [0.45, 1.45, 2.05], [0.32, 1.72, 1.55]], cel: [[0, 1.5, -3], [0, 12, -30], [0, 38, -52]], fov: [42, 52], czas: 18, komp: [0.12, 0] }, tPogl: 8,
       zestawy: ['laka'],
       ustaw: function (c, z) { z.laka.ustaw({ czlowiek: true }); },
@@ -1889,7 +1872,7 @@
     g.add(linia(c, [A, sK.position, B], 'zloto', { krycie: 0.5, kreski: [0.1, 0.08] }));
     var impK = poswiata(c, 'zar', 0.45, 1); g.add(impK);
     // nawigacja
-    var sN = sat(0, 2.7, { blask: 'granat' }), zg = zegar(c, 'granat', 0.26); zg.position.set(0.62, 3.0, 0.2); g.add(zg);
+    var sN = sat(0, 2.7, { blask: 'granat' }), zg = c.doKamery(zegar(c, 'granat', 0.26)); zg.position.set(0.62, 3.0, 0.2); g.add(zg);
     var cele = [], impN = [];
     [[-1.2, 0.9, 'statek'], [0, 1.1, 'kombajn'], [1.2, 0.8, 'bankomat']].forEach(function (d) {
       var p = grunt(d[0], d[1]), o = new T.Group(); o.position.copy(p);
@@ -1927,7 +1910,7 @@
         impK.position.copy(tmp);
         impN.forEach(function (im, i) { im.position.copy(sN.position).lerp(cele[i].position, L.petla(t * 0.7 + i * 0.33, 1)); });
         impO.position.copy(sO.position).lerp(cel, L.petla(t * 0.6, 1));
-        zg.lookAt(c.kamera.position); zg.userData.wskazowka.rotation.z = -t * 2;
+        zg.userData.wskazowka.rotation.z = -t * 2;
         chm.children.forEach(function (k, i) { k.position.x = k.userData.x0 + Math.sin(t * 0.3 + i) * 0.1; });   // z t: pauza = bezruch
       } };
   }
@@ -1958,7 +1941,7 @@
     var gw = poswiata(c, 'zar', 0.7, 1); gw.position.set(2.6, 6.2, -2.4); g.add(gw);
     // „co widzi” każdy teleskop: tarcza z gwiazdą — pod wodą drży i się rozmywa, nad wodą stoi ostro
     function kadr(x, y) { var k = new T.Group(); k.position.set(x, y, 0.7); k.add(new T.Mesh(new T.CircleGeometry(0.34, 40), przezr(c, 'pustka', 0.85, { side: T.DoubleSide }))); var o = new T.Mesh(new T.RingGeometry(0.32, 0.35, 48), mat(c, 'atrament-3', { side: T.DoubleSide })); o.position.z = 0.002; k.add(o); var s = poswiata(c, 'zar', 0.18, 1); s.position.z = 0.01; k.add(s); k.userData.gw = s; g.add(k); return k; }
-    var kD = kadr(1.0, 0.35), kG = kadr(4.75, 2.6);
+    var kD = c.doKamery(kadr(1.0, 0.35)), kG = c.doKamery(kadr(4.75, 2.6));
     return { grupa: g,
       etykiety: [
         { tekst: 'pogodowy na półce Clarke\'a: cały kontynent', cel: geo, kotwica: 'prawo', klasa: 'granat', dx: 10 },
@@ -1969,7 +1952,6 @@
       ],
       krok: function (t) {
         uniW.uCzas.value = t;
-        kD.lookAt(c.kamera.position); kG.lookAt(c.kamera.position);
         var s = kD.userData.gw; s.position.x = 0.07 * Math.sin(t * 5.3) + 0.04 * Math.sin(t * 11.1); s.position.y = 0.06 * Math.sin(t * 4.1 + 1); s.scale.setScalar(0.3 + 0.12 * Math.sin(t * 7.3)); s.material.opacity = 0.55 + 0.3 * Math.sin(t * 9);
         pomiar.position.x = -2.6 + 0.05 * Math.sin(t); warstwy.forEach(function (w, i) { w.material.opacity = 0.12 + 0.08 * Math.sin(t * 1.5 + i * 2); });
       } };
@@ -2144,7 +2126,7 @@
     var etykiety, spalanie = null, szyba = null;
     if (tryb === 'chmura') {
       // szyba wahadłowca z kraterem na pierwszym planie; drobina farby wpada w nią raz na kilka sekund
-      szyba = new T.Group(); szyba.position.set(3.55, 1.95, 4.15); szyba.scale.setScalar(0.45);
+      szyba = c.doKamery(new T.Group()); szyba.position.set(3.55, 1.95, 4.15); szyba.scale.setScalar(0.45);
       szyba.add(new T.Mesh(new T.PlaneGeometry(0.62, 0.38), przezr(c, 'granat', 0.16, { side: T.DoubleSide })));
       szyba.add(linia(c, [new T.Vector3(-0.31, -0.19, 0), new T.Vector3(0.31, -0.19, 0), new T.Vector3(0.31, 0.19, 0), new T.Vector3(-0.31, 0.19, 0), new T.Vector3(-0.31, -0.19, 0)], 'atrament-2', { krycie: 0.8 }));
       var krater = new T.Mesh(new T.RingGeometry(0.006, 0.022, 24), mat(c, 'atrament', { side: T.DoubleSide })); krater.position.set(0.05, 0.02, 0.003); szyba.add(krater);
@@ -2200,7 +2182,6 @@
           var u = L.petla(t, 3.2), d = szyba.userData;
           d.drob.position.set(0.05 - 0.5 * (1 - L.odcinek(u, 0, 0.3)), 0.02 + 0.12 * (1 - L.odcinek(u, 0, 0.3)), 0.25 * (1 - L.odcinek(u, 0, 0.3)) + 0.01);
           d.drob.material.opacity = u < 0.3 ? 1 : 0; d.blysk.material.opacity = u > 0.3 && u < 0.5 ? 1 - (u - 0.3) * 5 : 0;
-          szyba.lookAt(c.kamera.position);
         }
       } };
   }
@@ -2253,7 +2234,7 @@
     { opis: 'Bajarz, „Rodzaje sztucznych satelitów Ziemi”, opowieść z 16 października 2026. Jedyne źródło faktów, liczb, dat i nazwisk tej opowieści; artykuł nie podaje linków do źródeł, a liczby zaokrągla tak, żeby dało się je zobaczyć, nie żeby je cytować.' }
   ];
 
-  var definicja = {
+  var definicja = L.uzupelnijKroki({
     id: 'satelity',
     tytul: 'Rodzaje sztucznych satelitów Ziemi',
     pochodzenie: 'Na podstawie artykułu „Rodzaje sztucznych satelitów Ziemi” (opowiedział Bajarz, 16 października 2026). Liczby są zaokrąglone jak w artykule; tam, gdzie wiedza się kończy (ile jeszcze pokrąży Vanguard, co dokładnie robią satelity wojskowe, jak blisko progu Kesslera jesteśmy), opowieść mówi to wprost.',
@@ -2261,8 +2242,10 @@
     zestawy: zestawy,
     kroki: kroki,
     fizyka: { keplerE: keplerE, naElipsie: naElipsie, naOrbicie: naOrbicie, rzutNewtona: rzutNewtona, wCieniu: wCieniu,
-      harmonogramKaskady: harmonogramKaskady, liczbaOdlamkow: liczbaOdlamkow, wSkali: wSkali, R_KM: R_KM }
-  };
+      harmonogramKaskady: harmonogramKaskady, liczbaOdlamkow: liczbaOdlamkow, wSkali: wSkali, R_KM: R_KM },
+    // pola, których krok nie podaje: większość scen dzieje się przy Ziemi o promieniu 2 w początku układu
+    domyslne: { zestawy: ['gwiazdy', 'ziemia'], strefa: STREFA2 }
+  });
 
   if (wNode) module.exports = definicja;
   else root.Zjawiska.rejestruj(definicja);
