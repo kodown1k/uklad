@@ -6025,7 +6025,7 @@ function kinoAudioTick(t, tc){
 }
 
 /* ---------- start z URL ---------- */
-if(/[?&](film|kino)\b/.test(location.search)){
+if(/[?&](film|kino)\b/.test(location.search) && !/[?&]zjawisko=/.test(location.search)){   // ?zjawisko=… to widok zjawisk (jego hak smoke filmu)
   kinoBuildDom(); document.body.classList.add('kino-on', 'kino-run'); document.getElementById('kino').classList.add('loading');
   // Kino w capture: Esc pomija film (bez goSystem z globalnego handlera)
   addEventListener('keydown', e=>{ if(e.key==='Escape' && kino.active){ kinoEnd(true); e.stopImmediatePropagation(); } }, true);

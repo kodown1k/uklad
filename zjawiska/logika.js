@@ -21,6 +21,10 @@
     });
     return out;
   }
+  function _chwila(v) {                       // `t=` sekundy filmu ≥ 0; puste albo nieliczbowe → brak
+    var t = Number(v);
+    return (v != null && v !== '' && isFinite(t)) ? Math.max(0, t) : undefined;
+  }
   function _krok(v) {
     var n = Math.floor(Number(v));
     return (isFinite(n) && n >= 1) ? n : 1;
@@ -36,8 +40,7 @@
       var o = { zjawisko: p.zjawisko, krok: _krok(p.krok) };
       if ('film' in p) {                       // '#zjawisko=id&film[&t=sekundy]' — film zjawiska od chwili t
         o.film = true;
-        var tt = Number(p.t);
-        if (p.t != null && p.t !== '' && isFinite(tt)) o.t = Math.max(0, tt);
+        if (_chwila(p.t) !== undefined) o.t = _chwila(p.t);
       }
       return o;
     }
@@ -50,7 +53,14 @@
     var s = search.charAt(0) === '?' ? search.slice(1) : search;
     var p = _pola(s);
     if (!('zjawisko' in p) || !ID_RE.test(p.zjawisko)) return null;
-    return { zjawisko: p.zjawisko, krok: _krok(p.krok), smoke: ('smoke' in p) };
+    var o = { zjawisko: p.zjawisko, krok: _krok(p.krok), smoke: ('smoke' in p) };
+    // hak smoke filmu `?smoke&zjawisko=id&film&t=S`: `t` = sekundy filmu (bez `film` `t` to faza ujęcia 0..1).
+    // solar.js nie startuje filmu Voyagera, gdy w zapytaniu jest `zjawisko=` (pilnuje test).
+    if ('film' in p) {
+      o.film = true;
+      if (_chwila(p.t) !== undefined) o.t = _chwila(p.t);
+    }
+    return o;
   }
   function budujHash(id, krok) {
     if (!id) return '#zjawiska';
@@ -339,16 +349,19 @@
     if (!(czas >= 0)) czas = KINO.PRZEJSCIE[typ];
     return { typ: typ, czas: czas, napis: napis };
   }
-  // Wersy kroku w filmie. 'pelna' = jak kroki (narracja + ramka z punktami); 'skrot' = zdania wybrane w `film.wersy`
-  // (indeksy zdań narracji) + tekst ramki (zastrzeżenia zostają); bez wyboru skrót = pełna.
+  // Wersy kroku w filmie: [{tekst, ramka}] — `ramka` = wers zastrzeżenia (widok styluje go jako ramkę). 'pelna' = jak
+  // kroki (narracja + ramka z punktami); 'skrot' = zdania wybrane w `film.wersy` (indeksy zdań narracji) + tekst ramki
+  // (zastrzeżenia zostają); bez wyboru skrót = pełna.
   function wersyFilmu(k, dlugosc) {
     var zd = podzielNaZdania(k.narracja), wybor = dlugosc === 'skrot' && k.film && Array.isArray(k.film.wersy);
     if (wybor) zd = k.film.wersy.map(function (i) { return zd[i]; }).filter(Boolean);
+    var out = zd.map(function (z) { return { tekst: z, ramka: false }; });
     if (k.ramka) {
-      zd = zd.concat(podzielNaZdania([k.ramka.tekst || '']));
-      if (!wybor) zd = zd.concat(k.ramka.punkty || []);
+      var r = podzielNaZdania([k.ramka.tekst || '']);
+      if (!wybor) r = r.concat(k.ramka.punkty || []);
+      r.forEach(function (z) { out.push({ tekst: z, ramka: true }); });
     }
-    return zd;
+    return out;
   }
   // Najkrótsze przejście ciągłe, przy którym obrót kierunku patrzenia nie przekracza 90% limitu (70°/s, most 35°/s).
   // Mierzone symulacją mieszania (kamera obiega strefę, cel liniowo — sam kąt między kierunkami zaniża obrót),
@@ -387,8 +400,8 @@
     });
     for (var i = 0; i < K.length; i++) {
       var start = t, c = P[i].czas, ws = start + c / 2;
-      var zd = wersyFilmu(K[i], dl), h = harmonogramNapisow(zd);
-      var wersy = h.map(function (w, j) { return { tekst: zd[j], start: ws + w.start, koniec: ws + w.koniec }; });
+      var zd = wersyFilmu(K[i], dl), h = harmonogramNapisow(zd.map(function (w) { return w.tekst; }));
+      var wersy = h.map(function (w, j) { return { tekst: zd[j].tekst, ramka: zd[j].ramka, start: ws + w.start, koniec: ws + w.koniec }; });
       var tekstKoniec = wersy.length ? wersy[wersy.length - 1].koniec : ws;
       var ruchStart = start - (CIAGLE[P[i].typ] ? c / 2 : 0);
       var nast = P[i + 1], lead = nast && CIAGLE[nast.typ] ? nast.czas / 2 : 0, uj = K[i].ujecie;
@@ -459,6 +472,30 @@
     return p;
   }
 
+  // Znaczniki rozdziałów na pasku filmu: początek każdego ciągu kroków o tym samym `czesc`.
+  function rozdzialyFilmu(def, os) {
+    var out = [];
+    os.kroki.forEach(function (k, i) {
+      var c = def.kroki[i].czesc;
+      if (i === 0 || c !== def.kroki[i - 1].czesc) out.push({ czesc: c, krok: i + 1, start: k.start, ulamek: os.calosc > 0 ? k.start / os.calosc : 0 });
+    });
+    return out;
+  }
+  // Dokąd przewinąć film dla akcji nawigacji. Cel = chwila, w której zawartość kroku jest już w pełni widoczna
+  // (koniec przejścia), więc przewinięcie nie ląduje w czerni. ← w pierwszych 2 s kroku cofa do poprzedniego.
+  function celPrzewiniecia(os, t, akcja) {
+    var K = os.kroki, n = K.length, i = lokalizujFilm(os, t).i, cel;
+    var widoczny = function (j) { return K[j].start + K[j].przejscie.czas / 2; };
+    if (akcja === 'dalej') cel = i + 1;
+    else if (akcja === 'wstecz') cel = (t - widoczny(i) > 2) ? i : i - 1;
+    else if (akcja === 'pierwszy') cel = 0;
+    else if (akcja === 'ostatni') cel = n - 1;
+    else if (akcja && typeof akcja === 'object' && 'idz' in akcja) cel = Math.floor(Number(akcja.idz)) - 1;
+    else cel = i;
+    cel = Math.max(0, Math.min(n - 1, isFinite(cel) ? cel : i));
+    return widoczny(cel);
+  }
+
   // Domyślne pola kroków: `def.domyslne` (np. { zestawy: [...], strefa: [...] }) trafia do każdego kroku, który
   // tego pola nie ma. Pole obecne w kroku wygrywa, także `null` (krok jawnie bez strefy). Tablice kopiowane, żeby
   // kroki nie dzieliły jednego obiektu. Plik zjawiska woła to na własnej definicji — widok i testy widzą to samo.
@@ -504,7 +541,7 @@
     parsujHash: parsujHash, parsujZapytanie: parsujZapytanie, budujHash: budujHash,
     ograniczKrok: ograniczKrok, przejscie: przejscie, akcjaKlawisza: akcjaKlawisza,
     uzupelnijKroki: uzupelnijKroki, TYPY_PRZEJSC: TYPY_PRZEJSC, przejscieKroku: przejscieKroku, wersyFilmu: wersyFilmu,
-    OBROT_MAX: OBROT_MAX, OBROT_MOST: OBROT_MOST, osCzasuFilmu: osCzasuFilmu, lokalizujFilm: lokalizujFilm, stanPrzejscia: stanPrzejscia, mieszajWokol: mieszajWokol, pozaFilmu: pozaFilmu,
+    rozdzialyFilmu: rozdzialyFilmu, celPrzewiniecia: celPrzewiniecia, OBROT_MAX: OBROT_MAX, OBROT_MOST: OBROT_MOST, osCzasuFilmu: osCzasuFilmu, lokalizujFilm: lokalizujFilm, stanPrzejscia: stanPrzejscia, mieszajWokol: mieszajWokol, pozaFilmu: pozaFilmu,
     wygladz: wygladz, mieszaj3: mieszaj3, tempoRuchu: tempoRuchu, petla: petla, odcinek: odcinek,
     RYC4: RYC4, strefaPierscienia: strefaPierscienia, pozycjaNaOsi: pozycjaNaOsi, przemiatanie: przemiatanie,
     skretOdbitej: skretOdbitej, amplitudaUmowna: amplitudaUmowna,

@@ -41,7 +41,8 @@
     napisy: $('zjNapisy'), panel: $('zjPanel'), tresc: $('zjTresc'), pCzesc: $('zjPCzesc'), pTytul: $('zjPTytul'),
     narracja: $('zjNarracja'), ramka: $('zjRamka'), pPodpis: $('zjPPodpis'), przypisy: $('zjPrzypisy'), zrodla: $('zjZrodla'),
     zrodlaLista: $('zjZrodlaLista'), pochodzenie: $('zjPochodzenie'),
-    wstecz: $('zjWstecz'), dalej: $('zjDalej'), licznik: $('zjLicznik'), kropki: $('zjKropki')
+    wstecz: $('zjWstecz'), dalej: $('zjDalej'), licznik: $('zjLicznik'), kropki: $('zjKropki'),
+    start: $('zjStart'), startTytul: $('zjStartTytul'), startDzwiek: $('zjStartDzwiek'), startCicho: $('zjStartCicho')
   };
   if (!el.korzen || !L) return;
 
@@ -63,8 +64,9 @@
   var ciecie = null;             // { n, zegar } — trwające cięcie przez czerń
   var etAkt = [];                // aktywne etykiety 2D
   var slupki = null;             // { min, max, paski[] } bieżącego przyrządu
-  var napisy = { h: [], el: [], idx: -1, caly: false, koniec: 0 };
-  var seans = { on: false, pauza: false };
+  var napisy = { h: [], el: [], idx: -1, caly: false };
+  var seans = { pauza: false };
+  var film = null;               // Seans = film zjawiska: { os, t } — zegar filmu, oś czasu z logika.osCzasuFilmu (null = tryb kroków)
   var dzwiek = null;             // { ctx, osc[], wzm } po pierwszym włączeniu
   var smoke = false, smokeT = null, gotowosc = null;
   var mqRuch = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
@@ -363,12 +365,22 @@
     napisy.caly = smoke || kadr.tryb === 'pelny';
     el.napisy.classList.toggle('caly', napisy.caly);
   }
-  function zbudujNapisy(k) {
-    var wersy = L.podzielNaZdania(k.narracja).map(function (z) { return { tekst: z }; });
-    if (k.ramka) {
-      var r = L.podzielNaZdania([k.ramka.tekst || '']);
-      if (!smoke) r = r.concat(k.ramka.punkty || []);          // ?smoke: długie punkty ramki zostają w panelu „Tekst”
-      r.forEach(function (z, i) { wersy.push({ tekst: z, ramka: k.ramka, pierwszy: i === 0 }); });
+  // `lista` (film): gotowe wersy z osi czasu {tekst, ramka, start, koniec} — czasy bezwzględne filmu.
+  function zbudujNapisy(k, lista) {
+    var wersy;
+    if (lista) {
+      var pierwszy = true;
+      wersy = lista.map(function (w) {
+        if (!w.ramka) return { tekst: w.tekst };
+        var o = { tekst: w.tekst, ramka: k.ramka, pierwszy: pierwszy }; pierwszy = false; return o;
+      });
+    } else {
+      wersy = L.podzielNaZdania(k.narracja).map(function (z) { return { tekst: z }; });
+      if (k.ramka) {
+        var r = L.podzielNaZdania([k.ramka.tekst || '']);
+        if (!smoke) r = r.concat(k.ramka.punkty || []);          // ?smoke: długie punkty ramki zostają w panelu „Tekst”
+        r.forEach(function (z, i) { wersy.push({ tekst: z, ramka: k.ramka, pierwszy: i === 0 }); });
+      }
     }
     el.napisy.replaceChildren();
     napisy.el = wersy.map(function (w) {
@@ -381,13 +393,12 @@
       el.napisy.appendChild(p);
       return p;
     });
-    napisy.h = L.harmonogramNapisow(wersy.map(function (w) { return w.tekst; }));
-    napisy.koniec = napisy.h.length ? napisy.h[napisy.h.length - 1].koniec + L.KINO.ODDECH_PO_NAPISACH : L.KINO.ODDECH_PO_NAPISACH;
+    napisy.h = lista ? lista.map(function (w) { return { start: w.start, koniec: w.koniec }; }) : L.harmonogramNapisow(wersy.map(function (w) { return w.tekst; }));
     napisy.idx = -1;
     el.napisy.scrollTop = 0;
   }
   function pokazNapis(t) {
-    var i = L.indeksNapisu(napisy.h, t);
+    var i = (napisy.h.length && t < napisy.h[0].start) ? -1 : L.indeksNapisu(napisy.h, t);   // film: przed pierwszym wersem (przejście) — pusto
     if (i === napisy.idx) return;
     if (napisy.idx >= 0 && napisy.el[napisy.idx]) napisy.el[napisy.idx].classList.remove('on');
     napisy.idx = i;
@@ -534,14 +545,18 @@
     if (smoke) gotowosc = { id: p.def.id, krok: n, m: p.def.kroki.length };
   }
   // Stan + UI natychmiast (krok, hash, plansza, kropki); obraz płynnie albo przez czerń.
-  function pokazKrok(n, bezPrzejscia) {
-    var p = biez;
-    n = L.ograniczKrok(n, p.def.kroki.length);
-    var k = p.def.kroki[n - 1];
+  // Bieżący krok: stan, plansza/panel/kropki i hash — wspólne dla kroków i filmu.
+  function ustawKrok(p, n) {
     p.krok = n; p.odwiedzone[n] = true;
     wypelnijUI(p, n);
     try { history.replaceState(null, '', location.pathname + location.search + L.budujHash(p.def.id, n)); } catch (_) { /* file:// */ }
     ustawDron();
+  }
+  function pokazKrok(n, bezPrzejscia) {
+    var p = biez;
+    n = L.ograniczKrok(n, p.def.kroki.length);
+    var k = p.def.kroki[n - 1];
+    ustawKrok(p, n);
     if (ciecie) { clearTimeout(ciecie.zegar); ciecie = null; }
     var poprz = p.pokazany ? p.def.kroki[p.pokazany - 1] : null;
     var przezCzern = !bezPrzejscia && !smoke && poprz && L.czyCiecie(poprz.scena, k.scena);
@@ -555,19 +570,63 @@
   }
   function idz(akcja) {
     if (tryb !== 'prezentacja' || !biez) return;
+    if (film) { przewinFilm(L.celPrzewiniecia(film.os, film.t, akcja)); if (!rezyseria) ustawRezyserie(true); return; }
     var n = L.przejscie(biez.krok, akcja, biez.def.kroki.length);
     if (n !== biez.krok) pokazKrok(n, false);
     else if (!rezyseria) ustawRezyserie(true);
   }
 
   /* ---------- seans, pełny ekran, dźwięk ---------- */
-  function ustawSeans(wl) {
-    seans.on = !!wl; seans.pauza = false;
-    el.seans.setAttribute('aria-pressed', String(seans.on));
-    el.seans.setAttribute('data-ikona', seans.on ? 'pauza' : 'gra');
-    el.postep.hidden = !seans.on;
-    if (seans.on && document.activeElement && document.activeElement.tagName === 'BUTTON') el.korzen.focus({ preventScroll: true });   // spacja ma pauzować, nie klikać
-    if (seans.on && biez && biez.krok >= biez.def.kroki.length) pokazKrok(1, false);
+  // Seans = film zjawiska (spec 2026-11-19-zjawiska-film-design): jeden zegar filmu napędza zawartość kroków, kamerę
+  // (logika.pozaFilmu), czerń i napisy — deterministycznie, więc pauza i przewijanie nie rozjeżdżają obrazu.
+  // `t0` = chwila startu [s]; bez niej film zaczyna od bieżącego kroku (na ostatnim — od początku).
+  // `bezPowrotu` = wyjście z widoku (nie wracaj do ujęcia kroku).
+  function ustawSeans(wl, t0, bezPowrotu) {
+    wl = !!wl && !!biez; seans.pauza = false;
+    el.seans.setAttribute('aria-pressed', String(wl));
+    el.seans.setAttribute('data-ikona', wl ? 'pauza' : 'gra');
+    el.postep.hidden = !wl;
+    el.korzen.classList.toggle('zj-film', wl);
+    if (el.start) el.start.hidden = true;
+    if (wl && document.activeElement && document.activeElement.tagName === 'BUTTON') el.korzen.focus({ preventScroll: true });   // spacja ma pauzować, nie klikać
+    if (wl) {
+      var os = L.osCzasuFilmu(biez.def, { dlugosc: 'skrot' });
+      var t = typeof t0 === 'number' ? t0 : (biez.krok >= biez.def.kroki.length ? 0 : L.celPrzewiniecia(os, os.kroki[biez.krok - 1].start, { idz: biez.krok }));
+      if (ciecie) { clearTimeout(ciecie.zegar); ciecie = null; }
+      el.czern.classList.remove('on');
+      film = { os: os, t: 0 };
+      zbudujZnacznikiRozdzialow();
+      if (!rezyseria) ustawRezyserie(true);
+      zrodloDojazdu = null;
+      przewinFilm(t, true);
+    } else if (film) {
+      film = null;
+      el.czern.style.opacity = '';
+      el.postep.replaceChildren(document.createElement('i'));
+      if (!bezPowrotu && biez && biez.pokazany) wejdzWScene(biez.krok, true);   // z powrotem w krokach: płynny dojazd do ujęcia kroku
+    }
+  }
+  // Ustaw zegar filmu; zawartość kroku przełącza się od razu (klatka dociągnie kamerę i czerń z osi czasu).
+  function przewinFilm(t, wymus) {
+    if (!film || !biez) return;
+    film.t = Math.max(0, Math.min(film.os.calosc, t));
+    var n = L.lokalizujFilm(film.os, film.t).krok;
+    if (wymus || biez.pokazany !== n) krokFilmu(n);
+  }
+  function krokFilmu(n) {
+    ustawKrok(biez, n);
+    wejdzWScene(n, false);
+    zbudujNapisy(biez.def.kroki[n - 1], film.os.kroki[n - 1].wersy);
+  }
+  function zbudujZnacznikiRozdzialow() {
+    var bar = document.createElement('i');
+    el.postep.replaceChildren(bar);
+    L.rozdzialyFilmu(biez.def, film.os).forEach(function (r) {
+      if (!r.ulamek) return;
+      var b = document.createElement('b'); b.style.left = (r.ulamek * 100).toFixed(2) + '%';
+      b.setAttribute('aria-hidden', 'true');
+      el.postep.appendChild(b);
+    });
   }
   function pauzaSeansu() {
     seans.pauza = !seans.pauza;
@@ -621,7 +680,7 @@
     if (!Z.aktywny || tryb !== 'prezentacja' || !biez) { raf = 0; return; }
     raf = requestAnimationFrame(klatka);
     var teraz = performance.now();
-    var dtR = Math.min((teraz - ostatnia) / 1000, 0.1); ostatnia = teraz;
+    var dtSur = (teraz - ostatnia) / 1000, dtR = Math.min(dtSur, 0.1); ostatnia = teraz;
     var p = biez, g = gl;
     if (!p.pokazany) return;
     var k = p.def.kroki[p.pokazany - 1], uj = k.ujecie, wolno = ograniczonyRuch(), dt, u;
@@ -633,16 +692,29 @@
       if (fps.slabe >= 3 && jakosc === 'pelna') { jakosc = 'oszczedna'; g.renderer.setPixelRatio(1); dopasuj(); }
     }
 
-    if (smoke) { tKrok = (typeof k.tPogl === 'number') ? k.tPogl : 5; tGlob = tKrok; dt = 0; u = smokeT == null ? 1 : smokeT; tNapisy = 0; }
+    if (film) {
+      // film: jeden zegar; zawartość, kamera, czerń i napisy wyprowadzone z osi czasu (smoke: zegar stoi w chwili `t`)
+      // zegar filmu = czas rzeczywisty (dźwięk i napisy muszą iść równo także przy kilku klatkach na sekundę);
+      // obcięcie 1 s tylko na wypadek długiej przerwy, a schowana karta i tak pauzuje film (visibilitychange)
+      if (!smoke && !seans.pauza) film.t = Math.min(film.os.calosc, film.t + Math.min(dtSur, 1));
+      var lok = L.lokalizujFilm(film.os, film.t);
+      if (p.pokazany !== lok.krok) { krokFilmu(lok.krok); k = p.def.kroki[p.pokazany - 1]; uj = k.ujecie; }
+      var kr = film.os.kroki[lok.i];
+      dt = (smoke || seans.pauza) ? 0 : dtR;
+      tKrok = Math.max(0, lok.tKrok); tGlob = film.t; tReal += dt; tNapisy = film.t;
+      u = L.postepUjecia(film.t - kr.ruch.start, kr.ruch.czas);
+      var sp = lok.przejscie ? L.stanPrzejscia(lok.przejscie.typ, lok.przejscie.f) : null;
+      el.czern.style.opacity = sp ? String(sp.czern) : '0';
+    } else if (smoke) { tKrok = (typeof k.tPogl === 'number') ? k.tPogl : 5; tGlob = tKrok; dt = 0; u = smokeT == null ? 1 : smokeT; tNapisy = 0; }
     else {
-      if (seans.on && seans.pauza) dtR = 0;
       dt = dtR * L.tempoRuchu(wolno);
       tGlob += dt; tKrok += dt; tReal += dtR; tNapisy += dtR; tDojazd += dtR;
       u = L.postepUjecia(tKrok, uj.czas);
     }
 
     // kamera: reżyseria (ujęcie + dojazd + oddech) albo swobodne rozglądanie
-    if (rezyseria) {
+    if (rezyseria && film) ustawKamere(L.pozaFilmu(p.def, film.os, film.t), !smoke && !wolno);
+    else if (rezyseria) {
       var s = L.stanUjecia(uj, u, { bezDollyZoom: wolno });
       if (zrodloDojazdu && !smoke) {
         var e = L.wygladz(tDojazd / (L.KINO.DOJAZD * (wolno ? 1.6 : 1)));
@@ -668,11 +740,9 @@
 
     if (!smoke) {
       pokazNapis(tNapisy);
-      if (seans.on) {
-        el.postep.firstElementChild.style.width = (Math.min(1, tNapisy / napisy.koniec) * 100).toFixed(1) + '%';
-        if (!seans.pauza && !ciecie && tNapisy >= napisy.koniec) {
-          if (p.krok < p.def.kroki.length) pokazKrok(p.krok + 1, false); else ustawSeans(false);
-        }
+      if (film) {
+        el.postep.firstElementChild.style.width = (Math.min(1, film.t / film.os.calosc) * 100).toFixed(2) + '%';
+        if (film.t >= film.os.calosc) ustawSeans(false);       // koniec filmu: zostajemy na ostatnim kroku
       }
     }
     Z.klatki = (Z.klatki || 0) + 1;
@@ -699,8 +769,9 @@
       el.nazwa.textContent = 'Zjawiska naukowe';
       if (raf) { cancelAnimationFrame(raf); raf = 0; }
       if (ciecie) { clearTimeout(ciecie.zegar); ciecie = null; el.czern.classList.remove('on'); }
-      if (seans.on) ustawSeans(false);
+      if (film) ustawSeans(false, null, true);
       if (dzwiek && dzwiek.on) ustawDzwiek(false);
+      if (el.start) el.start.hidden = true;
       ustawPanel(false);
       if (t === 'uklad' && document.fullscreenElement === el.korzen) { try { document.exitFullscreen(); } catch (_) { /* nic */ } }
       if (t === 'uklad') zwolnijWszystkie(null);        // Układ renderuje sam — zjawiska nie trzymają pamięci GPU
@@ -777,7 +848,7 @@
   Z.stan = function () {
     return { tryb: tryb, id: biez && tryb === 'prezentacja' ? biez.def.id : null, krok: biez ? biez.krok : 0, pokazany: biez ? biez.pokazany : 0,
       liczba: biez ? biez.def.kroki.length : 0, tween: !!zrodloDojazdu || !!ciecie, ciecie: !!ciecie, rezyseria: rezyseria,
-      seans: seans.on, pauza: seans.pauza, u: Z.u || 0, napis: napisy.idx, wersow: napisy.h.length, cisza: el.korzen.classList.contains('zj-cisza'),
+      seans: !!film, pauza: seans.pauza, film: film ? { t: film.t, calosc: film.os.calosc, krok: biez && biez.pokazany } : null, u: Z.u || 0, napis: napisy.idx, wersow: napisy.h.length, cisza: el.korzen.classList.contains('zj-cisza'),
       kadr: { tryb: kadr.tryb, x: kadr.x, w: kadr.w, h: kadr.h, y: kadr.y }, post: !!post && jakosc === 'pelna', jakosc: jakosc, fps: Math.round(fps.wart), klatki: Z.klatki || 0,
       kamera: gl ? { poz: gl.kamera.position.toArray(), fov: stanKamery.fov, komp: stanKamery.komp } : null };
   };
@@ -800,7 +871,31 @@
   el.doListy.addEventListener('click', function () { Z.otworzListe(); });
   el.wstecz.addEventListener('click', function () { idz('wstecz'); });
   el.dalej.addEventListener('click', function () { idz('dalej'); });
-  el.seans.addEventListener('click', function () { ustawSeans(!seans.on); });
+  el.seans.addEventListener('click', function () { ustawSeans(!film); });
+  // pasek filmu: klik = przewinięcie do tego miejsca
+  el.postep.addEventListener('click', function (e) {
+    if (!film) return;
+    var r = el.postep.getBoundingClientRect();
+    if (r.width > 0) przewinFilm((e.clientX - r.left) / r.width * film.os.calosc);
+  });
+  // karta „Odtwórz” (link z `&film`): dźwięk i pełny obraz wymagają gestu — główny przycisk z dźwiękiem, drugi bez
+  function startZKarty(zDzwiekiem) {
+    var t = el.start.dataset.t ? Number(el.start.dataset.t) : 0;
+    el.start.hidden = true;
+    if (zDzwiekiem) ustawDzwiek(true);
+    ustawSeans(true, t);
+  }
+  if (el.start) {
+    el.startDzwiek.addEventListener('click', function () { startZKarty(true); });
+    el.startCicho.addEventListener('click', function () { startZKarty(false); });
+  }
+  function pokazKarteStartu(t) {
+    if (!el.start || !biez) return;
+    el.startTytul.textContent = biez.def.tytul;
+    el.start.dataset.t = typeof t === 'number' ? String(t) : '';
+    el.start.hidden = false;
+    if (!smoke) el.startDzwiek.focus({ preventScroll: true });
+  }
   el.dzwiek.addEventListener('click', function () { ustawDzwiek(!(dzwiek && dzwiek.on)); });
   el.pelny.addEventListener('click', pelnyEkran);
   el.tekstBtn.addEventListener('click', function () { ustawPanel(el.panel.hidden); });
@@ -819,25 +914,30 @@
     if (!a) return;
     var cel = e.target, tag = cel && cel.tagName, spacja = e.key === ' ' || e.key === 'Spacebar';
     var natywny = tag === 'BUTTON' || tag === 'A' || tag === 'SUMMARY' || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-    if (spacja && seans.on && tryb === 'prezentacja') { e.preventDefault(); pauzaSeansu(); return; }   // w seansie spacja = pauza (także z fokusem na przycisku)
+    if (spacja && film && tryb === 'prezentacja') { e.preventDefault(); pauzaSeansu(); return; }   // w seansie spacja = pauza (także z fokusem na przycisku)
     if (natywny && spacja) return;                       // spacja na przycisku = jego własne kliknięcie
     e.preventDefault();
-    if (a === 'zamknij') { if (!el.panel.hidden) ustawPanel(false); else Z.zamknij(); return; }
+    if (a === 'zamknij') { if (!el.panel.hidden) ustawPanel(false); else if (film) ustawSeans(false); else Z.zamknij(); return; }   // w filmie Esc = z powrotem do kroków
     if (tryb !== 'prezentacja') return;
     if (a === 'rozejrzyj') ustawRezyserie(!rezyseria);
     else if (a === 'pelnyEkran') pelnyEkran();
     else if (a === 'tekst') ustawPanel(el.panel.hidden);
-    else if (a === 'seans') ustawSeans(!seans.on);
+    else if (a === 'seans') ustawSeans(!film);
     else idz(a);
   }, true);
   window.addEventListener('keyup', function (e) { if (Z.aktywny) e.stopPropagation(); }, true);
+  document.addEventListener('visibilitychange', function () { if (document.hidden && film && !seans.pauza) pauzaSeansu(); });
 
   function zAdresu() {
     var h = L.parsujHash(location.hash);
     if (!h) { if (tryb !== 'uklad') ustawTryb('uklad'); return; }
     if (!h.zjawisko) { if (tryb !== 'lista') Z.otworzListe(); return; }
-    if (tryb === 'prezentacja' && biez && biez.def.id === h.zjawisko) { if (h.krok !== biez.krok) idz({ idz: h.krok }); return; }
-    Z.otworz(h.zjawisko, h.krok);
+    if (tryb === 'prezentacja' && biez && biez.def.id === h.zjawisko) {
+      if (h.film && !film) pokazKarteStartu(h.t);
+      else if (h.krok !== biez.krok) idz({ idz: h.krok });
+      return;
+    }
+    Z.otworz(h.zjawisko, h.krok).then(function (ok) { if (ok && h.film) pokazKarteStartu(h.t); });
   }
   window.addEventListener('hashchange', zAdresu);
   window.addEventListener('popstate', zAdresu);
@@ -846,8 +946,13 @@
   var q = L.parsujZapytanie(location.search);
   if (q && q.smoke) {
     smoke = true; el.korzen.classList.add('zj-smoke');
-    var mt = /[?&]t=([0-9.]+)/.exec(location.search);
-    if (mt) { var tv = parseFloat(mt[1]); if (isFinite(tv)) smokeT = Math.max(0, Math.min(1, tv)); }
-    Z.otworz(q.zjawisko, q.krok);
+    if (q.film) {
+      // `?smoke&zjawisko=id&film&t=S`: deterministyczna klatka filmu w chwili S [s]; marker podaje krok z osi czasu
+      Z.otworz(q.zjawisko, 1).then(function (ok) { if (ok) ustawSeans(true, q.t || 0); });
+    } else {
+      var mt = /[?&]t=([0-9.]+)/.exec(location.search);
+      if (mt) { var tv = parseFloat(mt[1]); if (isFinite(tv)) smokeT = Math.max(0, Math.min(1, tv)); }
+      Z.otworz(q.zjawisko, q.krok);
+    }
   } else if (L.parsujHash(location.hash)) zAdresu();
 })();
