@@ -15,10 +15,15 @@
    Gdy `Zjawiska.aktywny === true`, pętla `animate` w solar.js nie renderuje (strażnik na jej początku).
 
    Kontrakt pliku zjawiska: `Zjawiska.rejestruj({ id, tytul, zrodla, pochodzenie, zestawy, kroki })`
-     zestawy[nazwa](ctx) → { grupa, ustaw?(opcje), animuj?(t, dt) }   — obiekty wspólne dla wielu kroków, budowane raz
+     zestawy[nazwa](ctx) → { grupa, ustaw?(opcje), animuj?(t, dt, zd) }   — obiekty wspólne dla wielu kroków, budowane raz
      krok = { czesc, tytul, narracja[], ramka?, podpis, przypisy?, scena, ujecie:{ruch,tor,cel,fov,czas,komp?,przechyl?,dollyZoom?,tlo?},
-              zestawy?[], ustaw?(ctx, z), zbuduj?(ctx) → { grupa, etykiety?, krok?(t, z), ... }, etykiety?[], przyrzad?,
-              animuj?(ctx, t, wlasne, z), tPogl?, strefa?[x,y,z,r] }   (strefa = bryła, w którą kamera ujęcia nie wchodzi; pilnuje test „kontrakt kina”)
+              zestawy?[], ustaw?(ctx, z), zbuduj?(ctx) → { grupa, etykiety?, krok?(t, z, zd), akcenty?(tOd, tDo, zd), ... },
+              etykiety?[], przyrzad?, animuj?(ctx, t, wlasne, z, dt, zd), zdarzenia?{nazwa: {wers, po?}}, tPogl?, strefa?[x,y,z,r] }
+              (strefa = bryła, w którą kamera ujęcia nie wchodzi; pilnuje test „kontrakt kina”)
+   Zdarzenia sceny przypięte do wersów: `zd` = {nazwa: chwila} w czasie odbiorcy (krok: t kroku; zestaw: jego t), liczone
+   z napisów — w filmie z osi czasu (`os.kroki[i].zdarzenia` = czas filmu, `zdarzeniaKroku` = czas kroku), w krokach od
+   wejścia w krok; null, gdy krok ich nie ma. `akcenty(tOd, tDo, zd)` → [{t, typ, …}] zdarzenia dźwiękowe sceny w oknie
+   [tOd, tDo) — okno, `zd` i wynik w czasie zestawów (film: czas filmu, `zd` = `os.kroki[i].zdarzenia`).
    Bez `animuj` widok co klatkę woła `krok(t, z)` z wyniku `zbuduj` (jeśli jest); `animuj` go zastępuje.
    `ctx.doKamery(obiekt)` → obiekt co klatkę zwrócony do kamery (po animacji kroku), bez lookAt w kodzie zjawiska.
    Film w przejściu rysuje DWA kroki w jednej klatce i przełącza między nimi zawartość, więc: `ustaw` (zestawu i kroku)
@@ -265,7 +270,7 @@
   function przebieg(def) {
     if (przebiegi[def.id]) return przebiegi[def.id];
     var T = window.THREE, g = zapewnijGL();
-    var p = { def: def, korzen: new T.Group(), zestawy: {}, kroki: [], krok: 0, pokazany: 0, odwiedzone: {}, aktywne: [], z: {}, doKamery: [] };
+    var p = { def: def, korzen: new T.Group(), zestawy: {}, kroki: [], krok: 0, pokazany: 0, odwiedzone: {}, aktywne: [], z: {}, doKamery: [], zdKrokow: [] };
     p.korzen.name = 'zjawisko:' + def.id;
     g.scena.add(p.korzen);
     p.ctx = {
@@ -760,10 +765,10 @@
   }
   // Kroki: czas kroku, ujęcie z dojazdem z poprzedniej kamery, jedna scena.
   function opisKrokow(p, k, uj, dtR, wolno) {
-    var dt, u;
+    var dt, u, tempo = smoke ? 1 : L.tempoRuchu(wolno);
     if (smoke) { tKrok = (typeof k.tPogl === 'number') ? k.tPogl : 5; tGlob = tKrok; dt = 0; u = smokeT == null ? 1 : smokeT; tNapisy = 0; }
     else {
-      dt = dtR * L.tempoRuchu(wolno);
+      dt = dtR * tempo;
       tGlob += dt; tKrok += dt; tReal += dtR; tNapisy += dtR; tDojazd += dtR;
       u = L.postepUjecia(tKrok, uj.czas);
     }
@@ -775,10 +780,13 @@
         if (e >= 1) zrodloDojazdu = null; else poza = mieszajStan(zrodloDojazdu, poza, e);
       }
     }
-    var tk = tKrok, uu = u;
-    return { tKrok: tKrok, tGlob: tGlob, dt: dt, u: u, poza: poza,
-      obraz: L.obrazJednej(p.pokazany - 1),
-      czasy: function () { return { tKrok: tk, u: uu }; } };
+    // zdarzenia kroku od wejścia (napisy biegną w czasie rzeczywistym, tKrok w tempie ruchu — stąd skala); w czasie
+    // zestawów przesunięte o tGlob − tKrok (stałe w kroku) — przeliczane tylko, gdy zmieni się tempo albo przesunięcie
+    var i = p.pokazany - 1, t0 = tGlob - tKrok, z = p.zdKrokow[i];
+    if (!z) z = p.zdKrokow[i] = { baza: L.zdarzeniaKroku(k) };
+    if (z.tempo !== tempo || z.t0 !== t0) { z.tempo = tempo; z.t0 = t0; z.zd = L.przesunZdarzenia(z.baza, 0, tempo); z.zdG = L.przesunZdarzenia(z.zd, t0); }
+    var c = { tKrok: tKrok, u: u, zd: z.zd, zdG: z.zdG };
+    return { tKrok: tKrok, tGlob: tGlob, dt: dt, u: u, poza: poza, obraz: L.obrazJednej(i), czasy: function () { return c; } };
   }
   // Film: jeden zegar (czas rzeczywisty; obcięcie 1 s tylko na długą przerwę, schowana karta pauzuje) — zawartość,
   // kamera, obraz przejścia i napisy z osi czasu. Smoke: zegar stoi w chwili `t`.
@@ -790,7 +798,8 @@
     tReal += dt; tNapisy = film.t;
     var czasy = function (i) {
       var kr = os.kroki[i];
-      return { tKrok: Math.max(0, film.t - kr.start), u: L.postepUjecia(film.t - kr.ruch.start, kr.ruch.czas) };
+      return { tKrok: Math.max(0, film.t - kr.start), u: L.postepUjecia(film.t - kr.ruch.start, kr.ruch.czas),
+        zd: kr.zdarzeniaKroku, zdG: kr.zdarzenia };
     };
     var c = czasy(lok.i), zPassem = !!post && jakosc === 'pelna';
     var obraz = lok.przejscie
@@ -800,17 +809,18 @@
   }
   // Zawartość sceny `sc` ({i, gwiazdy}) w chwili klatki: tło ujęcia, animacje zestawów i kroku, obiekty do kamery.
   // `dtZestawow`: zestawy są wspólne dla obu scen przejścia, więc przyrost czasu dostają raz na klatkę (scena ostatnia).
+  // Zdarzenia: krok dostaje `c.zd` (czas kroku), zestawy `c.zdG` (ich czas; w filmie czas filmu).
   function animujScene(p, sc, opis, dtZestawow) {
     if (p.zastosowany !== sc.i + 1 || p.zastosowaneGwiazdy !== !!sc.gwiazdy) pokazZawartosc(p, sc.i + 1, sc.gwiazdy);
     var k = p.def.kroki[sc.i], uj = k.ujecie, c = opis.czasy(sc.i);
     // tło przygaszane w ujęciu (przybliżenie „rack focus” bez postprocessingu głębi)
     var tlo = uj.tlo == null ? 1 : (typeof uj.tlo === 'number' ? uj.tlo : uj.tlo[0] + (uj.tlo[1] - uj.tlo[0]) * c.u);
     if (p.z.gwiazdy && p.z.gwiazdy.jasnosc) p.z.gwiazdy.jasnosc(sc.gwiazdy ? 1 : tlo);
-    for (var i = 0; i < p.aktywne.length; i++) if (p.aktywne[i].animuj) p.aktywne[i].animuj(opis.tGlob, dtZestawow);
+    for (var i = 0; i < p.aktywne.length; i++) if (p.aktywne[i].animuj) p.aktywne[i].animuj(opis.tGlob, dtZestawow, c.zdG);
     if (!sc.gwiazdy) {
       var wlasne = p.kroki[sc.i];
-      if (k.animuj) k.animuj(p.ctx, c.tKrok, wlasne, p.z, opis.dt);
-      else if (wlasne && wlasne.krok) wlasne.krok(c.tKrok, p.z);       // domyślnie: ruch sceny kroku z jego `zbuduj`
+      if (k.animuj) k.animuj(p.ctx, c.tKrok, wlasne, p.z, opis.dt, c.zd);
+      else if (wlasne && wlasne.krok) wlasne.krok(c.tKrok, p.z, c.zd);       // domyślnie: ruch sceny kroku z jego `zbuduj`
     }
     for (var b = 0; b < p.doKamery.length; b++) p.doKamery[b].lookAt(gl.kamera.position);
   }
@@ -933,6 +943,10 @@
   };
   // Kąt zestawu (glob, pierścień, stacja) — przyrząd ciągłości faz między krokami (shot-zjawiska-film).
   Z.katZestawu = function (nazwa) { var z = biez && biez.zestawy[nazwa]; return z && typeof z.kat === 'number' ? z.kat : null; };
+  // Haki eye-checków: przewinięcie filmu (dokładne, bez pikseli paska), zestaw i zbudowana scena kroku (zdarzenia od wersu).
+  Z.przewin = function (t) { przewinFilm(t); };
+  Z.zestaw = function (nazwa) { return (biez && biez.zestawy[nazwa]) || null; };
+  Z.scenaKroku = function (n) { return (biez && biez.kroki[n - 1]) || null; };
   // Liczniki zasobów — test „tam i z powrotem” ma dać te same liczby po drugim przejściu co po pierwszym.
   Z.diagnostyka = function () {
     if (!gl) return null;

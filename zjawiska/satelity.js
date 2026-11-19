@@ -83,6 +83,34 @@
     }
     return out.sort(function (a, b) { return a.t - b.t; });
   }
+  // Akcenty kaskady: zderzenia z harmonogramu przesunięte tak, że pierwsze wypada w chwili t0 (kotwica „zderzenia”),
+  // w oknie [tOd, tDo). Konsument: dźwięk filmu (zadanie 6 specyfikacji filmu).
+  function akcentyKaskady(harm, t0, tOd, tDo) {
+    var d = t0 - harm[0].t, out = [];
+    for (var i = 0; i < harm.length; i++) { var t = harm[i].t + d; if (t >= tOd && t < tDo) out.push({ t: t, typ: 'zderzenie', pok: harm[i].pok }); }
+    return out;
+  }
+  // Łąka: przelot satelity po wielkim kole od wschodu (chwila tw, kąt fiStart) do zgaśnięcia w cieniu Ziemi (chwila tg,
+  // kąt FI_GASNIE) — ruch jednostajny, jasność narasta przez NARASTA s i gaśnie w oknie [tg − GASNIE[0], tg + GASNIE[1]].
+  var LAKA = { FI_WSCHOD: 1.0, FI_GASNIE: 1.95, NARASTA: 0.8, GASNIE: [0.5, 0.3] };
+  function przelotLaki(t, tw, tg, fiStart) {
+    if (t < tw) return { fi: fiStart, jasnosc: 0 };
+    var fi = fiStart + (LAKA.FI_GASNIE - fiStart) * (t - tw) / (tg - tw);
+    return { fi: fi, jasnosc: Math.min(1, (t - tw) / LAKA.NARASTA) * (1 - L.odcinek(t, tg - LAKA.GASNIE[0], tg + LAKA.GASNIE[1])) };
+  }
+  // Sputnik: krąg j sygnału rośnie w fazie petla(t·V + j/KREGI). Po kotwicy ts („zaczęła piszczeć”) widać tylko kręgi
+  // wypuszczone od ts (faza bez przeskoku między krokami); wypuszczenie kręgu = akcent „bip”, kręgi na zmianę dwóch fal.
+  // Wypuszczenia leżą na jednej siatce t = e/(V·KREGI): w chwili e wypuszczany jest krąg j ≡ −e (mod KREGI).
+  var SPUTNIK = { V: 0.55, KREGI: 6 };
+  function fazaKregu(t, j, ts) {
+    var u = L.petla(t * SPUTNIK.V + j / SPUTNIK.KREGI, 1);
+    return ts == null || t - u / SPUTNIK.V >= ts ? u : -1;
+  }
+  function bipySputnika(tOd, tDo, ts) {
+    var out = [], K = SPUTNIK.KREGI, f = SPUTNIK.V * K, od = ts == null ? tOd : Math.max(tOd, ts);
+    for (var e = Math.ceil(od * f - 1e-9); e / f < tDo; e++) out.push({ t: e / f, typ: 'bip', fala: (((-e) % K + K) % K) % 2 });
+    return out;
+  }
   function liczbaOdlamkow(harm, t, naZderzenie) {
     var n = 0;
     for (var i = 0; i < harm.length; i++) if (harm[i].t <= t) n += naZderzenie; else break;
@@ -378,7 +406,6 @@
       g.add(czlowiek);
       // satelita: wielkie koło przez zachodni i wschodni horyzont, najwyżej 50° nad południem (−z)
       var R0 = 222, E1 = [1, 0, 0], E2 = [0, Math.sin(50 * Math.PI / 180), -Math.cos(50 * Math.PI / 180)];
-      var FI0 = 0.1, FI_GASNIE = 1.95, OKRES = 22, PRZELOT = 15;
       function naNiebie(fi, out) { out.set(R0 * (Math.cos(fi) * E1[0] + Math.sin(fi) * E2[0]), R0 * (Math.cos(fi) * E1[1] + Math.sin(fi) * E2[1]), R0 * (Math.cos(fi) * E1[2] + Math.sin(fi) * E2[2])); return out; }
       var sat = new T.Group(), rdzen = poswiata(c, 'zar', 3.2, 1), aura = poswiata(c, 'atrament', 9, 0.35);
       sat.add(aura); sat.add(rdzen); g.add(sat);
@@ -387,17 +414,10 @@
       samolot.add(swC); swB.position.x = 0.9; samolot.add(swB); g.add(samolot);
       var api = { grupa: g, satelita: sat, samolot: samolot, czlowiek: czlowiek, NA_NIEBIE: naNiebie,
         ustaw: function (o) { czlowiek.visible = !!(o && o.czlowiek); },
-        // jasność satelity w chwili t (0 = niewidoczny); gaśnie w cieniu Ziemi przy fi = FI_GASNIE
-        stan: function (t) {
-          var f = L.petla(t, OKRES) * OKRES, u = f / PRZELOT;
-          if (u > 1) return { fi: FI_GASNIE + 0.2, jasnosc: 0 };
-          var fi = FI0 + (FI_GASNIE + 0.2 - FI0) * u;
-          var j = Math.min(1, u * 8) * (1 - L.odcinek(fi, FI_GASNIE - 0.1, FI_GASNIE + 0.05));
-          return { fi: fi, jasnosc: j };
-        },
-        animuj: function (t) {
+        // satelita wschodzi i gaśnie raz, w chwilach zdarzeń kroku (`zd.wschod`, `zd.gasnie`; każdy krok łąki je ma — test)
+        animuj: function (t, dt, zd) {
           uniT.uCzas.value = t;
-          var s = api.stan(t);
+          var s = przelotLaki(t, zd.wschod, zd.gasnie, LAKA.FI_WSCHOD);
           naNiebie(s.fi, sat.position);
           rdzen.material.opacity = s.jasnosc; aura.material.opacity = 0.35 * s.jasnosc;
           sat.visible = s.jasnosc > 0.01;
@@ -453,13 +473,13 @@
       var obrot = new T.Group(); obrot.add(czlon); g.add(obrot);
       // kręgi sygnału: dwie fale, naprzemiennie (rytm „bip”)
       var kregi = [];
-      for (var i = 0; i < 6; i++) { var o = obrecz(c, i % 2 ? 'zloto' : 'zar'); g.add(o); kregi.push(o); }
+      for (var i = 0; i < SPUTNIK.KREGI; i++) { var o = obrecz(c, i % 2 ? 'zloto' : 'zar'); g.add(o); kregi.push(o); }
       var kam = new T.Vector3(), os = new T.Vector3(), doK = new T.Vector3(), wpo = new T.Vector3();
       var stan = { kregi: true, ostrosc: 1 };
-      var api = { grupa: g, kula: kulaS, czlon: czlon,
+      var api = { grupa: g, kula: kulaS, czlon: czlon, kregi: kregi,
         ustaw: function (o) { o = o || {}; stan.kregi = o.kregi !== false; stan.ostrosc = 1; kulaS.material.opacity = 1; blik.material.opacity = 0.7; },
         ostrosc: function (x) { stan.ostrosc = x; kulaS.material.opacity = 0.25 + 0.75 * x; blik.material.opacity = 0.7 * x; },
-        animuj: function (t) {
+        animuj: function (t, dt, zd) {
           g.rotation.y = 0;
           czlon.rotation.set(t * 0.21, 0, Math.PI / 2 + 0.35 * Math.sin(t * 0.17));
           // błysk: gdy bok walca odbija słońce (z +x/+y) ku kamerze
@@ -468,10 +488,11 @@
           doK.set(0.7, 0.6, 0.4).normalize().add(kam).normalize();
           var odb = 1 - Math.abs(os.dot(doK));
           blysk.material.opacity = Math.pow(Math.max(0, odb), 18) * 1.0 + 0.12;
+          var ts = zd && zd.sygnal;                          // krok 8 nie ma kotwicy: sygnał trwa od kroku 7
           for (var j = 0; j < kregi.length; j++) {
-            var u = L.petla(t * 0.55 + j / kregi.length, 1);
-            var s = 0.4 + u * 5.5; kregi[j].scale.set(s, s, 1);
-            kregi[j].material.opacity = stan.kregi ? 0.3 * (1 - u) * Math.min(1, u * 10) * stan.ostrosc : 0;
+            var u = fazaKregu(t, j, ts);                      // −1: krąg jeszcze nie wypuszczony (przed „zaczęła piszczeć”)
+            var s = 0.4 + Math.max(0, u) * 5.5; kregi[j].scale.set(s, s, 1);
+            kregi[j].material.opacity = stan.kregi && u >= 0 ? 0.3 * (1 - u) * Math.min(1, u * 10) * stan.ostrosc : 0;
           }
         } };
       api.ustaw({});
@@ -650,8 +671,10 @@
       ],
       podpis: 'Łąka po zachodzie słońca: satelita sunie i gaśnie. Kadr poglądowy, tempo przelotu przyspieszone; w naturze trwa to kilka minut.',
       scena: 'laka', strefa: null,
-      ujecie: { ruch: 'tilt: z trawy w niebo, z perspektywy człowieka na łące', tor: [[0, 1.3, 0.5], [0, 1.48, 0.25], [0, 1.6, 0]], cel: [[0, 3, -60], [0, 22, -60], [0, 46, -56]], fov: 55, czas: 16, komp: [0, -0.04] }, tPogl: 8,
+      ujecie: { ruch: 'tilt: z trawy w niebo, z perspektywy człowieka na łące', tor: [[0, 1.3, 0.5], [0, 1.48, 0.25], [0, 1.6, 0]], cel: [[0, 3, -60], [0, 22, -60], [0, 46, -56]], fov: 55, czas: 16, komp: [0, -0.04] }, tPogl: 15,
       zestawy: ['laka'],
+      // satelita rusza pod „jedna z gwiazd rusza” i gaśnie pod „I nagle gaśnie”
+      zdarzenia: { wschod: { wers: 2, po: 1.2 }, gasnie: { wers: 4, po: 1.0 } },
       zbuduj: function (c) {
         var l = c.zestaw('laka');
         return { etykiety: [{ tekst: 'satelita', cel: l.satelita, kotwica: 'prawo', klasa: 'zar', dx: 6 }, { tekst: 'samolot mruga', cel: l.samolot, kotwica: 'gora', klasa: 'm' }] };
@@ -864,8 +887,9 @@
       ],
       podpis: 'Sputnik nad Ziemią, za nim pusty człon rakiety. Rysunek poglądowy: kręgi sygnału umowne, odległość między kulą a członem skrócona, nie w skali.',
       scena: 'sputnik', strefa: [0, -9.2, 0, 7.1],
-      ujecie: { ruch: 'dolly-in: zbliżenie na polerowaną kulę Sputnika, za nią błyszczący człon rakiety', tor: [[4.4, 1.1, 5.2], [3.1, 0.75, 3.7], [2.3, 0.55, 2.75]], cel: [[-0.8, -0.15, -0.5], [-0.4, -0.08, -0.25], [-0.2, -0.04, -0.12]], fov: [32, 28], czas: 14, komp: [0.22, 0.04] }, tPogl: 3,
+      ujecie: { ruch: 'dolly-in: zbliżenie na polerowaną kulę Sputnika, za nią błyszczący człon rakiety', tor: [[4.4, 1.1, 5.2], [3.1, 0.75, 3.7], [2.3, 0.55, 2.75]], cel: [[-0.8, -0.15, -0.5], [-0.4, -0.08, -0.25], [-0.2, -0.04, -0.12]], fov: [32, 28], czas: 14, komp: [0.22, 0.04] }, tPogl: 14,
       zestawy: ['gwiazdy', 'ziemia', 'sputnik'],
+      zdarzenia: { sygnal: { wers: 1, po: 3.2 } },     // kręgi i „bip” od „zaczęła piszczeć”
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 7, pozycja: [0, -9.2, 0], obrot: 0.012, slonce: [0.7, 0.6, 0.4], siatka: 0.35 }); z.sputnik.ustaw({ kregi: true }); },
       zbuduj: function (c) {
         var s = c.zestaw('sputnik');
@@ -873,7 +897,7 @@
           { tekst: 'Sputnik, październik 1957', cel: s.kula, kotwica: 'prawo', klasa: 'w', dx: 40, dy: -30 },
           { tekst: 'sygnał na dwóch falach', poz: [0.6, 0.9, 0.2], kotwica: 'prawo', klasa: 'zar' },
           { tekst: 'pusty człon rakiety', cel: s.czlon, kotwica: 'dol', klasa: 'm', dy: 24 }
-        ] };
+        ], akcenty: function (tOd, tDo, zd) { return bipySputnika(tOd, tDo, zd && zd.sygnal); } };
       }
     },
 
@@ -891,7 +915,8 @@
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 7, pozycja: [0, -9.2, 0], obrot: 0.012, slonce: [0.7, 0.6, 0.4], siatka: 0.35 }); z.sputnik.ustaw({ kregi: true }); },
       zbuduj: function (c) {
         var s = c.zestaw('sputnik');
-        return { etykiety: [{ tekst: 'to go widzieli ludzie: długi jak kilka autobusów', cel: s.czlon, kotwica: 'gora', klasa: 'zar', dy: -30 }] };
+        return { etykiety: [{ tekst: 'to go widzieli ludzie: długi jak kilka autobusów', cel: s.czlon, kotwica: 'gora', klasa: 'zar', dy: -30 }],
+          akcenty: function (tOd, tDo) { return bipySputnika(tOd, tDo, null); } };     // sygnał trwa od kroku 7
       },
       animuj: function (c, t, w, z) { z.sputnik.ostrosc(1 - 0.75 * L.wygladz(L.odcinek(t, 1.5, 7))); }
     },
@@ -1776,7 +1801,8 @@
       ] },
       podpis: 'Kaskada Kesslera narasta: każde zderzenie sypie odłamkami, które zderzają się dalej. Schemat: liczba odłamków, zderzenia i tempo umowne, nie w skali.',
       scena: 'smieci',
-      ujecie: { ruch: 'dolly-out: kaskada rośnie, kamera odjeżdża', tor: [[1.6, 1.3, 4.7], [3.0, 3.0, 8.0], [4.0, 5.0, 11.2]], cel: [[1.2, 0.2, 2.2], [0.5, 0.2, 0.8], [0, 0, 0]], fov: 38, czas: 18, komp: [0, 0] }, tPogl: 10,
+      ujecie: { ruch: 'dolly-out: kaskada rośnie, kamera odjeżdża', tor: [[1.6, 1.3, 4.7], [3.0, 3.0, 8.0], [4.0, 5.0, 11.2]], cel: [[1.2, 0.2, 2.2], [0.5, 0.2, 0.8], [0, 0, 0]], fov: 38, czas: 18, komp: [0, 0] }, tPogl: 14,
+      zdarzenia: { zderzenia: { wers: 1, po: 3.0 } },  // pierwsze zderzenie pod „zaczną się zderzać”, narasta przez „patrz, jak to narasta”
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0.03, slonce: [0.6, 0.5, 0.7] }); },
       zbuduj: function (c) { return zbudujKaskade(c); },
     },
@@ -1806,8 +1832,9 @@
       ],
       podpis: 'Łąka po zachodzie słońca i ta sama gwiazda, która idzie. Kadr poglądowy: tempo przelotu przyspieszone.',
       scena: 'laka', strefa: null,
-      ujecie: { ruch: 'crane: zza ramienia człowieka na łące w niebo', tor: [[0.6, 1.15, 2.7], [0.45, 1.45, 2.05], [0.32, 1.72, 1.55]], cel: [[0, 1.5, -3], [0, 12, -30], [0, 38, -52]], fov: [42, 52], czas: 18, komp: [0.12, 0] }, tPogl: 8,
+      ujecie: { ruch: 'crane: zza ramienia człowieka na łące w niebo', tor: [[0.6, 1.15, 2.7], [0.45, 1.45, 2.05], [0.32, 1.72, 1.55]], cel: [[0, 1.5, -3], [0, 12, -30], [0, 38, -52]], fov: [42, 52], czas: 18, komp: [0.12, 0] }, tPogl: 20,
       zestawy: ['laka'],
+      zdarzenia: { wschod: { wers: 1, po: 2.0 }, gasnie: { wers: 5, po: 2.2 } },   // rusza pod „aż jedna z gwiazd ruszy”, gaśnie pod „Zgaśnie za chwilę”
       ustaw: function (c, z) { z.laka.ustaw({ czlowiek: true }); },
       zbuduj: function (c) {
         var l = c.zestaw('laka');
@@ -2195,7 +2222,7 @@
 
   // Kaskada Kesslera: pokolenia zderzeń, każde zderzenie sypie odłamkami (liczby i tempo umowne).
   function zbudujKaskade(c) {
-    var T = c.THREE, g = new T.Group(), los = c.generator(1978), R0 = 2.7, W0 = 0.42, NA_ZDERZENIE = 22, OKRES = 16;
+    var T = c.THREE, g = new T.Group(), los = c.generator(1978), R0 = 2.7, W0 = 0.42, NA_ZDERZENIE = 22;
     var harm = harmonogramKaskady(los, 7, 1.2, 2.6);
     var n0 = 70, pocz = [], pp0 = new Float32Array(n0 * 3), g0 = new T.BufferGeometry(); g0.setAttribute('position', new T.BufferAttribute(pp0, 3));
     for (var i = 0; i < n0; i++) pocz.push({ th: los() * TAU, dr: (los() - 0.5) * 0.3, inc: (los() - 0.5) * 0.25 });
@@ -2210,8 +2237,9 @@
         { tekst: '1978: zła bajka', poz: [0, 2.6, 0], kotwica: 'gora', klasa: 'w' },
         { tekst: 'każde zderzenie robi z dwóch rzeczy tysiąc', cel: aR, kotwica: 'prawo', klasa: 'lak', dx: 10 }
       ],
-      krok: function (t) {
-        var tt = L.petla(t, OKRES) * OKRES;
+      // od kotwicy `zd.zderzenia` (pierwsze zderzenie; każdy krok kaskady ją ma — test) kaskada narasta raz i zostaje
+      krok: function (t, z, zd) {
+        var tt = t - zd.zderzenia + harm[0].t;
         for (var i = 0; i < n0; i++) { var q = naOrbicie(R0 + pocz[i].dr, pocz[i].th + W0 * tt, pocz[i].inc, 0); pp0[i * 3] = q[0]; pp0[i * 3 + 1] = q[1]; pp0[i * 3 + 2] = q[2]; }
         g0.attributes.position.needsUpdate = true;
         // odłamki dopisane w kolejności harmonogramu → widoczne to dokładnie pierwsze `ile`
@@ -2231,7 +2259,8 @@
           aR.position.set(q3[0], q3[1], q3[2]);
         }
         for (; nb < blyski.length; nb++) blyski[nb].material.opacity = 0;
-      } };
+      },
+      akcenty: function (tOd, tDo, zd) { return akcentyKaskady(harm, zd.zderzenia, tOd, tDo); } };
   }
 
   /* =====================================================================
@@ -2249,7 +2278,8 @@
     zestawy: zestawy,
     kroki: kroki,
     fizyka: { keplerE: keplerE, naElipsie: naElipsie, naOrbicie: naOrbicie, rzutNewtona: rzutNewtona, wCieniu: wCieniu,
-      harmonogramKaskady: harmonogramKaskady, liczbaOdlamkow: liczbaOdlamkow, wSkali: wSkali, R_KM: R_KM },
+      harmonogramKaskady: harmonogramKaskady, liczbaOdlamkow: liczbaOdlamkow, wSkali: wSkali, R_KM: R_KM,
+      akcentyKaskady: akcentyKaskady, przelotLaki: przelotLaki, LAKA: LAKA, fazaKregu: fazaKregu, bipySputnika: bipySputnika, SPUTNIK: SPUTNIK },
     // pola, których krok nie podaje: większość scen dzieje się przy Ziemi o promieniu 2 w początku układu
     domyslne: { zestawy: ['gwiazdy', 'ziemia'], strefa: STREFA2 }
   });

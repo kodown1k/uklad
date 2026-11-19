@@ -350,18 +350,44 @@
     if (!(czas >= 0)) czas = KINO.PRZEJSCIE[typ];
     return { typ: typ, czas: czas, napis: napis };
   }
-  // Wersy kroku w filmie: [{tekst, ramka}] — `ramka` = wers zastrzeżenia (widok styluje go jako ramkę). 'pelna' = jak
-  // kroki (narracja + ramka z punktami); 'skrot' = zdania wybrane w `film.wersy` (indeksy zdań narracji) + tekst ramki
-  // (zastrzeżenia zostają); bez wyboru skrót = pełna.
+  // Wersy kroku w filmie: [{tekst, ramka, zrodlo}] — `ramka` = wers zastrzeżenia (widok styluje go jako ramkę),
+  // `zrodlo` = indeks zdania narracji (ramka: null). 'pelna' = jak kroki (narracja + ramka z punktami); 'skrot' = zdania
+  // wybrane w `film.wersy` (indeksy zdań narracji) + tekst ramki (zastrzeżenia zostają); bez wyboru skrót = pełna.
   function wersyFilmu(k, dlugosc) {
     var zd = podzielNaZdania(k.narracja), wybor = dlugosc === 'skrot' && k.film && Array.isArray(k.film.wersy);
-    if (wybor) zd = k.film.wersy.map(function (i) { return zd[i]; }).filter(Boolean);
-    var out = zd.map(function (z) { return { tekst: z, ramka: false }; });
+    var idx = wybor ? k.film.wersy.filter(function (i) { return zd[i] != null; }) : zd.map(function (_, i) { return i; });
+    var out = idx.map(function (i) { return { tekst: zd[i], ramka: false, zrodlo: i }; });
     if (k.ramka) {
       var r = podzielNaZdania([k.ramka.tekst || '']);
       if (!wybor) r = r.concat(k.ramka.punkty || []);
-      r.forEach(function (z) { out.push({ tekst: z, ramka: true }); });
+      r.forEach(function (z) { out.push({ tekst: z, ramka: true, zrodlo: null }); });
     }
+    return out;
+  }
+  // Wersy rozpisane w czasie od chwili t0 (harmonogram napisów): [{tekst, ramka, zrodlo, start, koniec}].
+  function rozpiszWersy(wersy, t0) {
+    var h = harmonogramNapisow(wersy.map(function (w) { return w.tekst; }));
+    return wersy.map(function (w, j) { return { tekst: w.tekst, ramka: w.ramka, zrodlo: w.zrodlo, start: t0 + h[j].start, koniec: t0 + h[j].koniec }; });
+  }
+  // Zdarzenia sceny przypięte do wersów: `k.zdarzenia = {nazwa: {wers, po?}}` (wers = indeks zdania narracji, po = s
+  // od początku wersu) → {nazwa: chwila} w czasie rozpisanych `wersy`; null, gdy krok nie ma zdarzeń. Wers pominięty
+  // w skrócie nie daje zdarzenia — sprawdzZjawisko pilnuje, żeby `film.wersy` zawierało każdy wers z kotwicą.
+  function chwileZdarzen(k, wersy) {
+    if (!k.zdarzenia) return null;
+    var out = {};
+    Object.keys(k.zdarzenia).forEach(function (n) {
+      var z = k.zdarzenia[n], w = wersy.find(function (x) { return x.zrodlo === z.wers; });
+      if (w) out[n] = w.start + (z.po || 0);
+    });
+    return out;
+  }
+  // Tryb kroków: zdarzenia w czasie od wejścia w krok (napisy pełnej narracji od 0, jak w widoku).
+  function zdarzeniaKroku(k) { return chwileZdarzen(k, rozpiszWersy(wersyFilmu(k, 'pelna'), 0)); }
+  // Chwile zdarzeń w innym czasie: t' = t·skala + d (null zostaje null).
+  function przesunZdarzenia(zd, d, skala) {
+    if (!zd) return null;
+    var out = {}, s = skala == null ? 1 : skala;
+    for (var n in zd) out[n] = zd[n] * s + d;
     return out;
   }
   // Najkrótsze przejście ciągłe, przy którym obrót kierunku patrzenia nie przekracza 90% limitu (70°/s, most 35°/s).
@@ -401,14 +427,15 @@
     });
     for (var i = 0; i < K.length; i++) {
       var start = t, c = P[i].czas, ws = start + c / 2;
-      var zd = wersyFilmu(K[i], dl), h = harmonogramNapisow(zd.map(function (w) { return w.tekst; }));
-      var wersy = h.map(function (w, j) { return { tekst: zd[j].tekst, ramka: zd[j].ramka, start: ws + w.start, koniec: ws + w.koniec }; });
+      var wersy = rozpiszWersy(wersyFilmu(K[i], dl), ws);
       var tekstKoniec = wersy.length ? wersy[wersy.length - 1].koniec : ws;
       var ruchStart = start - (CIAGLE[P[i].typ] ? c / 2 : 0);
       var nast = P[i + 1], lead = nast && CIAGLE[nast.typ] ? nast.czas / 2 : 0, uj = K[i].ujecie;
       var koniec = Math.max(tekstKoniec + KINO.ODDECH_PO_NAPISACH, ruchStart + uj.czas + lead);
       var ruchCzas = Math.min(Math.max(koniec - lead - ruchStart, uj.czas), KINO.ROZCIAGNIECIE_MAX * uj.czas);
-      out.push({ krok: i + 1, start: start, koniec: koniec, przejscie: P[i], wersy: wersy, ruch: { start: ruchStart, czas: ruchCzas } });
+      var zd = chwileZdarzen(K[i], wersy);   // czas filmu (zestawy, akcenty) i czas kroku (krok/animuj sceny)
+      out.push({ krok: i + 1, start: start, koniec: koniec, przejscie: P[i], wersy: wersy, zdarzenia: zd, zdarzeniaKroku: przesunZdarzenia(zd, -start),
+        ruch: { start: ruchStart, czas: ruchCzas } });
       t = koniec;
     }
     return { dlugosc: dl, kroki: out, calosc: t };
@@ -605,6 +632,15 @@
         var tp = typeof k.przejscie === 'object' ? k.przejscie.typ : k.przejscie;
         if (TYPY_PRZEJSC.indexOf(tp) < 0) u.push(p + 'przejście „' + tp + '” spoza zbioru (' + TYPY_PRZEJSC.join(', ') + ')');
       }
+      if (k.zdarzenia != null) {
+        var nz = Array.isArray(k.narracja) ? podzielNaZdania(k.narracja).length : 0, wybor = k.film && Array.isArray(k.film.wersy) ? k.film.wersy : null;
+        Object.keys(k.zdarzenia).forEach(function (n) {
+          var z = k.zdarzenia[n] || {};
+          if (!(z.wers >= 0 && z.wers < nz && z.wers % 1 === 0)) u.push(p + 'zdarzenie „' + n + '”: wers ' + z.wers + ' poza narracją (0–' + (nz - 1) + ')');
+          else if (wybor && wybor.indexOf(z.wers) < 0) u.push(p + 'zdarzenie „' + n + '”: wers ' + z.wers + ' wypada ze skrótu (film.wersy)');
+          if (z.po != null && !(z.po >= 0)) u.push(p + 'zdarzenie „' + n + '”: zły odstęp po (s ≥ 0)');
+        });
+      }
     });
     return u;
   }
@@ -613,6 +649,7 @@
     parsujHash: parsujHash, parsujZapytanie: parsujZapytanie, budujHash: budujHash,
     ograniczKrok: ograniczKrok, przejscie: przejscie, akcjaKlawisza: akcjaKlawisza,
     uzupelnijKroki: uzupelnijKroki, TYPY_PRZEJSC: TYPY_PRZEJSC, przejscieKroku: przejscieKroku, wersyFilmu: wersyFilmu,
+    rozpiszWersy: rozpiszWersy, chwileZdarzen: chwileZdarzen, zdarzeniaKroku: zdarzeniaKroku, przesunZdarzenia: przesunZdarzenia,
     ciaglyKat: ciaglyKat, ciaglyKierunek: ciaglyKierunek, resetCiaglosci: resetCiaglosci, obrazJednej: obrazJednej, obrazPrzejscia: obrazPrzejscia, zPrzejsciami: zPrzejsciami, rozdzialyFilmu: rozdzialyFilmu, celPrzewiniecia: celPrzewiniecia, OBROT_MAX: OBROT_MAX, OBROT_MOST: OBROT_MOST, osCzasuFilmu: osCzasuFilmu, lokalizujFilm: lokalizujFilm, stanPrzejscia: stanPrzejscia, mieszajWokol: mieszajWokol, pozaFilmu: pozaFilmu,
     wygladz: wygladz, mieszaj3: mieszaj3, tempoRuchu: tempoRuchu, petla: petla, odcinek: odcinek,
     RYC4: RYC4, strefaPierscienia: strefaPierscienia, pozycjaNaOsi: pozycjaNaOsi, przemiatanie: przemiatanie,
