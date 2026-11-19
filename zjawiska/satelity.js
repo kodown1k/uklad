@@ -673,6 +673,7 @@
     /* ---------- 1 ---------- */
     {
       czesc: R1, tytul: 'Gwiazda, która idzie',
+      film: { wersy: [0, 2, 3, 4] },
       narracja: [
         'Stań na łące, kiedy słońce już zaszło, ale niebo jeszcze nie zgasło do końca. Zadrzyj głowę i poczekaj.',
         'Po kilku minutach jedna z gwiazd rusza. Nie mruga jak samolot, nie zostawia smugi jak meteor: idzie równo i spokojnie od jednego skraju nieba do drugiego.',
@@ -694,6 +695,7 @@
     /* ---------- 2 ---------- */
     {
       czesc: R1, tytul: 'Dzień, którego ty już nie masz',
+      film: { wersy: [0, 2] }, przejscie: 'most',
       narracja: [
         'Teraz pierwszy sekret: ty stoisz już w cieniu Ziemi i dla ciebie jest noc.',
         'On leci kilkaset kilometrów nad tobą, a tam słońce jeszcze świeci. Widzisz go tylko dlatego, że odbija dzień, którego ty już nie masz.',
@@ -721,7 +723,7 @@
         return { grupa: g,
           etykiety: [
             { tekst: 'ty, na łące: już noc', cel: pin, kotwica: 'dol', klasa: 'zar', dy: 10 },
-            { tekst: function () { return swiatlo > 0.5 ? 'satelita: jeszcze w słońcu' : 'satelita w cieniu: zgasł'; }, cel: sat, kotwica: 'gora', klasa: 'w', dy: -14 },
+            { tekst: function () { return swiatlo > 0.5 ? 'satelita: jeszcze w słońcu' : 'satelita w cieniu: zgasł'; }, cel: sat, kotwica: 'gora', klasa: 'w', dy: -64 },
             { tekst: 'cień Ziemi', poz: [-6.5, 0.4, 1.2], kotwica: 'srodek', klasa: 'granat' },
             { tekst: 'światło słońca', poz: [6, -1.3, 0.4], kotwica: 'gora', klasa: 'zloto' }
           ],
@@ -746,6 +748,7 @@
     /* ---------- 3 ---------- */
     {
       czesc: R2, tytul: 'Rzut z bardzo wysokiej góry',
+      film: { wersy: [2, 4] }, przejscie: 'przenikanie',
       narracja: [
         'Weź kamień i rzuć go przed siebie: upadnie parę metrów dalej. Rzuć mocniej, upadnie dalej.',
         'Teraz stań na bardzo wysokiej górze, ponad powietrzem, z ręką tak silną, że kamień leci kilometr, dziesięć, sto.',
@@ -769,6 +772,7 @@
     /* ---------- 4 ---------- */
     {
       czesc: R2, tytul: 'Spada i ciągle chybia',
+      film: { wersy: [1, 3] },
       narracja: [
         'A teraz rzuć tak mocno, że kamień spada dokładnie tak szybko, jak ziemia ucieka mu spod spodu. Spada, ale nigdy nie trafia.',
         'Okrąża planetę i wraca ci do ręki od tyłu. To jest satelita: kamień, który spada i ciągle chybia.',
@@ -793,6 +797,7 @@
     /* ---------- 5 ---------- */
     {
       czesc: R2, tytul: 'Swobodny spadek, który trwa latami',
+      film: { wersy: [0, 3] }, przejscie: 'przenikanie',
       narracja: [
         'Spójrz do środka stacji kosmicznej: ludzie unoszą się w powietrzu. Nie dlatego, że tam nie ma grawitacji.',
         'Jest, prawie taka jak tutaj. Oni po prostu cały czas spadają razem ze stacją.',
@@ -821,8 +826,8 @@
         var Sp = new T.Vector3(), rad = new T.Vector3(), styk = new T.Vector3(), Cw = new T.Vector3(), A = new T.Vector3();
         return { grupa: g,
           etykiety: [
-            { tekst: 'przekrój modułu (powiększony)', cel: plaszcz, kotwica: 'gora', klasa: 'm', dy: -16 },
-            { tekst: 'grawitacja: prawie taka jak tutaj', cel: grawS, kotwica: 'dol', klasa: 'lak', dy: 30 },
+            { tekst: 'przekrój modułu (powiększony)', cel: plaszcz, kotwica: 'prawo', klasa: 'm', dx: 70, dy: -34 },
+            { tekst: 'grawitacja: prawie taka jak tutaj', cel: grawS, kotwica: 'lewo', klasa: 'lak', dx: -80, dy: 26 },
             { tekst: 'bez grawitacji: prosto', cel: prosto, kotwica: 'lewo', klasa: 'w', dx: -40, dy: -10 }
           ],
           krok: function (t) {
@@ -844,6 +849,7 @@
     /* ---------- 6 ---------- */
     {
       czesc: R2, tytul: 'Niebo nie rozróżnia żywych od martwych',
+      film: { wersy: [4, 5] },
       narracja: [
         'Jeszcze jedno, zanim ruszymy wyżej. Słowo „satelita” znaczy po prostu: coś, co krąży wokół czegoś większego.',
         'Księżyc to satelita naturalny. Wszystko, co sami wynieśliśmy na orbitę, to satelity sztuczne, także te, które dawno przestały odpowiadać, i zużyte człony rakiet.',
@@ -890,6 +896,7 @@
     /* ---------- 7 ---------- */
     {
       czesc: R3, tytul: 'Kula, która piszczy',
+      film: { wersy: [0, 1, 4] },
       narracja: [
         'Wyobraź sobie polerowaną kulę wielkości dużej piłki plażowej, z czterema długimi wąsami. W październiku 1957 roku poleciała w górę i zaczęła piszczeć.',
         'Nic więcej nie robiła. Nadawała na dwóch falach prosty sygnał, który radioamatorzy na całym świecie łapali w swoich kuchniach.',
@@ -914,6 +921,7 @@
     /* ---------- 8 ---------- */
     {
       czesc: R3, tytul: 'Co naprawdę widzieli ludzie',
+      film: { wersy: [1, 3] },
       narracja: [
         'Teraz przenieś wzrok za kulę. Ludzie, którzy wtedy wychodzili wieczorem „zobaczyć Sputnika”, najczęściej widzieli nie ją, a sunący za nią pusty człon rakiety.',
         'Kula była za mała. Rakieta była długa jak kilka autobusów i błyszczała; patrz, jak łapie słońce, kiedy się obraca.'
@@ -934,6 +942,7 @@
     /* ---------- 9 ---------- */
     {
       czesc: R3, tytul: 'Najstarsza rzecz nad twoją głową',
+      film: { wersy: [0, 3] },
       narracja: [
         'Pół roku później Amerykanie wysłali Vanguarda 1: kulkę wielkości grejpfruta, półtora kilograma. Zamilkł w 1964 roku.',
         'Ale on nadal tam jest. W tej chwili kręci się nad tobą najstarsza rzecz, jaką człowiek zostawił w kosmosie, i będzie się kręcić jeszcze długo po nas.'
@@ -977,6 +986,7 @@
     /* ---------- 10 ---------- */
     {
       czesc: R4, tytul: 'Dom o dziwnych piętrach',
+      film: { wersy: [2, 4] },
       narracja: [
         'Teraz najważniejszy podział. Satelity dzieli się przede wszystkim po wysokości, bo wysokość rozstrzyga o wszystkim: jak szybko lecą, co widzą, jak długo żyją.',
         'Wyobraź sobie dom, w którym im wyżej mieszkasz, tym wolniej się poruszasz i tym dłużej trwa twoja doba. Brzmi na odwrót?',
@@ -1020,6 +1030,7 @@
     /* ---------- 11 ---------- */
     {
       czesc: R4, tytul: 'Wszystko w jednej skali', wSkali: true,
+      film: { wersy: [0, 1] }, przejscie: { typ: 'czern', napis: 'w skali', cisza: true },
       narracja: [
         'Przyjrzyj się teraz rysunkowi, w którym nic nie jest oszukane. Ziemia, a wokół niej wszystkie piętra w tej samej skali.',
         'Jasny pas przy kuli to cały zakres orbit niskich. Wyżej krążą zegary nawigacji, jeszcze wyżej duży pierścień, na którym satelity stoją.',
@@ -1035,6 +1046,7 @@
     /* ---------- 12 ---------- */
     {
       czesc: R4, tytul: 'Bliżej niż Gdańsk od Krakowa', wSkali: true,
+      film: { wersy: [1, 3] },
       narracja: [
         'Podjedź teraz do samej kuli. Stacja kosmiczna krąży na wysokości czterystu kilometrów, a tutaj to grubość kreski nad powierzchnią.',
         'Kiedy mówimy „kosmos”, myślimy o czymś dalekim. Tymczasem ludzie w kosmosie są bliżej ciebie niż Gdańsk od Krakowa.',
@@ -1050,6 +1062,7 @@
     /* ---------- 13 ---------- */
     {
       czesc: R5, tytul: 'Szesnaście wschodów słońca',
+      film: { wersy: [1, 3] }, przejscie: { typ: 'czern', napis: 'schemat, nie skala', cisza: true },
       narracja: [
         'Leć teraz razem ze stacją, ramię w ramię. Tu, na parterze, jest najtłoczniej: stacja kosmiczna, teleskop Hubble\'a, satelity robiące zdjęcia Ziemi, tysiące satelitów internetowych.',
         'Jedno okrążenie trwa około dziewięćdziesięciu minut. Patrz na brzeg Ziemi: astronauci widzą szesnaście wschodów słońca na dobę.',
@@ -1081,6 +1094,7 @@
     /* ---------- 14 ---------- */
     {
       czesc: R5, tytul: 'Powietrze, które hamuje',
+      film: { wersy: [1, 4] }, przejscie: 'ciecie',
       narracja: [
         'Teraz cena, mniej oczywista. Nawet czterysta kilometrów nad ziemią jest jeszcze trochę powietrza, bardzo rzadkiego, ale satelita pędzi tak szybko, że i ono go hamuje.',
         'Stacja kosmiczna obniża się o około dwa kilometry na miesiąc i co jakiś czas trzeba ją podnieść silnikami. Satelita bez paliwa spada po kilku latach i spala się jak meteor; poniżej dwustu kilometrów powietrze zdejmuje go z nieba w ciągu dni.',
@@ -1136,6 +1150,7 @@
     /* ---------- 15 ---------- */
     {
       czesc: R5, tytul: 'Rój zamiast jednego',
+      film: { wersy: [0, 3] },
       narracja: [
         'Jeden satelita nisko widzi tylko kawałek Ziemi i znika za horyzontem po kilku minutach. Dlatego internet z niskiej orbity wymaga nie jednego satelity, a tysięcy.',
         'Kiedy jeden odchodzi, następny już wchodzi. Taki rój nazywa się konstelacją.',
@@ -1191,6 +1206,7 @@
     /* ---------- 16 ---------- */
     {
       czesc: R6, tytul: 'Cztery głosy',
+      film: { wersy: [2, 5] }, przejscie: 'przenikanie',
       narracja: [
         'Wyżej, na dwudziestu tysiącach kilometrów, krąży ponad sto satelitów kilku rodzin: amerykański GPS, europejski Galileo, rosyjski GLONASS, chiński BeiDou. Okrążają Ziemię mniej więcej dwa razy na dobę.',
         'Tu jest sekret: satelita nawigacyjny nie wie, gdzie jesteś, i niczego od ciebie nie odbiera. Ma na pokładzie zegar atomowy i bez przerwy powtarza w eter: „jest godzina taka a taka, a ja jestem tutaj”.',
@@ -1242,6 +1258,7 @@
     /* ---------- 17 ---------- */
     {
       czesc: R6, tytul: 'Einstein w twoim telefonie',
+      film: { wersy: [4, 5] },
       narracja: [
         'I teraz ciarki. Te zegary w górze chodzą inaczej niż na dole: są dalej od masy Ziemi, więc czas płynie im odrobinę szybciej, a jednocześnie pędzą, więc trochę wolniej.',
         'Suma wychodzi na kilkadziesiąt milionowych części sekundy na dobę. Brzmi jak nic.',
@@ -1279,6 +1296,7 @@
     /* ---------- 18 ---------- */
     {
       czesc: R7, tytul: 'Karuzela',
+      film: { wersy: [0, 4] }, przejscie: 'przenikanie',
       narracja: [
         'Wyobraź sobie satelitę, który stoi w miejscu: wieczorem jest tam, rano wciąż tam, za rok też. Dlatego talerz na ścianie twojego sąsiada od lat celuje w ten sam punkt nieba.',
         'Tylko że on wcale nie stoi, pędzi trzy kilometry na sekundę. Na wysokości trzydziestu pięciu tysięcy siedmiuset osiemdziesięciu sześciu kilometrów nad równikiem jedno okrążenie trwa dokładnie tyle, ile obrót Ziemi.',
@@ -1315,6 +1333,7 @@
     /* ---------- 19 ---------- */
     {
       czesc: R7, tytul: 'Pół sekundy ciszy',
+      film: { wersy: [0, 4] }, przejscie: 'ciecie',
       narracja: [
         'Ten pomysł opisał w 1945 roku Clarke, późniejszy autor „Odysei kosmicznej”, kiedy nie istniała jeszcze żadna rakieta zdolna tam dolecieć. Pierwszy satelita naprawdę tam zawisł niespełna dwadzieścia lat później.',
         'Mieszkają tam satelity telewizyjne i telekomunikacyjne, bo wygodnie nadawać z punktu, który nie ucieka, i pogodowe, które widzą całą tarczę Ziemi naraz.',
@@ -1367,6 +1386,7 @@
     /* ---------- 20 ---------- */
     {
       czesc: R7, tytul: 'Jedyny parking na całą planetę',
+      film: { wersy: [1, 4] }, przejscie: 'ciecie',
       narracja: [
         'Spójrz z góry na ten pierścień. Takie miejsce jest tylko jedno: wąski pierścień nad równikiem.',
         'Każdy satelita stojący w tym pierścieniu zajmuje kawałek, a kawałków jest skończenie wiele. Miejsca przydziela międzynarodowy urząd, a państwa spierają się o nie jak o działki.',
@@ -1399,6 +1419,7 @@
     /* ---------- 21 ---------- */
     {
       czesc: R8, tytul: 'Za lasem, za górami',
+      film: { wersy: [2, 4] }, przejscie: 'przenikanie',
       narracja: [
         'Teraz zagadka, którą rozwiązali inżynierowie radzieccy w latach sześćdziesiątych. Półka Clarke\'a wisi nad równikiem.',
         'Jeśli mieszkasz w Moskwie, a tym bardziej na Syberii, taki satelita stoi dla ciebie nisko nad południowym horyzontem, za lasem, za górami, prawie w ziemi. Nad biegunem nie widać go wcale.',
@@ -1446,6 +1467,7 @@
     /* ---------- 22 ---------- */
     {
       czesc: R8, tytul: 'Jajo i huśtawka',
+      film: { wersy: [0, 3] }, przejscie: 'przenikanie',
       narracja: [
         'Wyobraź sobie orbitę jak mocno wydłużone jajo: jeden koniec tuż nad Ziemią po stronie południowej, drugi daleko, czterdzieści tysięcy kilometrów nad północą. Widzisz to jajo?',
         'Tuż nad Ziemią satelita gna jak szalony, a wysoko nad północą zwalnia prawie do zatrzymania. Zwisa nad Rosją przez osiem godzin z dwunastu, jak huśtawka, która na końcu wychylenia na chwilę staje.',
@@ -1456,7 +1478,9 @@
       ] },
       podpis: 'Orbita Mołnija: trzy satelity na wydłużonej orbicie, jasny łuk to osiem godzin z dwunastu nad północą. Schemat: ruch zgodny z prawem Keplera, odległości skrócone, nie w skali.',
       scena: 'molnija',
-      ujecie: { ruch: 'orbita: kamera obchodzi jajo, czas przyspieszony', tor: [[-6, 8.5, 12.5], [0, 10.4, 13.6], [6, 9.2, 12.4]], cel: [0, 2.6, -1.2], fov: 44, czas: 20, komp: [0, 0] }, tPogl: 4,
+      ujecie: { ruch: 'orbita: kamera obchodzi jajo, czas przyspieszony', tor: [[-6, 8.5, 12.5], [0, 10.4, 13.6], [6, 9.2, 12.4]], cel: [0, 2.6, -1.2], fov: 44, czas: 20, komp: [0, 0] },
+      // film: od ramki „Fortel” najazd na kąt nachylenia (o nim mówi ramka) — długi kadr bez postoju
+      drugieUjecie: { od: { wers: 'ramka', po: 0.4 }, ruch: 'dolly-in: najazd na kąt nachylenia orbity', tor: [[6, 8.2, 11], [4.6, 5.4, 7.6]], cel: [[0, 2.2, -1.6], [0, 1.6, -2.4]], fov: [40, 34], czas: 12, komp: [0, 0] }, tPogl: 4,
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0, slonce: [0.6, 0.5, 0.8] }); },
       zbuduj: function (c) {
         var T = c.THREE, g = new T.Group(), RP = MOLNIJA.RP, RA = MOLNIJA.RA, A = (RP + RA) / 2, E = (RA - RP) / (RA + RP), INC = 63.5 * Math.PI / 180, B = A * Math.sqrt(1 - E * E);
@@ -1488,7 +1512,7 @@
         return { grupa: g,
           ton: function (t, t0) { return tonMolnii((t - t0) / OKRES); },     // glissando z promienia satelity 0 (jak w `krok`)
           etykiety: [
-            { tekst: 'daleko nad północą: prawie staje', cel: apo, kotwica: 'gora', klasa: 'zloto', dy: -8 },
+            { tekst: 'daleko nad północą: prawie staje', cel: apo, kotwica: 'lewo', klasa: 'zloto', dx: -16 },
             { tekst: 'tuż nad Ziemią: gna jak szalony', cel: peri, kotwica: 'dol', klasa: 'zar', dy: 8 },
             { tekst: 'jasny łuk: osiem godzin z dwunastu', poz: punktF(0.62, new T.Vector3()).toArray(), kotwica: 'prawo', klasa: 'zloto', dx: 12 },
             { tekst: 'nachylenie: trochę powyżej\nsześćdziesięciu trzech stopni', cel: katO, kotwica: 'lewo', klasa: 'granat', dx: -10 },
@@ -1512,6 +1536,7 @@
     /* ---------- 23 ---------- */
     {
       czesc: R9, tytul: 'Pas po pasie',
+      film: { wersy: [0, 5] }, przejscie: 'przenikanie',
       narracja: [
         'Chcesz sfotografować całą Ziemię, kawałek po kawałku, a satelita nisko widzi tylko wąski pas. Puść go nad biegunami, z północy na południe.',
         'Ziemia obraca się pod nim, więc każde kolejne okrążenie pokazuje mu nowy pas, trochę na zachód od poprzedniego. Po kilku, kilkunastu dniach ma wszystko.',
@@ -1563,6 +1588,7 @@
     /* ---------- 24 ---------- */
     {
       czesc: R9, tytul: 'Rok widziany z góry',
+      film: { wersy: [3, 5] }, przejscie: 'przelot',
       narracja: [
         'I tu wchodzi defekt Ziemi: planeta jest lekko spłaszczona, na równiku grubsza niż między biegunami. Ten dodatkowy pas materii powoli obraca płaszczyznę orbity, trochę mniej niż o jeden stopień dziennie.',
         'A Ziemia obiega Słońce w rok, czyli też o trochę mniej niż jeden stopień dziennie. Dobierz wysokość i nachylenie tak, żeby oba tempa były równe, a orbita przez cały rok będzie ustawiona tak samo względem Słońca.',
@@ -1617,6 +1643,7 @@
     /* ---------- 25 ---------- */
     {
       czesc: R10, tytul: 'Cmentarzysko',
+      film: { wersy: [2, 5] }, przejscie: 'przelot',
       narracja: [
         'Dwa piętra na samym końcu, przy których granica się rozmywa. Pierwsze to cmentarzysko.',
         'Satelita z półki Clarke\'a, kiedy kończy mu się paliwo, nie może spaść, bo tam nie ma już powietrza, które by go ściągnęło. Dlatego ostatnią porcję paliwa zużywa, żeby wznieść się kilkaset kilometrów wyżej, na orbitę, której nikt nie potrzebuje.',
@@ -1659,6 +1686,7 @@
     /* ---------- 26 ---------- */
     {
       czesc: R10, tytul: 'Webb: granica rozmazana',
+      film: { wersy: [0, 2] }, przejscie: { typ: 'czern', czas: 0.6 },
       narracja: [
         'Drugie piętro to teleskop Webba, półtora miliona kilometrów stąd, cztery razy dalej niż Księżyc. Czy to jeszcze satelita Ziemi? Prawdę mówiąc, nie.',
         'On krąży wokół Słońca, w rytm z nami, w miejscu, gdzie przyciąganie Ziemi i Słońca składa się tak, że trzyma się blisko nas prawie bez wysiłku. Spójrz: zawsze po nocnej stronie Ziemi, zawsze z zimną stroną w ciemność.'
@@ -1709,6 +1737,7 @@
     /* ---------- 27 ---------- */
     {
       czesc: R11, tytul: 'Lustro, zegar, oko',
+      film: { wersy: [2, 4] },
       narracja: [
         'Wysokość to jedna oś, druga to zadanie. Przejdź wzdłuż stanowisk.',
         'Łącznościowe to lustro zawieszone nad kontynentem: ty mówisz w górę, ono odbija w dół, do kogoś za oceanem. Nawigacyjne to zegary, które prowadzą nie tylko ciebie, ale też statki, kombajny na polu i bankomaty, biorące z tego samego sygnału dokładny czas.',
@@ -1724,6 +1753,7 @@
     /* ---------- 28 ---------- */
     {
       czesc: R11, tytul: 'Głowa nad wodą',
+      film: { wersy: [3, 4] },
       narracja: [
         'Pogodowe są dwa, bo dwa spojrzenia: jeden stoi na półce Clarke\'a i patrzy na cały kontynent, drugi krąży nisko nad biegunami i mierzy z bliska temperaturę, wilgotność, wiatr nad oceanem. Prognoza na jutro jest zszyta z obu.',
         'A teraz naukowe. Wyobraź sobie, że całe życie patrzysz na świat z dna basenu, a fale na wodzie rozmazują wszystko.',
@@ -1739,6 +1769,7 @@
     /* ---------- 29 ---------- */
     {
       czesc: R11, tytul: 'Kaseta na spadochronie',
+      film: { wersy: [2, 3] },
       narracja: [
         'Wojskowe są rozpoznawcze, czyli bardzo dobre aparaty, są takie, które podsłuchują fale radiowe, i takie, które czekają na ciepło startującej rakiety.',
         'Jedna rzecz z tej historii jest pewna: pierwsze satelity szpiegowskie, w latach sześćdziesiątych, nie umiały przesłać zdjęć. Robiły je na kliszę i zrzucały kasetę z filmem w kapsule na spadochronie, którą samolot łapał w locie, hakiem, nad oceanem.',
@@ -1749,7 +1780,9 @@
       ] },
       podpis: 'Kapsuła z filmem na spadochronie i samolot z hakiem nad oceanem. Rysunek poglądowy, nie w skali.',
       scena: 'wojsko', strefa: null,
-      ujecie: { ruch: 'travelling: kamera leci za samolotem z hakiem', tor: [[-7.5, 3.5, 6.6], [-3.4, 3.3, 6.9], [1.4, 3.4, 6.6]], cel: [[-4.2, 2.8, 0], [-1.8, 2.8, 0], [0.2, 3.0, 0]], fov: 40, czas: 14, komp: [0, 0] }, tPogl: 6.9,
+      ujecie: { ruch: 'travelling: kamera leci za samolotem z hakiem', tor: [[-7.5, 3.5, 6.6], [-3.4, 3.3, 6.9], [1.4, 3.4, 6.6]], cel: [[-4.2, 2.8, 0], [-1.8, 2.8, 0], [0.2, 3.0, 0]], fov: 40, czas: 14, komp: [0, 0] },
+      // film: od zdania o stacji tilt w górę ku stacji i kostkom studentów (etykiety przy krawędzi wchodzą w kadr)
+      drugieUjecie: { od: { wers: 3, po: 0.3 }, ruch: 'tilt: w górę ku stacji i kostkom', tor: [[1.4, 3.4, 6.6], [2.4, 3.8, 7.2]], cel: [[0.6, 3.4, -0.6], [5.2, 7.2, -5.2]], fov: [40, 44], czas: 10, komp: [0, 0] }, tPogl: 6.9,
       zestawy: ['gwiazdy'],
       zbuduj: function (c) { return zbudujPrzechwyt(c); },
     },
@@ -1757,6 +1790,7 @@
     /* ---------- 30 ---------- */
     {
       czesc: R12, tytul: 'Od autobusu do kostki',
+      film: { wersy: [1, 3] },
       narracja: [
         'Spójrz na trzecią oś: rozmiar. Tu wszystko się ostatnio zmieniło, bo Hubble jest wielkości autobusu, a duży satelita łącznościowy ma skrzydła baterii o rozpiętości samolotu pasażerskiego.',
         'Potem dwaj profesorowie ustalili wzorzec: kostka o boku dziesięciu centymetrów, trochę ponad kilogram, taka, żeby student mógł ją zbudować w semestr. Nazwali to CubeSat i można je składać jak klocki: dwie kostki, trzy, sześć.',
@@ -1772,6 +1806,7 @@
     /* ---------- 31 ---------- */
     {
       czesc: R12, tytul: 'Sto zwykłych zamiast jednego doskonałego',
+      film: { wersy: [2, 4] },
       narracja: [
         'Dziś takich kostek lecą setki naraz, w jednej rakiecie. Patrz, jak się rozsypują.',
         'Firma zamiast jednego doskonałego aparatu wysyła rój stu zwykłych, które razem fotografują cały ląd Ziemi codziennie. Nie dlatego, że każdy z nich jest dobry.',
@@ -1787,6 +1822,7 @@
     /* ---------- 32 ---------- */
     {
       czesc: R13, tytul: 'Niebo nie rozróżnia',
+      film: { wersy: [0, 2] }, przejscie: 'przenikanie',
       narracja: [
         'Wróćmy do zdania, które kazałem ci zapamiętać: niebo nie rozróżnia żywych od martwych.',
         'Na orbicie jest dziś kilkanaście tysięcy czynnych satelitów, do tego tysiące martwych, dziesiątki tysięcy większych odłamków, które da się śledzić z ziemi, i niepoliczalne drobiny. Każda z tych rzeczy pędzi kilkakrotnie szybciej niż kula z karabinu.',
@@ -1802,6 +1838,7 @@
     /* ---------- 33 ---------- */
     {
       czesc: R13, tytul: 'Zła bajka',
+      film: { wersy: [1, 2] },
       narracja: [
         'W 1978 roku pewien pracownik NASA opisał złą bajkę. Jeśli śmieci będzie dość dużo, zaczną się zderzać ze sobą, a każde zderzenie robi z dwóch rzeczy tysiąc.',
         'Tysiąc rzeczy zderza się częściej; patrz, jak to narasta. W pewnym momencie reakcja karmi się sama i pewne piętra nieba stają się na pokolenia nie do użycia.',
@@ -1822,6 +1859,7 @@
     /* ---------- 34 ---------- */
     {
       czesc: R13, tytul: 'Pokój duży, ale skończony',
+      film: { wersy: [3, 4, 5] },
       narracja: [
         'I tu wraca parter, który sam się sprząta. Wszystko, co krąży nisko, powietrze w końcu ściąga i spala, dlatego nowe konstelacje celowo lecą nisko: zepsuty satelita ma spaść sam w ciągu kilku lat.',
         'Wyżej tej łaski nie ma. Co zostawisz na dwóch tysiącach kilometrów, zostaje na stulecia, a co zostawisz na półce Clarke\'a, zostaje właściwie na zawsze.',
@@ -1837,6 +1875,7 @@
     /* ---------- 35 ---------- */
     {
       czesc: R14, tytul: 'Spójrz w górę',
+      film: { wersy: [1, 3, 5, 6] }, przejscie: 'most',
       narracja: [
         'Więc dziś wieczorem, jeśli niebo będzie czyste, wyjdź na parę minut po zachodzie słońca. Zadrzyj głowę i poczekaj, aż jedna z gwiazd ruszy.',
         'Teraz wiesz, na co patrzysz. To kamień, który spada i ciągle chybia, i jest jeszcze w dniu, który dla ciebie już się skończył.',
@@ -2042,7 +2081,7 @@
         { tekst: 'nad oceanem', poz: [3, 0.1, 2.5], kotwica: 'dol', klasa: 'granat' },
         { tekst: 'rozpoznawczy: bardzo dobry aparat', cel: roz, kotwica: 'prawo', klasa: 'w', dx: 8 },
         { tekst: 'załogowe: tam ktoś mieszka', cel: st, kotwica: 'dol', klasa: 'w', dy: 10 },
-        { tekst: 'studenckie i krótkofalowców', cel: kost, kotwica: 'prawo', klasa: 'm', dx: 8 }
+        { tekst: 'studenckie i krótkofalowców', cel: kost, kotwica: 'lewo', klasa: 'm', dx: -10 }
       ],
       krok: function (t) {
         uniO.uCzas.value = t;
@@ -2097,11 +2136,11 @@
       etykiety: [
         { tekst: 'Hubble: wielkości autobusu', cel: hub, kotwica: 'gora', klasa: 'w', dy: -50 },
         { tekst: 'satelita łącznościowy', cel: kom, kotwica: 'dol', klasa: 'zloto', dy: 30 },
-        { tekst: 'skrzydła: rozpiętość samolotu pasażerskiego', cel: skrzO, kotwica: 'prawo', klasa: 'm', dx: 8 },
+        { tekst: 'skrzydła: rozpiętość samolotu pasażerskiego', cel: skrzO, kotwica: 'gora', klasa: 'm', dy: -26 },
         { tekst: 'od tego miejsca powiększone', cel: granica, kotwica: 'gora', klasa: 'm', dy: -6 },
         { tekst: 'CubeSat: kostka o boku dziesięciu centymetrów', cel: k1, kotwica: 'dol', klasa: 'w', dy: 36 },
         { tekst: 'dwie kostki, trzy, sześć', cel: k6, kotwica: 'gora', klasa: 'granat', dy: -40 },
-        { tekst: 'chip wielkości znaczka pocztowego', cel: chip, kotwica: 'gora', klasa: 'zloto', dy: -10 }
+        { tekst: 'chip wielkości znaczka pocztowego', cel: chip, kotwica: 'dol', klasa: 'zloto', dy: 30 }
       ],
       krok: function (t) {
         hub.rotation.x = t * 0.08; kom.rotation.y = 0.3 * Math.sin(t * 0.2);

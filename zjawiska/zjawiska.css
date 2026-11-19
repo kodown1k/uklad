@@ -123,8 +123,12 @@
 .zj-et.granat { color: var(--scena-granat); font-weight: 600; }
 .zj-et.duza { font: 600 1.5rem/1.1 var(--zj-kroj-tytul); color: var(--scena-zar); }
 
-.zj-czern { position: absolute; inset: 0; background: var(--scena-pustka); opacity: 0; pointer-events: none; transition: opacity .5s ease; }
+.zj-czern { position: absolute; inset: 0; background: var(--scena-pustka); opacity: 0; pointer-events: none; transition: opacity .5s ease;
+  display: flex; align-items: center; justify-content: center; }   /* napis przejścia na środku */
 .zj-czern.on { opacity: 1; }
+/* napis przejścia na czerni (plansza rozdziału, „w skali”): zanika razem z czernią */
+.zj-czern-napis { margin: 0; text-align: center; font: 500 clamp(1.2rem, 2.6vw, 2.2rem)/1.15 var(--zj-kroj-tytul); color: var(--atrament); padding: 0 1.5rem; }
+.zj-czern-napis small { display: block; font: .72rem/1.4 var(--zj-kroj-etykieta); letter-spacing: .18em; color: var(--atrament-3); margin-bottom: .5rem; text-transform: uppercase; }
 .zj-postep { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--linia); pointer-events: none; }
 .zj-postep i { display: block; height: 100%; width: 0; background: var(--zloto); }
 /* film (Seans): czerń prowadzi zegar filmu — bez przejścia CSS; pasek klikalny ze znacznikami rozdziałów */

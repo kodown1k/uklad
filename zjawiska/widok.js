@@ -47,7 +47,7 @@
     seans: $('zjSeans'), dzwiek: $('zjDzwiek'), pelny: $('zjPelny'), tekstBtn: $('zjTekstBtn'),
     lista: $('zjLista'), karty: $('zjKarty'), komunikat: $('zjKomunikat'),
     prezentacja: $('zjPrezentacja'), kadr: $('zjKadr'), canvas: $('zjCanvas'), etykiety: $('zjEtykiety'),
-    wskazowka: $('zjWskazowka'), postep: $('zjPostep'), czern: $('zjCzern'),
+    wskazowka: $('zjWskazowka'), postep: $('zjPostep'), czern: $('zjCzern'), czernNapis: $('zjCzernNapis'),
     przyrzad: $('zjPrzyrzad'), podpis: $('zjPodpis'), plansza: $('zjPlansza'), czesc: $('zjCzesc'), tytul: $('zjTytul'),
     napisy: $('zjNapisy'), panel: $('zjPanel'), tresc: $('zjTresc'), pCzesc: $('zjPCzesc'), pTytul: $('zjPTytul'),
     narracja: $('zjNarracja'), ramka: $('zjRamka'), pPodpis: $('zjPPodpis'), przypisy: $('zjPrzypisy'), zrodla: $('zjZrodla'),
@@ -655,6 +655,7 @@
       uzgodnijDzwiek();
     } else if (film) {
       film = null;
+      napisCzerni(null);
       uzgodnijDzwiek();
       el.czern.style.opacity = '';
       if (post) post.zwolnijDrugi();
@@ -676,6 +677,18 @@
     ustawKrok(biez, n);
     wejdzWScene(n, false);
     zbudujNapisy(biez.def.kroki[n - 1], film.os.kroki[n - 1].wersy);
+  }
+  // Napis na czerni przejścia: „głowa · tytuł” rozdziału jako dwie linie (głowa drobna), inny napis wprost.
+  var napisCzerniTeraz = null;
+  function napisCzerni(n) {
+    n = n || '';
+    if (n === napisCzerniTeraz) return;
+    napisCzerniTeraz = n;
+    var c = L.czescNapisu(n), m = document.createElement('small');
+    m.textContent = c.glowa;
+    el.czernNapis.replaceChildren();
+    if (c.glowa) el.czernNapis.appendChild(m);
+    el.czernNapis.appendChild(document.createTextNode(c.tytul));
   }
   function zbudujZnacznikiRozdzialow() {
     var bar = document.createElement('i');
@@ -788,7 +801,7 @@
     tKrok = opis.tKrok; tGlob = opis.tGlob;
     if (rezyseria) ustawKamere(opis.poza, !smoke && !wolno); else g.sterowanie.update();
     Z.u = opis.u;
-    if (film) el.czern.style.opacity = String(opis.obraz.czern);
+    if (film) { el.czern.style.opacity = String(opis.obraz.czern); napisCzerni(opis.napis); }
     rysuj(p, opis, wolno);
     if (film && silnik) planujDzwiek(p, opis.lok);
     obrazKlatki = opis.obraz;
@@ -846,7 +859,8 @@
     var obraz = lok.przejscie
       ? L.obrazPrzejscia(lok.przejscie.typ, lok.przejscie.f, lok.przejscie.do - 1, lok.przejscie.do, zPassem)
       : L.obrazJednej(lok.i);
-    return { tKrok: c.tKrok, tGlob: film.t, dt: dt, u: c.u, poza: rezyseria ? L.pozaFilmu(p.def, os, film.t) : null, obraz: obraz, czasy: czasy, lok: lok };
+    return { tKrok: c.tKrok, tGlob: film.t, dt: dt, u: c.u, poza: rezyseria ? L.pozaFilmu(p.def, os, film.t) : null, obraz: obraz, czasy: czasy, lok: lok,
+      napis: lok.przejscie ? os.kroki[lok.przejscie.do].przejscie.napis : null };
   }
   // Zawartość sceny `sc` ({i, gwiazdy}) w chwili klatki: tło ujęcia, animacje zestawów i kroku, obiekty do kamery.
   // `dtZestawow`: zestawy są wspólne dla obu scen przejścia, więc przyrost czasu dostają raz na klatkę (scena ostatnia).

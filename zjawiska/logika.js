@@ -138,6 +138,7 @@
     CZERN: 0.5,               // połowa cięcia przez czerń [s]
     // film: domyślne czasy przejść [s] (połowa przed zmianą zawartości, połowa po) i sufit rozciągnięcia ruchu kamery
     PRZEJSCIE: { start: 0, dojazd: 1.6, ciecie: 0, przenikanie: 1.6, most: 2.4, przelot: 1.4, czern: 1.0 },
+    PLANSZA: 2.2,             // czerń z napisem (plansza rozdziału): dłuższa, żeby napis dało się przeczytać [s]
     ROZCIAGNIECIE_MAX: 1.8
   };
 
@@ -340,14 +341,17 @@
      rozciągnięty najwyżej ×ROZCIAGNIECIE_MAX; dalej kamera trzyma kadr. */
   var TYPY_PRZEJSC = ['dojazd', 'ciecie', 'przenikanie', 'most', 'przelot', 'czern'];
   var CIAGLE = { dojazd: true, przenikanie: true, most: true };
-  // Przejście z kroku a do b: pole `b.przejscie` (typ albo {typ, czas?, napis?}) albo domyślne (ta sama scena = dojazd,
-  // inna = czerń — dzisiejsze zachowanie widoku, więc zjawisko bez danych dostaje film bez zmian).
+  // Przejście z kroku a do b: pole `b.przejscie` (typ albo {typ, czas?, napis?, cisza?}) albo domyślne (ta sama scena =
+  // dojazd, inna = czerń — dzisiejsze zachowanie widoku, więc zjawisko bez danych dostaje film bez zmian). Czerń na granicy
+  // rozdziałów (`czesc`) bez własnego napisu dostaje planszę rozdziału: napis = `b.czesc`, czas ≥ PLANSZA.
   function przejscieKroku(a, b) {
     if (!a) return { typ: 'start', czas: 0, napis: null };
     var p = b && b.przejscie, typ, czas, napis = null;
     if (p && typeof p === 'object') { typ = p.typ; czas = p.czas; napis = p.napis || null; }
     else typ = p || (czyCiecie(a.scena, b.scena) ? 'czern' : 'dojazd');
-    if (!(czas >= 0)) czas = KINO.PRZEJSCIE[typ];
+    var plansza = typ === 'czern' && (napis || (a.czesc && b.czesc && a.czesc !== b.czesc));
+    if (plansza && !napis) napis = b.czesc;
+    if (!(czas >= 0)) czas = plansza ? KINO.PLANSZA : KINO.PRZEJSCIE[typ];
     var o = { typ: typ, czas: czas, napis: napis };
     if (p && p.cisza) o.cisza = true;          // pełna cisza dźwięku na czas przejścia (celowe czernie)
     return o;
@@ -406,13 +410,27 @@
       komp: [a.komp[0] + (p.komp[0] - a.komp[0]) * w, a.komp[1] + (p.komp[1] - a.komp[1]) * w],
       przechyl: a.przechyl + (p.przechyl - a.przechyl) * w };
   }
+  // Ujęcia kroku w kolejności: `ujecie` i opcjonalne `drugieUjecie` ({od: {wers, po}, …pola ujęcia}) — film przechodzi
+  // w drugie dojazdem od kotwicy wersu (długi kadr bez postoju); tryb kroków pokazuje pierwsze.
+  function ujeciaKroku(k) { return k.drugieUjecie ? [k.ujecie, k.drugieUjecie] : [k.ujecie]; }
+  function pozaKoncowa(k) { var u = ujeciaKroku(k); return stanUjecia(u[u.length - 1], 1); }
+  // Most: w połowie przejścia zawartość jest zgaszona i widać same gwiazdy (w nieskończoności), więc pozycja przeskakuje
+  // niewidocznie, a kierunek patrzenia obraca się po wielkim kole — czas mostu zależy tylko od kąta między ujęciami,
+  // nie od odległości ich celów (liniowe mieszanie celu z nieba łąki ku Ziemi wychylało kierunek i wydłużało most do 12 s).
+  function _mieszajMost(a, p, w) {
+    var r = _mieszajPoze(a, p, w, null), b = w < 0.5 ? a : p, l = _dyst(a.poz, a.cel) + (_dyst(p.poz, p.cel) - _dyst(a.poz, a.cel)) * w;
+    var d = _slerp(_norm(_kierunek(a)), _norm(_kierunek(p)), w);
+    r.poz = b.poz.slice(); r.cel = [b.poz[0] + d[0] * l, b.poz[1] + d[1] * l, b.poz[2] + d[2] * l];
+    return r;
+  }
+  function _mieszajPrzejscie(typ, a, p, w, s) { return typ === 'most' ? _mieszajMost(a, p, w) : _mieszajPoze(a, p, w, s); }
   function czasPrzejsciaCiaglego(krokA, krokB, typ, domyslny) {
-    var limit = 0.9 * (typ === 'most' ? OBROT_MOST : OBROT_MAX), a = stanUjecia(krokA.ujecie, 1), s = krokB.strefa || krokA.strefa || null;
+    var limit = 0.9 * (typ === 'most' ? OBROT_MOST : OBROT_MAX), a = pozaKoncowa(krokA), s = krokB.strefa || krokA.strefa || null;
     var kandydaci = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5].map(function (x) { return x * domyslny; });
     for (var c = 0; c < kandydaci.length; c++) {
       var czas = kandydaci[c], dt = 1 / 120, prev = null, ok = true;
       for (var t = 0; t <= czas + 1e-9 && ok; t += dt) {
-        var p = _mieszajPoze(a, stanUjecia(krokB.ujecie, postepUjecia(t, krokB.ujecie.czas)), wygladz(t / czas), s), k = _kierunek(p);
+        var p = _mieszajPrzejscie(typ, a, stanUjecia(krokB.ujecie, postepUjecia(t, krokB.ujecie.czas)), wygladz(t / czas), s), k = _kierunek(p);
         if (prev && _katMiedzy(prev, k) / dt > limit) ok = false;
         prev = k;
       }
@@ -433,11 +451,18 @@
       var tekstKoniec = wersy.length ? wersy[wersy.length - 1].koniec : ws;
       var ruchStart = start - (CIAGLE[P[i].typ] ? c / 2 : 0);
       var nast = P[i + 1], lead = nast && CIAGLE[nast.typ] ? nast.czas / 2 : 0, uj = K[i].ujecie;
+      var rozciagnij = function (od, dokad, u) { return Math.min(Math.max(dokad - od, u.czas), KINO.ROZCIAGNIECIE_MAX * u.czas); };
+      var u2 = K[i].drugieUjecie, t2 = u2 ? chwileZdarzen({ zdarzenia: { od: u2.od } }, wersy).od : undefined;
       var koniec = Math.max(tekstKoniec + KINO.ODDECH_PO_NAPISACH, ruchStart + uj.czas + lead);
-      var ruchCzas = Math.min(Math.max(koniec - lead - ruchStart, uj.czas), KINO.ROZCIAGNIECIE_MAX * uj.czas);
+      var drugie = null, ruchKoniec = koniec - lead;          // pierwsze ujęcie: do następnego kroku albo do dojazdu w drugie
+      if (t2 != null) {
+        koniec = Math.max(koniec, t2 + u2.czas + lead); ruchKoniec = t2 + KINO.DOJAZD;
+        drugie = { start: t2, czas: rozciagnij(t2, koniec - lead, u2) };
+      }
+      var ruchCzas = rozciagnij(ruchStart, ruchKoniec, uj);
       var zd = chwileZdarzen(K[i], wersy);   // czas filmu (zestawy, akcenty) i czas kroku (krok/animuj sceny)
       out.push({ krok: i + 1, start: start, koniec: koniec, przejscie: P[i], wersy: wersy, zdarzenia: zd, zdarzeniaKroku: przesunZdarzenia(zd, -start),
-        ruch: { start: ruchStart, czas: ruchCzas }, ton: tony[i] });
+        ruch: { start: ruchStart, czas: ruchCzas }, drugie: drugie, ton: tony[i] });
       t = koniec;
     }
     return { dlugosc: dl, kroki: out, calosc: t };
@@ -538,6 +563,17 @@
   }
   // Interpolacja pozycji wokół środka `s` (np. Ziemi): kierunek po łuku wielkiego koła, promień logarytmicznie —
   // tor nie przechodzi przez kulę, w którą liniowe `mieszaj3` potrafi wejść. Bez `s` = liniowo.
+  // Kierunek po wielkim kole z jednostkowego uA do uB (e ∈ [0,1]); antypody — po dowolnym okręgu prostopadłym.
+  function _slerp(uA, uB, e) {
+    var om = Math.acos(Math.max(-1, Math.min(1, uA[0] * uB[0] + uA[1] * uB[1] + uA[2] * uB[2])));
+    if (om < 1e-6) return uA.slice();
+    if (Math.PI - om < 1e-6) {
+      var n = _norm(Math.abs(uA[1]) < 0.9 ? [uA[2], 0, -uA[0]] : [0, -uA[2], uA[1]]), ca = Math.cos(Math.PI * e), sa = Math.sin(Math.PI * e);
+      return [uA[0] * ca + n[0] * sa, uA[1] * ca + n[1] * sa, uA[2] * ca + n[2] * sa];
+    }
+    var so = Math.sin(om), wa = Math.sin((1 - e) * om) / so, wb = Math.sin(e * om) / so;
+    return [uA[0] * wa + uB[0] * wb, uA[1] * wa + uB[1] * wb, uA[2] * wa + uB[2] * wb];
+  }
   function mieszajWokol(a, b, e, s) {
     if (!s) return mieszaj3(a, b, e);
     if (!(e > 0)) return a.slice();
@@ -546,18 +582,7 @@
     var rA = Math.sqrt(A[0] * A[0] + A[1] * A[1] + A[2] * A[2]), rB = Math.sqrt(B[0] * B[0] + B[1] * B[1] + B[2] * B[2]);
     if (rA < 1e-9 || rB < 1e-9) return mieszaj3(a, b, e);
     var uA = [A[0] / rA, A[1] / rA, A[2] / rA], uB = [B[0] / rB, B[1] / rB, B[2] / rB];
-    var cos = Math.max(-1, Math.min(1, uA[0] * uB[0] + uA[1] * uB[1] + uA[2] * uB[2])), om = Math.acos(cos), d;
-    if (om < 1e-6) d = uA;
-    else if (Math.PI - om < 1e-6) {                    // antypody: obejście po dowolnym okręgu prostopadłym
-      var n = Math.abs(uA[1]) < 0.9 ? [uA[2], 0, -uA[0]] : [0, -uA[2], uA[1]], nl = Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-      n = [n[0] / nl, n[1] / nl, n[2] / nl];
-      var ca = Math.cos(Math.PI * e), sa = Math.sin(Math.PI * e);
-      d = [uA[0] * ca + n[0] * sa, uA[1] * ca + n[1] * sa, uA[2] * ca + n[2] * sa];
-    } else {
-      var so = Math.sin(om), wa = Math.sin((1 - e) * om) / so, wb = Math.sin(e * om) / so;
-      d = [uA[0] * wa + uB[0] * wb, uA[1] * wa + uB[1] * wb, uA[2] * wa + uB[2] * wb];
-    }
-    var r = rA * Math.pow(rB / rA, e);
+    var d = _slerp(uA, uB, e), r = rA * Math.pow(rB / rA, e);
     return [s[0] + d[0] * r, s[1] + d[1] * r, s[2] + d[2] * r];
   }
   // Poza kamery w chwili t filmu — deterministyczna (przewijanie, testy). Ruch kroku z jego ujęcia; przy przejściu
@@ -565,10 +590,16 @@
   function pozaFilmu(def, os, t) {
     var K = os.kroki, j = 0;
     for (var i = 0; i < K.length; i++) if (K[i].ruch.start <= t) j = i;
-    var kr = K[j], p = stanUjecia(def.kroki[j].ujecie, postepUjecia(t - kr.ruch.start, kr.ruch.czas)), P = kr.przejscie;
+    var kr = K[j], k = def.kroki[j], p = stanUjecia(k.ujecie, postepUjecia(t - kr.ruch.start, kr.ruch.czas)), P = kr.przejscie;
     if (j > 0 && CIAGLE[P.typ] && P.czas > 0 && t < kr.ruch.start + P.czas) {
-      p = _mieszajPoze(stanUjecia(def.kroki[j - 1].ujecie, 1), p, wygladz((t - kr.ruch.start) / P.czas),
-        def.kroki[j].strefa || def.kroki[j - 1].strefa || null);
+      var f = (t - kr.ruch.start) / P.czas;
+      p = _mieszajPrzejscie(P.typ, pozaKoncowa(def.kroki[j - 1]), p, wygladz(f), k.strefa || def.kroki[j - 1].strefa || null);
+      if (P.typ === 'most' && stanPrzejscia('most', f).zawartosc === 0) p.bezPozycji = true;   // same gwiazdy: pozycja niewidoczna
+    }
+    var d = kr.drugie;
+    if (d && t >= d.start) {             // drugie ujęcie: dojazd z bieżącej pozy pierwszego przez KINO.DOJAZD
+      var p2 = stanUjecia(k.drugieUjecie, postepUjecia(t - d.start, d.czas)), e = (t - d.start) / KINO.DOJAZD;
+      p = e >= 1 ? p2 : _mieszajPoze(p, p2, wygladz(e), k.strefa || null);
     }
     return p;
   }
@@ -586,8 +617,13 @@
     TONACJE: [0, -2, 3, -3, -4, 2, -1, 4, -3, 1]   // rozdziały bez wysokości w tytule; ostatni wraca do 0 (klamra)
   };
   // Wysokość orbity z tytułu rozdziału (część przed „ · ”, np. „600 do 39 700 km”) → [min, max] km albo null.
+  // Tytuł rozdziału „głowa · tytuł” (np. „1957 · Pierwsza kula”) → {glowa, tytul}; bez separatora glowa = ''.
+  function czescNapisu(czesc) {
+    var c = String(czesc || '').split(' · ');
+    return c.length > 1 ? { glowa: c[0], tytul: c.slice(1).join(' · ') } : { glowa: '', tytul: c[0] };
+  }
   function wysokoscRozdzialu(czesc) {
-    var glowa = String(czesc || '').split(' · ')[0];
+    var glowa = czescNapisu(czesc).glowa;
     if (!/km/.test(glowa)) return null;
     var liczby = (glowa.match(/\d{1,3}(?: \d{3})+|\d+/g) || []).map(function (x) { return Number(x.replace(/ /g, '')); });
     return liczby.length ? [Math.min.apply(null, liczby), Math.max.apply(null, liczby)] : null;
@@ -686,6 +722,15 @@
     });
     return def;
   }
+  // Kotwica w wersie ({wers, po}) — opis błędu albo null: wers spoza narracji, ramka bez ramki, wers wycięty ze skrótu.
+  function bladKotwicy(k, z) {
+    var nz = Array.isArray(k.narracja) ? podzielNaZdania(k.narracja).length : 0, wybor = k.film && Array.isArray(k.film.wersy) ? k.film.wersy : null;
+    if (z.po != null && !(z.po >= 0)) return 'zły odstęp po (s ≥ 0)';
+    if (z.wers === 'ramka') return k.ramka ? null : 'kotwica w ramce, a krok nie ma ramki';
+    if (!(z.wers >= 0 && z.wers < nz && z.wers % 1 === 0)) return 'wers ' + z.wers + ' poza narracją (0–' + (nz - 1) + ')';
+    if (wybor && wybor.indexOf(z.wers) < 0) return 'wers ' + z.wers + ' wypada ze skrótu (film.wersy)';
+    return null;
+  }
   function sprawdzZjawisko(def) {
     var u = [];
     if (!def || typeof def !== 'object') return ['brak definicji'];
@@ -709,16 +754,9 @@
         var tp = typeof k.przejscie === 'object' ? k.przejscie.typ : k.przejscie;
         if (TYPY_PRZEJSC.indexOf(tp) < 0) u.push(p + 'przejście „' + tp + '” spoza zbioru (' + TYPY_PRZEJSC.join(', ') + ')');
       }
-      if (k.zdarzenia != null) {
-        var nz = Array.isArray(k.narracja) ? podzielNaZdania(k.narracja).length : 0, wybor = k.film && Array.isArray(k.film.wersy) ? k.film.wersy : null;
-        Object.keys(k.zdarzenia).forEach(function (n) {
-          var z = k.zdarzenia[n] || {};
-          if (z.wers === 'ramka') { if (!k.ramka) u.push(p + 'zdarzenie „' + n + '”: kotwica w ramce, a krok nie ma ramki'); }
-          else if (!(z.wers >= 0 && z.wers < nz && z.wers % 1 === 0)) u.push(p + 'zdarzenie „' + n + '”: wers ' + z.wers + ' poza narracją (0–' + (nz - 1) + ')');
-          else if (wybor && wybor.indexOf(z.wers) < 0) u.push(p + 'zdarzenie „' + n + '”: wers ' + z.wers + ' wypada ze skrótu (film.wersy)');
-          if (z.po != null && !(z.po >= 0)) u.push(p + 'zdarzenie „' + n + '”: zły odstęp po (s ≥ 0)');
-        });
-      }
+      var kotwica = function (nazwa, z) { var b = bladKotwicy(k, z || {}); if (b) u.push(p + nazwa + ': ' + b); };
+      Object.keys(k.zdarzenia || {}).forEach(function (n) { kotwica('zdarzenie „' + n + '”', k.zdarzenia[n]); });
+      if (k.drugieUjecie) kotwica('drugie ujęcie', k.drugieUjecie.od);
     });
     return u;
   }
@@ -726,8 +764,8 @@
   var api = {
     parsujHash: parsujHash, parsujZapytanie: parsujZapytanie, budujHash: budujHash,
     ograniczKrok: ograniczKrok, przejscie: przejscie, akcjaKlawisza: akcjaKlawisza,
-    uzupelnijKroki: uzupelnijKroki, TYPY_PRZEJSC: TYPY_PRZEJSC, przejscieKroku: przejscieKroku, wersyFilmu: wersyFilmu,
-    rozpiszWersy: rozpiszWersy, chwileZdarzen: chwileZdarzen, DZWIEK: DZWIEK, wysokoscRozdzialu: wysokoscRozdzialu, tonWindy: tonWindy,
+    uzupelnijKroki: uzupelnijKroki, TYPY_PRZEJSC: TYPY_PRZEJSC, PRZEJSCIA_CIAGLE: CIAGLE, przejscieKroku: przejscieKroku, wersyFilmu: wersyFilmu,
+    rozpiszWersy: rozpiszWersy, chwileZdarzen: chwileZdarzen, ujeciaKroku: ujeciaKroku, czescNapisu: czescNapisu, DZWIEK: DZWIEK, wysokoscRozdzialu: wysokoscRozdzialu, tonWindy: tonWindy,
     tonyKrokow: tonyKrokow, mikserFilmu: mikserFilmu, zegarFilmu: zegarFilmu, oknoAkcentow: oknoAkcentow, zdarzeniaKroku: zdarzeniaKroku, przesunZdarzenia: przesunZdarzenia,
     ciaglyKat: ciaglyKat, ciaglyKierunek: ciaglyKierunek, resetCiaglosci: resetCiaglosci, obrazJednej: obrazJednej, obrazPrzejscia: obrazPrzejscia, zPrzejsciami: zPrzejsciami, rozdzialyFilmu: rozdzialyFilmu, celPrzewiniecia: celPrzewiniecia, OBROT_MAX: OBROT_MAX, OBROT_MOST: OBROT_MOST, osCzasuFilmu: osCzasuFilmu, lokalizujFilm: lokalizujFilm, stanPrzejscia: stanPrzejscia, mieszajWokol: mieszajWokol, pozaFilmu: pozaFilmu,
     wygladz: wygladz, mieszaj3: mieszaj3, tempoRuchu: tempoRuchu, petla: petla, odcinek: odcinek,
