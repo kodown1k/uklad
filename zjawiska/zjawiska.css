@@ -1,20 +1,34 @@
 /* Zjawiska naukowe — zakładki HUD + nakładka prezentacji.
-   Paleta „Depesza”, wariant „Horyzont” (tokeny jak w artykule źródłowym): złoto = dysk/linie/ramki (nie dane),
-   lak = strona uciekająca / ujemna energia, granat = strona nadbiegająca / fala. Tylko motyw ciemny.
-   Kolory sceny 3D czytane są z tych samych tokenów (widok.js → ctx.kolor). */
+   Interfejs: „Depesza nocą” („popiół i sadza”, repo styli kodowniki/style → dyplomatyczny/, wartości 1:1 z README,
+   sekcja „Motyw ciemny”). Strona jest wyłącznie nocna (kino), więc tokeny nocne stoją wprost w :root.
+   Zasada złota: dane (zdania, liczby, nazwy) tylko atramentem; złoto na linie, ramki, ozdobniki i etykiety ≥ 11 px pogrubione.
+
+   Scena 3D ma WŁASNĄ paletę (--scena-*): widok.js → token(nazwa) czyta `--scena-<nazwa>`, a pliki zjawisk biorą barwy
+   przez ctx.kolor(nazwa). Barwy sceny niosą znaczenie (złoto = dysk/energia, lak = strona uciekająca, granat = nadbiegająca,
+   zar = blask) i nie przechodzą na popiół — przygaszony granat Depeszy nocą zlałby się z szarością. Etykiety nad sceną
+   (.zj-et.*) i paski przyrządu biorą te same tokeny sceny. Nazwa spoza listy → błąd w konsoli (bramka smoke). */
 :root {
-  --papier: #040306; --arkusz: #110E15; --linia: #2A2530;
-  --atrament: #C9C0B0; --atrament-2: #A59C8D; --atrament-3: #8E8577;
-  --zloto: #E3A34E; --zloto-tlo: #1D140B; --zar: #FFE3B0;
-  --lak: #E06F55; --lak-tlo: #22100C; --granat: #93B6F2; --granat-tlo: #0E1424;
-  --pustka: #000000;
+  /* paleta sceny 3D (bez zmian względem wariantu „Horyzont”) */
+  --scena-papier: #040306; --scena-arkusz: #110E15; --scena-linia: #2A2530;
+  --scena-atrament: #C9C0B0; --scena-atrament-2: #A59C8D; --scena-atrament-3: #8E8577;
+  --scena-zloto: #E3A34E; --scena-zloto-tlo: #1D140B; --scena-zar: #FFE3B0;
+  --scena-lak: #E06F55; --scena-lak-tlo: #22100C; --scena-granat: #93B6F2; --scena-granat-tlo: #0E1424;
+  --scena-pustka: #000000;
+
+  /* Depesza nocą — interfejs */
+  --papier: #1F1E1D; --arkusz: #2A2928; --linia: #3B3A38;
+  --atrament: #D3D0CB; --atrament-2: #ABA7A0; --atrament-3: #96928C;
+  --zloto: #B39C72; --zloto-tlo: #33302A; --granat: #A8B0BA; --granat-tlo: #33353A;
+  --lak: #C4847E; --blad-linia: #6E4744; --blad-tlo: #352827; --cien: rgba(0, 0, 0, .35);
+
   --zj-kroj-tytul: "Cormorant Garamond", "Palatino Linotype", Palatino, Georgia, serif;
   --zj-kroj-tekst: "Charis SIL", "Palatino Linotype", Palatino, Georgia, serif;
   --zj-kroj-etykieta: "Noto Sans", "Segoe UI", Arial, sans-serif;
   --zj-pasek: 52px;
+  --zj-panel-w: min(30rem, 100%);
 }
 
-/* ---------- zakładki (widoczne w obu widokach) ---------- */
+/* ---------- zakładki (widoczne w obu widokach; w Układzie mają szkło HUD-u Układu) ---------- */
 #zakladki { position: relative; flex: none; display: flex; align-items: center; gap: 4px;
   padding: 3px; border-radius: 30px; background: rgba(8, 10, 16, .72); border: 1px solid rgba(255, 255, 255, .12);
   backdrop-filter: blur(16px); }
@@ -24,20 +38,22 @@
 #zakladki button.on { background: rgba(255, 255, 255, .13); color: #fff; }
 #zakladki button:focus-visible { outline: 2px solid var(--granat); outline-offset: 1px; }
 #zakInfo { position: absolute; top: calc(100% + 6px); left: 0; font: 500 12px/1.35 "Space Grotesk", system-ui, sans-serif;
-  color: var(--zar); background: var(--lak-tlo); border: 1px solid var(--lak); border-radius: 10px; padding: 6px 10px;
+  color: var(--atrament); background: var(--blad-tlo); border: 1px solid var(--lak); border-radius: 10px; padding: 6px 10px;
   width: max-content; max-width: min(300px, calc(100vw - 32px)); }
 #zakInfo:empty { display: none; }
 #zakladki .zak-kr { display: none; }
 
-/* w widoku zjawisk zakładki siedzą w pasku nakładki (widok.js przenosi węzeł) i biorą barwy „Depeszy” */
-.zj-pasek #zakladki { background: var(--papier); border-color: var(--linia); backdrop-filter: none; margin-right: auto; }
-.zj-pasek #zakladki button { font: 600 11px/1 var(--zj-kroj-etykieta); letter-spacing: .1em; text-transform: uppercase; color: var(--atrament-3); }
-.zj-pasek #zakladki button:hover { color: var(--atrament); }
-.zj-pasek #zakladki button.on { background: var(--zloto-tlo); color: var(--zar); box-shadow: inset 0 0 0 1px var(--zloto); }
+/* w widoku zjawisk zakładki siedzą w pasku nakładki (widok.js przenosi węzeł): zakładki Depeszy, kanciaste */
+.zj-pasek #zakladki { background: none; border: 1px solid var(--linia); border-radius: 0; padding: 0; gap: 0; backdrop-filter: none; margin-right: auto; }
+.zj-pasek #zakladki button { font: 600 11px/1 var(--zj-kroj-etykieta); letter-spacing: .1em; text-transform: uppercase; color: var(--atrament-2);
+  border-radius: 0; padding: 9px 13px; }
+.zj-pasek #zakladki button + button { border-left: 1px solid var(--linia); }
+.zj-pasek #zakladki button:hover { color: var(--atrament); background: var(--zloto-tlo); }
+.zj-pasek #zakladki button.on { background: var(--zloto-tlo); color: var(--atrament); box-shadow: inset 0 -2px 0 var(--zloto); }
 
 /* ---------- nakładka ---------- */
 #zjawiska { position: fixed; inset: 0; z-index: 60; display: grid; grid-template-rows: var(--zj-pasek) minmax(0, 1fr);
-  background: var(--pustka); color: var(--atrament); font: 16.5px/1.6 var(--zj-kroj-tekst); color-scheme: dark; overflow: hidden; }
+  background: var(--papier); color: var(--atrament); font: 16.5px/1.6 var(--zj-kroj-tekst); color-scheme: dark; overflow: hidden; }
 #zjawiska[hidden] { display: none; }
 #zjawiska *, #zjawiska *::before, #zjawiska *::after { box-sizing: border-box; }
 #zjawiska:focus { outline: none; }
@@ -46,118 +62,132 @@
 #zjawiska [hidden] { display: none !important; }
 
 .zj-pasek { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; padding: 0 14px;
-  background: var(--arkusz); border-bottom: 1px solid var(--zloto); min-width: 0; z-index: 5; }
-.zj-pasek .zj-nazwa { flex: 1; min-width: 0; text-align: right; font: 500 1.25rem/1 var(--zj-kroj-tytul); color: var(--atrament);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: .4rem; }
-.zj-guzik { font: 600 11px/1 var(--zj-kroj-etykieta); letter-spacing: .1em; text-transform: uppercase; color: var(--granat);
-  background: none; border: 1px solid var(--linia); border-radius: 4px; padding: 8px 10px; cursor: pointer; white-space: nowrap; }
-.zj-guzik:hover { border-color: var(--granat); }
-.zj-guzik[aria-pressed="true"], .zj-guzik[aria-expanded="true"] { color: var(--zar); border-color: var(--zloto); background: var(--zloto-tlo); }
-.zj-guzik:focus-visible, .zj-nav button:focus-visible, .zj-kropki button:focus-visible, .zj-karta:focus-visible { outline: 2px solid var(--granat); outline-offset: 2px; }
+  background: var(--arkusz); border-bottom: 1px solid var(--zloto); min-width: 0; z-index: 7; }
+.zj-pasek .zj-nazwa { flex: 1; min-width: 0; text-align: right; font: 500 1.3rem/1 var(--zj-kroj-tytul); color: var(--atrament);
+  font-variant-numeric: lining-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: .4rem; }
+.zj-guzik { display: inline-flex; align-items: center; gap: .35rem; font: 600 11px/1 var(--zj-kroj-etykieta); letter-spacing: .1em;
+  text-transform: uppercase; color: var(--granat); background: none; border: 1px solid var(--linia); border-radius: 0;
+  padding: 8px 10px; min-height: 32px; cursor: pointer; white-space: nowrap; }
+.zj-guzik:hover { border-color: var(--granat); color: var(--atrament); }
+.zj-guzik[aria-pressed="true"], .zj-guzik[aria-expanded="true"] { color: var(--atrament); border-color: var(--zloto); background: var(--zloto-tlo); }
+.zj-guzik:focus-visible, .zj-nav button:focus-visible, .zj-kropki button:focus-visible, .zj-karta:focus-visible,
+.zj-zrodla summary:focus-visible { outline: 2px solid var(--granat); outline-offset: 2px; }
 #zjawiska.zj-tryb-lista .zj-kino { display: none; }
 
-/* ---------- lista zjawisk ---------- */
-.zj-lista { overflow-y: auto; padding: 2rem 1.2rem 3rem; background: var(--papier);
-  background-image: radial-gradient(ellipse 90% 40% at 50% 0%, rgba(227, 163, 78, .09) 0%, transparent 70%); }
-.zj-lista-srodek { max-width: 46rem; margin: 0 auto; }
-.zj-brew { font: 600 .68rem var(--zj-kroj-etykieta); letter-spacing: .2em; text-transform: uppercase; color: var(--zloto); margin: 0; }
-.zj-lista h1 { font: 500 2.5rem/1.08 var(--zj-kroj-tytul); color: var(--zar); margin: .25rem 0 .5rem; }
-.zj-lista .zj-wstep { color: var(--atrament-2); margin: 0 0 1.4rem; }
-.zj-karty { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
-.zj-karta { display: block; width: 100%; text-align: left; cursor: pointer; color: inherit; background: var(--arkusz);
-  border: 0; box-shadow: 0 0 0 1px var(--linia), 0 8px 40px rgba(0, 0, 0, .6); padding: 1.1rem 1.3rem 1.2rem; border-left: 3px solid var(--zloto); }
-.zj-karta:hover { box-shadow: 0 0 0 1px var(--zloto), 0 8px 40px rgba(0, 0, 0, .6); }
-.zj-karta b { display: block; font: 500 1.7rem/1.15 var(--zj-kroj-tytul); color: var(--zar); margin: .15rem 0 .4rem; }
-.zj-karta span.zj-opis { display: block; font: 1rem/1.55 var(--zj-kroj-tekst); color: var(--atrament); }
-.zj-karta span.zj-dalej { display: inline-block; margin-top: .7rem; font: 600 .68rem var(--zj-kroj-etykieta); letter-spacing: .14em; text-transform: uppercase; color: var(--granat); }
-.zj-komunikat { margin: 1rem 0 0; padding: .7rem .9rem; border-left: 3px solid var(--lak); background: var(--lak-tlo); font-size: .95rem; }
+/* ikony przycisków: kreska w kolorze tekstu (bez emoji — w nocy i na każdym systemie wyglądają tak samo) */
+.zj-ik { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.zj-ik .pelne { fill: currentColor; stroke: none; }
+#zjSeans .zj-ik-pauza, #zjSeans[data-ikona="pauza"] .zj-ik-gra,
+#zjDzwiek .zj-ik-glos, #zjDzwiek[aria-pressed="true"] .zj-ik-cisza { display: none; }
+#zjSeans[data-ikona="pauza"] .zj-ik-pauza, #zjDzwiek[aria-pressed="true"] .zj-ik-glos { display: block; }
+
+/* ---------- lista zjawisk: arkusz na sadzy, rejestr pod złotą linią ---------- */
+.zj-lista { overflow-y: auto; padding: 2.2rem 1.2rem 3rem; background: var(--papier); }
+.zj-lista-srodek { max-width: 46rem; margin: 0 auto; padding: 1.6rem 1.8rem 1.4rem; background: var(--arkusz); box-shadow: 0 1px 3px var(--cien); }
+.zj-brew { font: 600 .7rem var(--zj-kroj-etykieta); letter-spacing: .2em; text-transform: uppercase; color: var(--zloto); margin: 0; text-wrap: balance; }
+.zj-lista h1 { font: 500 2.4rem/1.08 var(--zj-kroj-tytul); color: var(--atrament); margin: .2rem 0 .5rem; }
+.zj-lista .zj-wstep { color: var(--atrament-2); margin: 0 0 1.3rem; max-width: 38rem; }
+.zj-karty { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--zloto); }
+.zj-karty li { border-bottom: 1px solid var(--linia); }
+.zj-karta { display: block; width: 100%; text-align: left; cursor: pointer; color: inherit; background: none; border: 0;
+  padding: 1rem .6rem 1.05rem; }
+.zj-karta:hover { background: var(--zloto-tlo); }
+.zj-karta b { display: block; font: 500 1.65rem/1.15 var(--zj-kroj-tytul); color: var(--atrament); margin: 0 0 .35rem; }
+.zj-karta span.zj-opis { display: block; font: 1rem/1.55 var(--zj-kroj-tekst); color: var(--atrament); max-width: 38rem; }
+.zj-karta span.zj-dalej { display: inline-block; margin-top: .6rem; font: 600 .7rem var(--zj-kroj-etykieta); letter-spacing: .14em; text-transform: uppercase; color: var(--granat); }
+.zj-karta:hover span.zj-dalej { color: var(--atrament); }
+.zj-komunikat { margin: 1rem 0 0; padding: .55rem .75rem; border-left: 3px solid var(--lak); background: var(--blad-tlo); font-size: .95rem; }
 .zj-komunikat:empty { display: none; }
 
 /* =====================================================================
    PREZENTACJA — kadr kinowy. Geometrię (--kadr-y, --kadr-h, --pas-gora, --pas-dol) liczy widok.js
    z rozmiaru okna (ZjawiskaLogika.kadrKinowy): poziomo 2.39:1 z pasami, telefon w pionie = kadr pełny.
+   Pasy kadru są sadzą Depeszy, a sam kadr czernią sceny: rycina na stronie.
    ===================================================================== */
 #zjawiska.zj-tryb-prezentacja { display: block; }
 #zjawiska.zj-tryb-prezentacja .zj-pasek { position: absolute; left: 0; right: 0; top: 0; height: var(--zj-pasek);
   background: none; border-bottom: 0; }
-.zj-prezentacja { position: absolute; inset: 0; overflow: hidden; background: var(--pustka); }
-.zj-scena { position: absolute; left: var(--kadr-x, 0px); width: var(--kadr-w, 100%); top: var(--kadr-y, 0px); height: var(--kadr-h, 100%); margin: 0; overflow: hidden; background: var(--pustka); }
+.zj-prezentacja { position: absolute; inset: 0; overflow: hidden; background: var(--papier); }
+.zj-scena { position: absolute; left: var(--kadr-x, 0px); width: var(--kadr-w, 100%); top: var(--kadr-y, 0px); height: var(--kadr-h, 100%); margin: 0; overflow: hidden; background: var(--scena-pustka); }
 .zj-kadr { position: absolute; inset: 0; }
 .zj-scena canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 .zj-etykiety { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.zj-et { position: absolute; left: 0; top: 0; font: 500 12px/1.25 var(--zj-kroj-etykieta); color: var(--atrament-2);
-  white-space: pre-line; text-align: center; text-shadow: 0 0 4px var(--pustka), 0 0 8px var(--pustka), 0 1px 2px var(--pustka);
+.zj-et { position: absolute; left: 0; top: 0; font: 500 12px/1.25 var(--zj-kroj-etykieta); color: var(--scena-atrament-2);
+  white-space: pre-line; text-align: center; text-shadow: 0 0 4px var(--scena-pustka), 0 0 8px var(--scena-pustka), 0 1px 2px var(--scena-pustka);
   will-change: transform; max-width: 15rem; }
-.zj-et.w { font-weight: 600; color: var(--atrament); }
-.zj-et.m { font-size: 11px; color: var(--atrament-3); }
-.zj-et.zloto { color: var(--zloto); }
-.zj-et.zar { color: var(--zar); font-weight: 600; }
-.zj-et.lak { color: var(--lak); font-weight: 600; }
-.zj-et.granat { color: var(--granat); font-weight: 600; }
-.zj-et.duza { font: 600 1.5rem/1.1 var(--zj-kroj-tytul); color: var(--zar); }
+.zj-et.w { font-weight: 600; color: var(--scena-atrament); }
+.zj-et.m { font-size: 11px; color: var(--scena-atrament-3); }
+.zj-et.zloto { color: var(--scena-zloto); }
+.zj-et.zar { color: var(--scena-zar); font-weight: 600; }
+.zj-et.lak { color: var(--scena-lak); font-weight: 600; }
+.zj-et.granat { color: var(--scena-granat); font-weight: 600; }
+.zj-et.duza { font: 600 1.5rem/1.1 var(--zj-kroj-tytul); color: var(--scena-zar); }
 
-.zj-czern { position: absolute; inset: 0; background: var(--pustka); opacity: 0; pointer-events: none; transition: opacity .5s ease; }
+.zj-czern { position: absolute; inset: 0; background: var(--scena-pustka); opacity: 0; pointer-events: none; transition: opacity .5s ease; }
 .zj-czern.on { opacity: 1; }
-.zj-postep { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(255, 255, 255, .06); pointer-events: none; }
+.zj-postep { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--linia); pointer-events: none; }
 .zj-postep i { display: block; height: 100%; width: 0; background: var(--zloto); }
 .zj-wskazowka { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); font: 500 11px/1 var(--zj-kroj-etykieta); letter-spacing: .08em;
-  color: var(--zar); background: rgba(17, 14, 21, .82); border: 1px solid var(--zloto); border-radius: 20px; padding: 6px 12px; pointer-events: none; white-space: nowrap; }
+  color: var(--atrament); background: var(--arkusz); border: 1px solid var(--zloto); padding: 6px 12px; pointer-events: none; white-space: nowrap; }
 
 .zj-przyrzad { position: absolute; right: 14px; top: 12px; width: min(236px, calc(100% - 28px)); padding: .5rem .65rem .55rem;
-  background: rgba(10, 8, 13, .72); border: 1px solid var(--linia); border-top: 1px solid var(--zloto); pointer-events: none; }
-.zj-przyrzad .zj-pt { font: 600 .62rem var(--zj-kroj-etykieta); letter-spacing: .14em; text-transform: uppercase; color: var(--zloto); margin: 0 0 .3rem; }
+  background: color-mix(in srgb, var(--arkusz) 88%, transparent); border: 1px solid var(--linia); border-top: 1px solid var(--zloto); pointer-events: none; }
+.zj-przyrzad .zj-pt { font: 600 .7rem var(--zj-kroj-etykieta); letter-spacing: .12em; text-transform: uppercase; color: var(--zloto); margin: 0 0 .3rem; }
 .zj-wiersz { margin-top: .3rem; }
 .zj-wiersz .zj-we { font: 500 11px/1.2 var(--zj-kroj-etykieta); color: var(--atrament-2); }
-.zj-tor { position: relative; height: 8px; margin-top: 3px; background: rgba(255, 255, 255, .05); }
+.zj-tor { position: relative; height: 8px; margin-top: 3px; background: var(--papier); }
 .zj-tor i { position: absolute; top: 0; bottom: 0; display: block; }
 .zj-tor u { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--atrament-3); }
-.zj-przyrzad .zj-zero { font: 500 10px/1 var(--zj-kroj-etykieta); color: var(--atrament-3); position: relative; height: 12px; margin-top: 4px; }
+.zj-przyrzad .zj-zero { font: 500 10px/1 var(--zj-kroj-etykieta); color: var(--atrament-3); position: relative; height: 12px; margin-top: 4px; font-variant-numeric: tabular-nums; }
 .zj-przyrzad .zj-zero span { position: absolute; transform: translateX(-50%); }
 
 /* podpis ryciny: mały, w rogu kadru — zawsze widoczny (to on mówi „schemat, nie w skali”) */
-.zj-podpis { position: absolute; left: 0; bottom: 0; max-width: min(46%, 40rem); margin: 0; padding: 1.2rem 1.6rem .55rem 1rem; font-size: .74rem; line-height: 1.35;
+.zj-podpis { position: absolute; left: 0; bottom: 0; max-width: min(46%, 40rem); margin: 0; padding: 1.2rem 1.6rem .55rem 1rem; font-size: .76rem; line-height: 1.35;
   color: var(--atrament-2); background: radial-gradient(ellipse 100% 100% at 0% 100%, rgba(0, 0, 0, .8) 35%, transparent 100%); pointer-events: none;
-  text-shadow: 0 0 5px var(--pustka), 0 0 9px var(--pustka); }
-.zj-podpis b { font: 600 .6rem var(--zj-kroj-etykieta); letter-spacing: .14em; text-transform: uppercase; color: var(--zloto); margin-right: .45rem; }
+  text-shadow: 0 0 5px var(--scena-pustka), 0 0 9px var(--scena-pustka); }
+.zj-podpis b { font: 600 .7rem var(--zj-kroj-etykieta); letter-spacing: .12em; text-transform: uppercase; color: var(--zloto); margin-right: .45rem; }
 
 /* dolny pas: napisy jak w kinie + nawigacja; górny pas: plansza tytułu */
 .zj-dol { position: absolute; left: 0; right: 0; bottom: 0; height: var(--pas-dol, 120px); display: flex; flex-direction: column; min-height: 0; }
 .zj-plansza { position: absolute; left: 0; right: 0; bottom: calc(100% + var(--kadr-h, 0px)); height: var(--pas-gora, 120px);
   padding: var(--zj-pasek) 1rem 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; }
-.zj-plansza .zj-brew { font-size: .6rem; color: var(--atrament-3); }
-.zj-plansza h2 { font: 500 clamp(1.25rem, 2.5vw, 2rem)/1.1 var(--zj-kroj-tytul); color: var(--zar); margin: .2rem 0 0; letter-spacing: .01em; }
+.zj-plansza .zj-brew { font-size: .7rem; color: var(--atrament-3); letter-spacing: .18em; }
+.zj-plansza h2 { font: 500 clamp(1.3rem, 2.5vw, 2.1rem)/1.1 var(--zj-kroj-tytul); color: var(--atrament); margin: .25rem 0 0; font-variant-numeric: lining-nums; }
+.zj-plansza h2::after { content: ""; display: block; width: 3.2rem; height: 1px; margin: .55rem auto 0; background: var(--zloto); }
 .zj-plansza h2:focus { outline: none; }
 .zj-plansza.wejscie .zj-brew, .zj-plansza.wejscie h2 { animation: zj-plansza 1.4s ease both; }
 @keyframes zj-plansza { from { opacity: 0; letter-spacing: .12em; } to { opacity: 1; } }
 
 .zj-napisy { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: .3rem max(1.2rem, 9vw);
-  font: 400 clamp(1.02rem, 1.75vw, 1.34rem)/1.38 var(--zj-kroj-tekst); color: var(--atrament); overflow: hidden; }
+  font: 400 clamp(1.02rem, 1.75vw, 1.34rem)/1.42 var(--zj-kroj-tekst); color: var(--atrament); overflow: hidden; }
 .zj-napisy p { margin: 0; max-width: 62rem; display: none; text-wrap: balance; }
 .zj-napisy p.on { display: block; animation: zj-napis .55s ease both; }
 @keyframes zj-napis { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
-.zj-napisy .zj-net { display: block; font: 600 .6rem/1.6 var(--zj-kroj-etykieta); letter-spacing: .16em; text-transform: uppercase; color: var(--zloto); }
+.zj-napisy .zj-net { display: block; font: 600 .7rem/1.6 var(--zj-kroj-etykieta); letter-spacing: .14em; text-transform: uppercase; color: var(--zloto); }
 .zj-napisy p.umbra .zj-net { color: var(--lak); }
-.zj-napisy p.ramka { color: var(--zar); }
+.zj-napisy p.ramka { font-style: italic; }
 /* wszystkie wersy naraz (telefon; ?smoke) — bieżący wyróżniony */
-.zj-napisy.caly { display: block; text-align: left; overflow-y: auto; font-size: .82rem; line-height: 1.34; padding: .35rem 1.4rem; color: var(--atrament-2); }
+.zj-napisy.caly { display: block; text-align: left; overflow-y: auto; font-size: .84rem; line-height: 1.38; padding: .35rem 1.4rem; color: var(--atrament-2); }
 .zj-napisy.caly p { display: inline; animation: none; max-width: none; }
-.zj-napisy.caly p.on { animation: none; color: var(--zar); }
-.zj-napisy.caly p.ramka { color: var(--atrament); }
+.zj-napisy.caly p.on { animation: none; color: var(--atrament); }
 .zj-napisy.caly p.pierwszy-ramki { display: block; margin-top: .3rem; padding-top: .25rem; border-top: 1px solid var(--linia); }
 .zj-napisy.caly .zj-net { display: inline; margin-right: .5rem; }
 
 .zj-stopka { flex: none; padding: 0 14px 10px; }
 .zj-nav { display: flex; align-items: center; gap: .7rem; }
-.zj-nav button { font: 600 .68rem/1 var(--zj-kroj-etykieta); letter-spacing: .12em; text-transform: uppercase; color: var(--zar);
-  background: var(--zloto-tlo); border: 1px solid var(--zloto); border-radius: 4px; padding: .6rem .85rem; cursor: pointer; white-space: nowrap; }
-.zj-nav button:disabled { color: var(--atrament-3); border-color: var(--linia); background: none; cursor: default; }
-.zj-nav .zj-licznik { font: 600 .66rem var(--zj-kroj-etykieta); letter-spacing: .14em; text-transform: uppercase; color: var(--atrament-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.zj-nav button { font: 600 .7rem/1 var(--zj-kroj-etykieta); letter-spacing: .12em; text-transform: uppercase; color: var(--granat);
+  background: none; border: 1px solid var(--linia); border-radius: 0; padding: .65rem .9rem; cursor: pointer; white-space: nowrap; }
+.zj-nav button:hover { border-color: var(--granat); color: var(--atrament); }
+#zjDalej { color: var(--atrament); background: var(--zloto-tlo); border-color: var(--zloto); }
+#zjDalej:hover { border-color: var(--atrament-2); }
+.zj-nav button:disabled, #zjDalej:disabled { color: var(--atrament-3); border-color: var(--linia); background: none; cursor: default; }
+.zj-nav .zj-licznik { font: 600 .7rem var(--zj-kroj-etykieta); letter-spacing: .14em; text-transform: uppercase; color: var(--atrament-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .zj-kropki { flex: 1; display: flex; flex-wrap: wrap; justify-content: center; gap: 1px; min-width: 0; }
 .zj-kropki button { width: 16px; height: 16px; padding: 0; border: 0; background: none; cursor: pointer; position: relative; }
 .zj-kropki button::after { content: ""; position: absolute; left: 5px; top: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--linia); }
 .zj-kropki button.byl::after { background: var(--atrament-3); }
-.zj-kropki button.on::after { background: var(--zloto); box-shadow: 0 0 0 2px var(--zloto-tlo), 0 0 0 3px var(--zloto); }
-.zj-kropki button:hover::after { background: var(--zar); }
+.zj-kropki button.on::after { background: var(--zloto); box-shadow: 0 0 0 2px var(--papier), 0 0 0 3px var(--zloto); }
+.zj-kropki button:hover::after { background: var(--atrament); }
 
 /* UI znika po ~3 s bezruchu (klasa .zj-cisza z widok.js) i wraca po ruchu myszy / klawiszu */
 .zj-auto { transition: opacity .45s ease; }
@@ -166,18 +196,20 @@
 /* ?smoke: deterministyczny zrzut — bez animacji wejścia planszy i napisów */
 #zjawiska.zj-smoke .zj-plansza .zj-brew, #zjawiska.zj-smoke .zj-plansza h2, #zjawiska.zj-smoke .zj-napisy p { animation: none !important; }
 
-/* panel „Tekst”: pełna narracja, ramki, źródła — wysuwany z prawej */
-.zj-panel { position: absolute; right: 0; top: 0; bottom: 0; width: min(30rem, 100%); z-index: 6; display: flex; flex-direction: column;
-  background: var(--arkusz); border-left: 1px solid var(--zloto); box-shadow: -18px 0 60px rgba(0, 0, 0, .7); }
-.zj-tresc { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: calc(var(--zj-pasek) + .6rem) 1.5rem 1.4rem; overflow-wrap: break-word; }
-.zj-tresc h3 { font: 500 1.7rem/1.12 var(--zj-kroj-tytul); color: var(--zar); margin: .25rem 0 .8rem; padding-bottom: .4rem; border-bottom: 1px solid var(--zloto); }
-.zj-narracja p { margin: 0 0 .7rem; }
-.zj-narracja p:first-child::first-letter { font: 500 3rem/.8 var(--zj-kroj-tytul); float: left; padding: .3rem .45rem 0 0; color: var(--zar); }
-.zj-ramka { padding: .65rem .85rem; margin: 1rem 0 .4rem; font-size: .95rem; }
-.zj-ramka .zj-ret { display: block; font: 600 .66rem var(--zj-kroj-etykieta); letter-spacing: .14em; text-transform: uppercase; color: var(--zloto); margin-bottom: .2rem; }
+/* panel „Tekst”: pełna narracja, ramki, źródła — wysuwany z prawej POD paskiem (pasek z przyciskiem „Tekst” zostaje
+   klikalny), a dolny pas z „Dalej” kurczy się do lewej krawędzi panelu */
+.zj-panel { position: absolute; right: 0; top: var(--zj-pasek); bottom: 0; width: var(--zj-panel-w); z-index: 6; display: flex; flex-direction: column;
+  background: var(--arkusz); border-left: 1px solid var(--zloto); border-top: 1px solid var(--zloto); box-shadow: -18px 0 60px var(--cien); }
+#zjawiska:has(.zj-panel:not([hidden])) .zj-dol { right: var(--zj-panel-w); }
+.zj-tresc { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 1.1rem 1.5rem 1.4rem; overflow-wrap: break-word; }
+.zj-tresc h3 { font: 500 1.75rem/1.12 var(--zj-kroj-tytul); color: var(--atrament); margin: .25rem 0 .8rem; padding-bottom: .4rem; border-bottom: 1px solid var(--zloto); font-variant-numeric: lining-nums; }
+.zj-narracja p { margin: 0 0 .7rem; max-width: 34rem; }
+.zj-narracja p:first-child::first-letter { font: 500 3rem/.8 var(--zj-kroj-tytul); float: left; padding: .3rem .45rem 0 0; color: var(--atrament); }
+.zj-ramka { padding: .6rem .8rem; margin: 1rem 0 .4rem; font-size: .95rem; }
+.zj-ramka .zj-ret { display: block; font: 600 .7rem var(--zj-kroj-etykieta); letter-spacing: .14em; text-transform: uppercase; color: var(--zloto); margin-bottom: .2rem; }
 .zj-ramka.nota { border-left: 3px solid var(--zloto); background: var(--zloto-tlo); }
-.zj-ramka.teza { border-top: 3px double var(--zloto); border-bottom: 3px double var(--zloto); background: var(--zloto-tlo); font: 500 1.18rem/1.35 var(--zj-kroj-tytul); color: var(--zar); }
-.zj-ramka.umbra { border-left: 3px solid var(--lak); background: var(--lak-tlo); }
+.zj-ramka.teza { border-top: 3px double var(--zloto); border-bottom: 3px double var(--zloto); background: var(--zloto-tlo); font: 500 1.2rem/1.35 var(--zj-kroj-tytul); color: var(--atrament); }
+.zj-ramka.umbra { border-left: 3px solid var(--lak); background: var(--blad-tlo); }
 .zj-ramka.umbra .zj-ret { color: var(--lak); }
 .zj-ramka.info { border-left: 3px solid var(--granat); background: var(--granat-tlo); }
 .zj-ramka.info .zj-ret { color: var(--granat); }
@@ -185,31 +217,32 @@
 .zj-ramka ul { margin: .4rem 0 0; padding-left: 1.1rem; }
 .zj-ramka li { margin-bottom: .4rem; }
 .zj-ramka.umbra li::marker { color: var(--lak); }
-.zj-ppodpis { font-size: .84rem; color: var(--atrament-2); margin: .9rem 0 0; }
-.zj-przypisy { font: 500 .7rem var(--zj-kroj-etykieta); color: var(--atrament-3); margin: .5rem 0 0; }
+.zj-ppodpis { font-size: .86rem; color: var(--atrament-2); margin: .9rem 0 0; }
+.zj-przypisy { font: 500 .72rem var(--zj-kroj-etykieta); color: var(--atrament-3); margin: .5rem 0 0; }
 .zj-przypisy:empty { display: none; }
-.zj-zrodla { margin-top: 1.2rem; border-top: 1px solid var(--linia); padding-top: .6rem; font-size: .84rem; color: var(--atrament-2); }
-.zj-zrodla summary { cursor: pointer; font: 600 .68rem var(--zj-kroj-etykieta); letter-spacing: .14em; text-transform: uppercase; color: var(--zloto); }
+.zj-zrodla { margin-top: 1.2rem; border-top: 1px solid var(--linia); padding-top: .6rem; font-size: .86rem; color: var(--atrament-2); }
+.zj-zrodla summary { cursor: pointer; font: 600 .7rem var(--zj-kroj-etykieta); letter-spacing: .14em; text-transform: uppercase; color: var(--zloto); }
 .zj-zrodla ol { padding-left: 1.4rem; margin: .6rem 0; }
 .zj-zrodla li { margin-bottom: .35rem; overflow-wrap: anywhere; }
-.zj-zrodla li::marker { color: var(--zloto); font-family: var(--zj-kroj-etykieta); font-size: .8rem; }
+.zj-zrodla li::marker { color: var(--atrament-3); font-family: var(--zj-kroj-etykieta); font-size: .8rem; font-variant-numeric: tabular-nums; }
 .zj-zrodla .zj-pochodzenie { margin: .6rem 0 0; padding-top: .6rem; border-top: 3px double var(--zloto); }
 
 /* ---------- kadr pełny (telefon w pionie): bez letterboxu, tekst zawsze widoczny pod sceną ---------- */
 #zjawiska.zj-pelny.zj-tryb-prezentacja .zj-pasek { background: var(--arkusz); border-bottom: 1px solid var(--zloto); padding: 0 8px; gap: .3rem; }
 #zjawiska.zj-pelny .zj-dol { background: var(--arkusz); border-top: 1px solid var(--linia); }
 #zjawiska.zj-pelny .zj-plansza { position: static; height: auto; padding: .7rem 1rem .3rem; align-items: flex-start; text-align: left; }
-#zjawiska.zj-pelny .zj-plansza h2 { font-size: 1.4rem; }
+#zjawiska.zj-pelny .zj-plansza h2 { font-size: 1.45rem; }
+#zjawiska.zj-pelny .zj-plansza h2::after { margin-left: 0; }
 #zjawiska.zj-pelny .zj-napisy.caly { font-size: 1rem; line-height: 1.5; padding: .2rem 1rem .6rem; }
-#zjawiska.zj-pelny .zj-napisy.caly p { display: block; margin: 0 0 .45rem; }
+#zjawiska.zj-pelny .zj-napisy.caly p { display: block; margin: 0 0 .45rem; text-wrap: pretty; }
 #zjawiska.zj-pelny .zj-napisy.caly .zj-net { display: block; }
 #zjawiska.zj-pelny .zj-stopka { padding: .5rem .7rem calc(.6rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--zloto); }
 #zjawiska.zj-pelny .zj-nav { flex-wrap: wrap; justify-content: space-between; }
 #zjawiska.zj-pelny .zj-kropki { order: 5; flex-basis: 100%; }
 #zjawiska.zj-pelny .zj-licznik { flex: 1; text-align: center; }
-#zjawiska.zj-pelny .zj-podpis { max-width: 100%; font-size: .68rem; padding: 1rem .6rem .35rem; }
+#zjawiska.zj-pelny .zj-podpis { max-width: 100%; font-size: .7rem; padding: 1rem .6rem .35rem; }
 #zjawiska.zj-pelny .zj-przyrzad { right: 6px; top: 6px; width: min(170px, calc(100% - 12px)); padding: .3rem .45rem .4rem; }
-#zjawiska.zj-pelny .zj-przyrzad .zj-pt { font-size: .54rem; margin: 0; }
+#zjawiska.zj-pelny .zj-przyrzad .zj-pt { font-size: .62rem; margin: 0; }
 #zjawiska.zj-pelny .zj-przyrzad .zj-zero { display: none; }
 #zjawiska.zj-pelny .zj-wiersz { margin-top: .15rem; }
 #zjawiska.zj-pelny .zj-wiersz .zj-we { font-size: 9.5px; }
@@ -217,9 +250,9 @@
 #zjawiska.zj-pelny .zj-et { font-size: 10.5px; max-width: 9.5rem; }
 #zjawiska.zj-pelny .zj-et.m { font-size: 10px; }
 #zjawiska.zj-pelny .zj-nazwa { display: none; }
-#zjawiska.zj-pelny .zj-guzik { padding: 8px 7px; letter-spacing: .04em; }
+#zjawiska.zj-pelny .zj-guzik { padding: 8px 8px; letter-spacing: .04em; }
 #zjawiska.zj-pelny .zj-guzik .zj-dlugi { display: none; }
-#zjawiska.zj-pelny .zj-pasek #zakladki button { padding: 8px 8px; letter-spacing: .04em; }
+#zjawiska.zj-pelny .zj-pasek #zakladki button { padding: 9px 9px; letter-spacing: .04em; }
 #zjawiska.zj-pelny .zj-pasek #zakladki .zak-dl { display: none; }
 #zjawiska.zj-pelny .zj-pasek #zakladki .zak-kr { display: inline; }
 #zjawiska.zj-pelny #zjPelny, #zjawiska.zj-pelny #zjDzwiek { display: none; }
@@ -231,7 +264,12 @@
   .zj-guzik .zj-dlugi { display: none; }
   .zj-pasek #zakladki .zak-dl { display: none; }
   .zj-pasek #zakladki .zak-kr { display: inline; }
-  .zj-lista h1 { font-size: 2rem; }
+}
+@media (max-width: 640px) {
+  .zj-lista { padding: 0; }
+  .zj-lista-srodek { padding: 1.3rem 1rem 1.4rem; box-shadow: none; min-height: 100%; }
+  .zj-lista h1 { font-size: 1.9rem; }
+  .zj-karta { padding-left: 0; padding-right: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   #zjawiska * { scroll-behavior: auto; }

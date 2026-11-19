@@ -77,7 +77,9 @@
   function ograniczonyRuch() { return !!mqRuch.matches; }
   function token(nazwa) {
     if (!(nazwa in palety)) {
-      var v = getComputedStyle(document.documentElement).getPropertyValue('--' + nazwa).trim();
+      // paleta sceny (--scena-*) jest osobna od interfejsu (Depesza nocą) — zob. nagłówek zjawiska.css
+      var v = getComputedStyle(document.documentElement).getPropertyValue('--scena-' + nazwa).trim();
+      if (!v) console.error('Zjawiska: brak koloru sceny --scena-' + nazwa + ' w zjawiska/zjawiska.css — dopisz go do palety sceny w :root');
       palety[nazwa] = v || '#ffffff';
     }
     return palety[nazwa];
@@ -537,14 +539,14 @@
   function ustawSeans(wl) {
     seans.on = !!wl; seans.pauza = false;
     el.seans.setAttribute('aria-pressed', String(seans.on));
-    el.seans.firstChild.nodeValue = seans.on ? '❚❚' : '▶';
+    el.seans.setAttribute('data-ikona', seans.on ? 'pauza' : 'gra');
     el.postep.hidden = !seans.on;
     if (seans.on && document.activeElement && document.activeElement.tagName === 'BUTTON') el.korzen.focus({ preventScroll: true });   // spacja ma pauzować, nie klikać
     if (seans.on && biez && biez.krok >= biez.def.kroki.length) pokazKrok(1, false);
   }
   function pauzaSeansu() {
     seans.pauza = !seans.pauza;
-    el.seans.firstChild.nodeValue = seans.pauza ? '▶' : '❚❚';
+    el.seans.setAttribute('data-ikona', seans.pauza ? 'gra' : 'pauza');
   }
   function pelnyEkran() {
     try {
@@ -568,7 +570,6 @@
     if (wl && dzwiek.ctx.state === 'suspended') dzwiek.ctx.resume();
     dzwiek.wzm.gain.setTargetAtTime(wl ? 0.07 : 0, dzwiek.ctx.currentTime, 0.4);
     el.dzwiek.setAttribute('aria-pressed', String(!!wl));
-    el.dzwiek.textContent = wl ? '🔊' : '🔈';
     ustawDron();
   }
   function ustawDron() {

@@ -553,11 +553,11 @@
 <div id="zjawiska" hidden tabindex="-1" role="region" aria-label="Zjawiska naukowe">
   <header class="zj-pasek zj-auto" id="zjPasek">
     <span class="zj-nazwa" id="zjNazwa">Zjawiska naukowe</span>
-    <button type="button" class="zj-guzik zj-kino" id="zjSeans" title="Seans: odtwarzaj kroki po kolei (S; spacja = pauza)" aria-pressed="false">▶<span class="zj-dlugi"> Seans</span></button>
-    <button type="button" class="zj-guzik zj-kino" id="zjDzwiek" title="Dźwięk tła (domyślnie wyłączony)" aria-pressed="false">🔈</button>
-    <button type="button" class="zj-guzik zj-kino" id="zjPelny" title="Pełny ekran (F)">⛶</button>
+    <button type="button" class="zj-guzik zj-kino" id="zjSeans" title="Seans: odtwarzaj kroki po kolei (S; spacja = pauza)" aria-label="Seans" aria-pressed="false" data-ikona="gra"><svg class="zj-ik zj-ik-gra" viewBox="0 0 16 16" aria-hidden="true"><path class="pelne" d="M4.5 2.8v10.4L13 8z"/></svg><svg class="zj-ik zj-ik-pauza" viewBox="0 0 16 16" aria-hidden="true"><path class="pelne" d="M4 3h2.6v10H4zM9.4 3H12v10H9.4z"/></svg><span class="zj-dlugi">Seans</span></button>
+    <button type="button" class="zj-guzik zj-kino" id="zjDzwiek" title="Dźwięk tła (domyślnie wyłączony)" aria-label="Dźwięk tła" aria-pressed="false"><svg class="zj-ik zj-ik-cisza" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z"/><path d="M11 6l3.5 4M14.5 6L11 10"/></svg><svg class="zj-ik zj-ik-glos" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z"/><path d="M11 5.6a3.4 3.4 0 0 1 0 4.8M12.8 3.8a6 6 0 0 1 0 8.4"/></svg></button>
+    <button type="button" class="zj-guzik zj-kino" id="zjPelny" title="Pełny ekran (F)" aria-label="Pełny ekran"><svg class="zj-ik" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg></button>
     <button type="button" class="zj-guzik zj-kino" id="zjTekstBtn" title="Pełna narracja i źródła (T)" aria-expanded="false" aria-controls="zjPanel">Tekst</button>
-    <button type="button" class="zj-guzik zj-kino" id="zjDoListy" title="Lista zjawisk">←<span class="zj-dlugi"> Lista zjawisk</span></button>
+    <button type="button" class="zj-guzik zj-kino" id="zjDoListy" title="Lista zjawisk" aria-label="Lista zjawisk"><svg class="zj-ik" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8H3M7 4L3 8l4 4"/></svg><span class="zj-dlugi">Lista zjawisk</span></button>
     <button type="button" class="zj-guzik" id="zjZamknij" title="Wróć do Układu Słonecznego (Esc)">Esc<span class="zj-dlugi"> · wróć do Układu</span></button>
   </header>
   <section class="zj-lista" id="zjLista">
