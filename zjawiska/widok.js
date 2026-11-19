@@ -275,7 +275,8 @@
   function przebieg(def) {
     if (przebiegi[def.id]) return przebiegi[def.id];
     var T = window.THREE, g = zapewnijGL();
-    var p = { def: def, korzen: new T.Group(), zestawy: {}, kroki: [], krok: 0, pokazany: 0, odwiedzone: {}, aktywne: [], z: {}, doKamery: [], zdKrokow: [] };
+    var p = { def: def, korzen: new T.Group(), zestawy: {}, kroki: [], krok: 0, pokazany: 0, odwiedzone: {}, aktywne: [], z: {}, doKamery: [], zdKrokow: [],
+      budowy: { naWejsciu: 0, zWyprzedzeniem: 0, doKompilacji: false, budowaMs: 0, kompilacjaMs: 0 } };
     p.korzen.name = 'zjawisko:' + def.id;
     g.scena.add(p.korzen);
     p.ctx = {
@@ -561,6 +562,7 @@
     for (nazwa in p.zestawy) if (p.zestawy[nazwa].grupa) p.zestawy[nazwa].grupa.visible = false;
     for (var j = 0; j < p.kroki.length; j++) if (p.kroki[j] && p.kroki[j].grupa) p.kroki[j].grupa.visible = false;
     p.aktywne = [];
+    if (!tylkoGwiazdy && zbudujKrok(p, i)) p.budowy.naWejsciu++;   // zestawy i scena kroku — licznik obejmuje oba
     var z = {}, nazwy = tylkoGwiazdy ? ((p.def.zestawy && p.def.zestawy.gwiazdy) ? ['gwiazdy'] : []) : (k.zestawy || []);
     nazwy.forEach(function (nz) {
       var zz = zestaw(p, nz);
@@ -568,17 +570,32 @@
       if (zz.ustaw) zz.ustaw({});            // powrót do ustawień domyślnych (krok nadpisuje je w `ustaw`)
       z[nz] = zz; p.aktywne.push(zz);
     });
-    if (!tylkoGwiazdy) {
-      if (k.zbuduj && !p.kroki[i]) {
-        var w = k.zbuduj(p.ctx) || {};
-        if (w.grupa) p.korzen.add(w.grupa);
-        p.kroki[i] = w;
-      }
-      if (p.kroki[i] && p.kroki[i].grupa) p.kroki[i].grupa.visible = true;
-    }
+    if (!tylkoGwiazdy && p.kroki[i] && p.kroki[i].grupa) p.kroki[i].grupa.visible = true;
     p.z = z;
     if (!tylkoGwiazdy && k.ustaw) k.ustaw(p.ctx, z, p.kroki[i]);
     p.zastosowany = n; p.zastosowaneGwiazdy = !!tylkoGwiazdy;
+  }
+  // Scena kroku i (zestawy + wynik `zbuduj`) w grafie, ukryta; true = coś zbudowano teraz.
+  function zbudujKrok(p, i) {
+    var k = p.def.kroki[i], nowe = false;
+    (k.zestawy || []).forEach(function (nz) { if (!p.zestawy[nz]) { zestaw(p, nz); nowe = true; } });
+    if (k.zbuduj && !p.kroki[i]) {
+      var w = k.zbuduj(p.ctx) || {};
+      if (w.grupa) { w.grupa.visible = false; p.korzen.add(w.grupa); }
+      p.kroki[i] = w; nowe = true;
+    }
+    return nowe;
+  }
+  // Budowa z wyprzedzeniem (spec filmu §7): krok i+1 powstaje przy ~30% kroku i, a w NASTĘPNEJ klatce kompilują się
+  // shadery (renderer.compile obejmuje też ukryte obiekty) — praca dzielona na dwie klatki, a zmiana zawartości nie czeka
+  // ani na budowę, ani na kompilację. `zbudujKrok` jest idempotentne, więc to samo wołanie co klatkę jest tanie.
+  var WYPRZEDZENIE_BUDOWY = 0.3;
+  function przygotujNastepny(p, i, postep) {
+    var b = p.budowy, t0;
+    if (b.doKompilacji) { t0 = performance.now(); gl.renderer.compile(gl.scena, gl.kamera); b.doKompilacji = false; b.kompilacjaMs = performance.now() - t0; return; }
+    if (postep < WYPRZEDZENIE_BUDOWY || i + 1 >= p.def.kroki.length) return;
+    t0 = performance.now();
+    if (zbudujKrok(p, i + 1)) { b.zWyprzedzeniem++; b.doKompilacji = true; b.budowaMs = performance.now() - t0; }
   }
   function wejdzWScene(n, plynnie) {
     var p = biez, k = p.def.kroki[n - 1], i = n - 1;
@@ -804,6 +821,7 @@
     if (film) { el.czern.style.opacity = String(opis.obraz.czern); napisCzerni(opis.napis); }
     rysuj(p, opis, wolno);
     if (film && silnik) planujDzwiek(p, opis.lok);
+    if (!smoke) przygotujNastepny(p, p.pokazany - 1, opis.tKrok / opis.czasKroku);
     obrazKlatki = opis.obraz;
     rzutujEtykiety(tKrok, opis.obraz.etykiety);
 
@@ -840,7 +858,8 @@
     if (!z) z = p.zdKrokow[i] = { baza: L.zdarzeniaKroku(k) };
     if (z.tempo !== tempo || z.t0 !== t0) { z.tempo = tempo; z.t0 = t0; z.zd = L.przesunZdarzenia(z.baza, 0, tempo); z.zdG = L.przesunZdarzenia(z.zd, t0); }
     var c = { tKrok: tKrok, u: u, zd: z.zd, zdG: z.zdG };
-    return { tKrok: tKrok, tGlob: tGlob, dt: dt, u: u, poza: poza, obraz: L.obrazJednej(i), czasy: function () { return c; } };
+    return { tKrok: tKrok, tGlob: tGlob, dt: dt, u: u, poza: poza, obraz: L.obrazJednej(i), czasy: function () { return c; },
+      czasKroku: uj.czas };
   }
   // Film: jeden zegar (czas rzeczywisty; obcięcie 1 s tylko na długą przerwę, schowana karta pauzuje) — zawartość,
   // kamera, obraz przejścia i napisy z osi czasu. Smoke: zegar stoi w chwili `t`.
@@ -860,6 +879,7 @@
       ? L.obrazPrzejscia(lok.przejscie.typ, lok.przejscie.f, lok.przejscie.do - 1, lok.przejscie.do, zPassem)
       : L.obrazJednej(lok.i);
     return { tKrok: c.tKrok, tGlob: film.t, dt: dt, u: c.u, poza: rezyseria ? L.pozaFilmu(p.def, os, film.t) : null, obraz: obraz, czasy: czasy, lok: lok,
+      czasKroku: os.kroki[lok.i].koniec - os.kroki[lok.i].start,
       napis: lok.przejscie ? os.kroki[lok.przejscie.do].przejscie.napis : null };
   }
   // Zawartość sceny `sc` ({i, gwiazdy}) w chwili klatki: tło ujęcia, animacje zestawów i kroku, obiekty do kamery.
@@ -1012,7 +1032,8 @@
     // geometrieSceny/materialy = wszystko, co wisi w grafie sceny (miara wycieku); geometrieGPU rośnie leniwie przy
     // pierwszym narysowaniu obiektu (np. iskry widoczne tylko w części pętli), więc samo w sobie wycieku nie dowodzi
     return { geometrieSceny: Object.keys(geo).length, materialy: Object.keys(mat).length, geometrieGPU: m.geometries, tekstury: m.textures,
-      programy: pr ? pr.length : 0, obiekty: n, etykiety: el.etykiety.children.length };
+      programy: pr ? pr.length : 0, obiekty: n, etykiety: el.etykiety.children.length,
+      budowy: biez ? { naWejsciu: biez.budowy.naWejsciu, zWyprzedzeniem: biez.budowy.zWyprzedzeniem, budowaMs: biez.budowy.budowaMs, kompilacjaMs: biez.budowy.kompilacjaMs } : null };
   };
 
   /* ---------- zdarzenia ---------- */
