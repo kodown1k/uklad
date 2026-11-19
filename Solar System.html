@@ -11,6 +11,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Zjawiska naukowe: kroje „Depeszy" + arkusz stylów nakładki (zakładki i prezentacja) -->
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Charis+SIL:ital,wght@0,400;0,700;1,400&family=Noto+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="zjawiska/zjawiska.css">
 
 <!-- Planet textures referenced from JS — lifted for offline bundling -->
 <meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/sunmap.jpg" data-resource-id="sunmap">
@@ -544,9 +547,81 @@
 <button id="menuToggle" class="hud" aria-label="Sterowanie">☰ Sterowanie</button>
 <div id="menuBackdrop"></div>
 
+<!-- nakładka „Zjawiska naukowe": własny canvas/renderer/scena (nie wpina się w scenę solar.js).
+     Prezentacja = kadr kinowy 2.39:1 (letterbox liczony w widok.js), napisy w dolnym pasie, UI znika po bezruchu. -->
+<div id="zjawiska" hidden tabindex="-1" role="region" aria-label="Zjawiska naukowe">
+  <header class="zj-pasek zj-auto" id="zjPasek">
+    <span class="zj-nazwa" id="zjNazwa">Zjawiska naukowe</span>
+    <button type="button" class="zj-guzik zj-kino" id="zjSeans" title="Seans: odtwarzaj kroki po kolei (S; spacja = pauza)" aria-pressed="false">▶<span class="zj-dlugi"> Seans</span></button>
+    <button type="button" class="zj-guzik zj-kino" id="zjDzwiek" title="Dźwięk tła (domyślnie wyłączony)" aria-pressed="false">🔈</button>
+    <button type="button" class="zj-guzik zj-kino" id="zjPelny" title="Pełny ekran (F)">⛶</button>
+    <button type="button" class="zj-guzik zj-kino" id="zjTekstBtn" title="Pełna narracja i źródła (T)" aria-expanded="false" aria-controls="zjPanel">Tekst</button>
+    <button type="button" class="zj-guzik zj-kino" id="zjDoListy" title="Lista zjawisk">←<span class="zj-dlugi"> Lista zjawisk</span></button>
+    <button type="button" class="zj-guzik" id="zjZamknij" title="Wróć do Układu Słonecznego (Esc)">Esc<span class="zj-dlugi"> · wróć do Układu</span></button>
+  </header>
+  <section class="zj-lista" id="zjLista">
+    <div class="zj-lista-srodek">
+      <p class="zj-brew">Fizyka dla ciekawych · opowieści krok po kroku</p>
+      <h1>Zjawiska naukowe</h1>
+      <p class="zj-wstep">Wybierz zjawisko. Każde to opowieść w scenach 3D: najpierw obraz, potem sekret, który się w nim chowa.</p>
+      <ul class="zj-karty" id="zjKarty"></ul>
+      <p class="zj-komunikat" id="zjKomunikat" role="status"></p>
+    </div>
+  </section>
+  <section class="zj-prezentacja" id="zjPrezentacja" hidden>
+    <figure class="zj-scena" id="zjScena">
+      <div class="zj-kadr" id="zjKadr">
+        <canvas id="zjCanvas" aria-label="Scena 3D bieżącego kroku"></canvas>
+        <div class="zj-etykiety" id="zjEtykiety" aria-hidden="true"></div>
+        <span class="zj-wskazowka" id="zjWskazowka" hidden>rozglądasz się · <b>O</b> — wróć do ujęcia</span>
+        <div class="zj-postep" id="zjPostep" hidden><i></i></div>
+        <div class="zj-czern" id="zjCzern"></div>
+      </div>
+      <div class="zj-przyrzad" id="zjPrzyrzad" hidden></div>
+      <figcaption class="zj-podpis" id="zjPodpis"></figcaption>
+    </figure>
+    <div class="zj-dol" id="zjDol">
+      <div class="zj-plansza" id="zjPlansza">
+        <p class="zj-brew" id="zjCzesc"></p>
+        <h2 id="zjTytul" tabindex="-1"></h2>
+      </div>
+      <div class="zj-napisy" id="zjNapisy" aria-live="polite"></div>
+      <div class="zj-stopka zj-auto">
+        <div class="zj-nav">
+          <button type="button" id="zjWstecz">← Wstecz</button>
+          <span class="zj-licznik" id="zjLicznik">Krok 1 / 1</span>
+          <div class="zj-kropki" id="zjKropki" role="group" aria-label="Kroki"></div>
+          <button type="button" id="zjDalej">Dalej →</button>
+        </div>
+      </div>
+    </div>
+    <aside class="zj-panel" id="zjPanel" hidden aria-label="Pełna narracja i źródła">
+      <div class="zj-tresc" id="zjTresc">
+        <p class="zj-brew" id="zjPCzesc"></p>
+        <h3 id="zjPTytul"></h3>
+        <div class="zj-narracja" id="zjNarracja"></div>
+        <div class="zj-ramka" id="zjRamka" hidden></div>
+        <p class="zj-ppodpis" id="zjPPodpis"></p>
+        <p class="zj-przypisy" id="zjPrzypisy"></p>
+        <details class="zj-zrodla" id="zjZrodla">
+          <summary>Źródła</summary>
+          <ol id="zjZrodlaLista"></ol>
+          <p class="zj-pochodzenie" id="zjPochodzenie"></p>
+        </details>
+      </div>
+    </aside>
+  </section>
+</div>
+
 <div id="rail" class="hud"></div>
 
 <div id="topbar">
+  <!-- zakładki widoku (obsługa: zjawiska/widok.js; w widoku zjawisk węzeł przenosi się do paska nakładki) -->
+  <nav id="zakladki" aria-label="Widok">
+    <button type="button" id="zakUklad" class="on" aria-pressed="true"><span class="zak-dl">Układ Słoneczny</span><span class="zak-kr">Układ</span></button>
+    <button type="button" id="zakZjawiska" aria-pressed="false"><span class="zak-dl">Zjawiska naukowe</span><span class="zak-kr">Zjawiska</span></button>
+    <span id="zakInfo" role="status"></span>
+  </nav>
   <button id="back"><span class="arrow">←</span> Widok układu</button>
   <span id="crumb" class="crumb" style="display:none"></span>
   <div id="galaxyMenu">
@@ -762,5 +837,9 @@
 <script src="selectables.js"></script>
 <script src="solar.js"></script>
 <!-- Cloudflare Web Analytics: liczy wejścia na voyager.kodownik.co i kodownik.co/uklad/ (bez ciasteczek; test/analytics.test.js) --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "e8ab645d2daa4c95b7802a3a5f306a18"}'></script><!-- End Cloudflare Web Analytics -->
+<!-- Zjawiska naukowe: czysta logika + rejestr + silnik prezentacji; pliki zjawisk ładuje widok (pole `skrypt` rejestru) -->
+<script src="zjawiska/logika.js"></script>
+<script src="zjawiska/rejestr.js"></script>
+<script src="zjawiska/widok.js"></script>
 </body>
 </html>
