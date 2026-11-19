@@ -348,7 +348,9 @@
     if (p && typeof p === 'object') { typ = p.typ; czas = p.czas; napis = p.napis || null; }
     else typ = p || (czyCiecie(a.scena, b.scena) ? 'czern' : 'dojazd');
     if (!(czas >= 0)) czas = KINO.PRZEJSCIE[typ];
-    return { typ: typ, czas: czas, napis: napis };
+    var o = { typ: typ, czas: czas, napis: napis };
+    if (p && p.cisza) o.cisza = true;          // pełna cisza dźwięku na czas przejścia (celowe czernie)
+    return o;
   }
   // Wersy kroku w filmie: [{tekst, ramka, zrodlo}] — `ramka` = wers zastrzeżenia (widok styluje go jako ramkę),
   // `zrodlo` = indeks zdania narracji (ramka: null). 'pelna' = jak kroki (narracja + ramka z punktami); 'skrot' = zdania
@@ -360,7 +362,7 @@
     if (k.ramka) {
       var r = podzielNaZdania([k.ramka.tekst || '']);
       if (!wybor) r = r.concat(k.ramka.punkty || []);
-      r.forEach(function (z) { out.push({ tekst: z, ramka: true, zrodlo: null }); });
+      r.forEach(function (z, j) { out.push({ tekst: z, ramka: true, zrodlo: j ? null : 'ramka' }); });   // kotwica 'ramka' = jej pierwsze zdanie
     }
     return out;
   }
@@ -369,7 +371,7 @@
     var h = harmonogramNapisow(wersy.map(function (w) { return w.tekst; }));
     return wersy.map(function (w, j) { return { tekst: w.tekst, ramka: w.ramka, zrodlo: w.zrodlo, start: t0 + h[j].start, koniec: t0 + h[j].koniec }; });
   }
-  // Zdarzenia sceny przypięte do wersów: `k.zdarzenia = {nazwa: {wers, po?}}` (wers = indeks zdania narracji, po = s
+  // Zdarzenia sceny przypięte do wersów: `k.zdarzenia = {nazwa: {wers, po?}}` (wers = indeks zdania narracji albo 'ramka', po = s
   // od początku wersu) → {nazwa: chwila} w czasie rozpisanych `wersy`; null, gdy krok nie ma zdarzeń. Wers pominięty
   // w skrócie nie daje zdarzenia — sprawdzZjawisko pilnuje, żeby `film.wersy` zawierało każdy wers z kotwicą.
   function chwileZdarzen(k, wersy) {
@@ -419,7 +421,7 @@
     return kandydaci[kandydaci.length - 1];
   }
   function osCzasuFilmu(def, opcje) {
-    var dl = (opcje && opcje.dlugosc) || 'pelna', K = def.kroki, out = [], t = 0;
+    var dl = (opcje && opcje.dlugosc) || 'pelna', K = def.kroki, out = [], t = 0, tony = tonyKrokow(def);
     var P = K.map(function (k, i) {
       var p = przejscieKroku(i ? K[i - 1] : null, k), jawny = k.przejscie && typeof k.przejscie === 'object' && k.przejscie.czas != null;
       if (CIAGLE[p.typ] && !jawny) p.czas = czasPrzejsciaCiaglego(K[i - 1], k, p.typ, p.czas);
@@ -435,7 +437,7 @@
       var ruchCzas = Math.min(Math.max(koniec - lead - ruchStart, uj.czas), KINO.ROZCIAGNIECIE_MAX * uj.czas);
       var zd = chwileZdarzen(K[i], wersy);   // czas filmu (zestawy, akcenty) i czas kroku (krok/animuj sceny)
       out.push({ krok: i + 1, start: start, koniec: koniec, przejscie: P[i], wersy: wersy, zdarzenia: zd, zdarzeniaKroku: przesunZdarzenia(zd, -start),
-        ruch: { start: ruchStart, czas: ruchCzas } });
+        ruch: { start: ruchStart, czas: ruchCzas }, ton: tony[i] });
       t = koniec;
     }
     return { dlugosc: dl, kroki: out, calosc: t };
@@ -571,6 +573,81 @@
     return p;
   }
 
+  /* ---------- dźwięk filmu (spec 2026-11-19-zjawiska-film-design §5): zegar i mikser — czyste, deterministyczne ---------- */
+  var DZWIEK = {
+    MASTER: 0.45,             // głośność całości (≤ 0,5, za kompresorem)
+    WYPRZEDZENIE: 1.2,        // nowy akord wchodzi tyle s przed zmianą zawartości (dźwięk prowadzi obraz)
+    WIATR_PRZED: 1.5,         // wiatr sceny wraca/gaśnie tyle s przed obrazem
+    CISZA: 3,                 // pełna cisza po kotwicy `zdarzenia.cisza` [s]
+    PLAN: 0.15,               // planista akcentów: wyprzedzenie względem zegara filmu [s]
+    WSTECZ: 0.25,             // planista: najdalej tyle s za zegarem zaczyna się okno (spóźnione akcenty grają od razu)
+    FILTR: 900,               // otwarcie filtra padu [Hz]; czerń przejścia zamyka go do 15%
+    POLTONY_NA_DEKADE: 4,     // „winda”: półtony na dziesięciokrotną wysokość orbity (160 km = 0)
+    TONACJE: [0, -2, 3, -3, -4, 2, -1, 4, -3, 1]   // rozdziały bez wysokości w tytule; ostatni wraca do 0 (klamra)
+  };
+  // Wysokość orbity z tytułu rozdziału (część przed „ · ”, np. „600 do 39 700 km”) → [min, max] km albo null.
+  function wysokoscRozdzialu(czesc) {
+    var glowa = String(czesc || '').split(' · ')[0];
+    if (!/km/.test(glowa)) return null;
+    var liczby = (glowa.match(/\d{1,3}(?: \d{3})+|\d+/g) || []).map(function (x) { return Number(x.replace(/ /g, '')); });
+    return liczby.length ? [Math.min.apply(null, liczby), Math.max.apply(null, liczby)] : null;
+  }
+  // „Winda”: wysokość [km] → półtony nad parterem (log, więc umie zejść: GEO 9,4 → Mołnija 5,9 → słoneczna 2,5).
+  function tonWindy(km) { return DZWIEK.POLTONY_NA_DEKADE * Math.log(Math.max(km, 1) / 160) / Math.LN10; }
+  // Ton (półtony od D2) każdego kroku: rozdział z wysokością → winda (środek geometryczny zakresu), inny → tonacja
+  // rozdziału z listy, ostatni rozdział → 0 (klamra z pierwszym).
+  function tonyKrokow(def) {
+    var rozdz = [], tony = [];
+    def.kroki.forEach(function (k) { if (rozdz.indexOf(k.czesc) < 0) rozdz.push(k.czesc); });
+    def.kroki.forEach(function (k) {
+      var r = rozdz.indexOf(k.czesc), h = wysokoscRozdzialu(k.czesc);
+      tony.push(h ? tonWindy(Math.sqrt(h[0] * h[1])) : (r === rozdz.length - 1 ? 0 : DZWIEK.TONACJE[r % DZWIEK.TONACJE.length]));
+    });
+    return tony;
+  }
+  // Cele dźwięku w chwili t filmu: {glosnosc, filtr, ton, wiatr, przelot, pasmo}. Bez ściszania przy wersach (bez lektora
+  // dałoby pompowanie); ton i wiatr z chwili przesuniętej o wyprzedzenie, filtr i smuga z bieżącego przejścia.
+  function mikserFilmu(def, os, t) {
+    var lok = lokalizujFilm(os, t), K = os.kroki;
+    var ton = K[lokalizujFilm(os, t + DZWIEK.WYPRZEDZENIE).i].ton;
+    var kw = def.kroki[lokalizujFilm(os, t + DZWIEK.WIATR_PRZED).i];
+    var p = lok.przejscie, st = p ? stanPrzejscia(p.typ, p.f) : null, zd = K[lok.i].zdarzenia;
+    var cisza = (p && K[p.do].przejscie.cisza) || (zd && zd.cisza != null && t >= zd.cisza && t < zd.cisza + DZWIEK.CISZA);
+    return {
+      glosnosc: cisza ? 0 : DZWIEK.MASTER,
+      filtr: DZWIEK.FILTR * (1 - 0.85 * (st ? st.czern : 0)),
+      ton: ton,
+      wiatr: kw.dzwiek && kw.dzwiek.wiatr ? kw.dzwiek.wiatr : 0,
+      przelot: st && p.typ === 'przelot' ? st.warp : 0,
+      pasmo: p && p.typ === 'przelot' ? 300 + 2700 * p.f : 300
+    };
+  }
+  // Zegar filmu: t ∈ [0, calosc], pauza, przewinięcie. Bez mistrza t rośnie o dt klatki (obcięte do 1 s — długa przerwa
+  // nie przeskakuje filmu); z mistrzem (`teraz()` → s, np. currentTime dźwięku) t = kotwica + (teraz − kotwica mistrza),
+  // więc obraz idzie za dźwiękiem; pauza, wznowienie i przewinięcie tylko przestawiają kotwice.
+  function zegarFilmu(calosc) {
+    var z = { t: 0, pauza: false, calosc: calosc, mistrz: null }, m0 = 0, t0 = 0;
+    function kotwicz() { if (z.mistrz) { m0 = z.mistrz.teraz(); t0 = z.t; } }
+    z.krok = function (dt) {
+      if (z.pauza) return z.t;
+      var nowy = z.mistrz ? t0 + (z.mistrz.teraz() - m0) : z.t + Math.min(Math.max(dt || 0, 0), 1);
+      if (nowy - z.t > 1) { nowy = z.t + 1; z.t = nowy; kotwicz(); }     // mistrz skoczył (uśpiona karta): najwyżej 1 s
+      z.t = Math.min(calosc, Math.max(z.t, nowy));
+      return z.t;
+    };
+    z.przewin = function (t) { z.t = Math.max(0, Math.min(calosc, t)); kotwicz(); };
+    z.pauzuj = function (p) { z.pauza = !!p; kotwicz(); };
+    z.ustawMistrza = function (m) { z.mistrz = m || null; kotwicz(); };
+    return z;
+  }
+
+  // Planista akcentów: okno [od, do) chwil filmu do zaplanowania w tej klatce — od końca poprzedniego okna (wolna klatka
+  // dłuższa niż PLAN nie gubi akcentów; spóźniony gra od razu), najwyżej WSTECZ s za zegarem (po przewinięciu
+  // `planDo` = t), do t + PLAN; null, gdy nie ma czego planować.
+  function oknoAkcentow(planDo, t) {
+    var od = Math.max(planDo, t - DZWIEK.WSTECZ), d = t + DZWIEK.PLAN;
+    return d > od ? { od: od, do: d } : null;
+  }
   // Znaczniki rozdziałów na pasku filmu: początek każdego ciągu kroków o tym samym `czesc`.
   function rozdzialyFilmu(def, os) {
     var out = [];
@@ -636,7 +713,8 @@
         var nz = Array.isArray(k.narracja) ? podzielNaZdania(k.narracja).length : 0, wybor = k.film && Array.isArray(k.film.wersy) ? k.film.wersy : null;
         Object.keys(k.zdarzenia).forEach(function (n) {
           var z = k.zdarzenia[n] || {};
-          if (!(z.wers >= 0 && z.wers < nz && z.wers % 1 === 0)) u.push(p + 'zdarzenie „' + n + '”: wers ' + z.wers + ' poza narracją (0–' + (nz - 1) + ')');
+          if (z.wers === 'ramka') { if (!k.ramka) u.push(p + 'zdarzenie „' + n + '”: kotwica w ramce, a krok nie ma ramki'); }
+          else if (!(z.wers >= 0 && z.wers < nz && z.wers % 1 === 0)) u.push(p + 'zdarzenie „' + n + '”: wers ' + z.wers + ' poza narracją (0–' + (nz - 1) + ')');
           else if (wybor && wybor.indexOf(z.wers) < 0) u.push(p + 'zdarzenie „' + n + '”: wers ' + z.wers + ' wypada ze skrótu (film.wersy)');
           if (z.po != null && !(z.po >= 0)) u.push(p + 'zdarzenie „' + n + '”: zły odstęp po (s ≥ 0)');
         });
@@ -649,7 +727,8 @@
     parsujHash: parsujHash, parsujZapytanie: parsujZapytanie, budujHash: budujHash,
     ograniczKrok: ograniczKrok, przejscie: przejscie, akcjaKlawisza: akcjaKlawisza,
     uzupelnijKroki: uzupelnijKroki, TYPY_PRZEJSC: TYPY_PRZEJSC, przejscieKroku: przejscieKroku, wersyFilmu: wersyFilmu,
-    rozpiszWersy: rozpiszWersy, chwileZdarzen: chwileZdarzen, zdarzeniaKroku: zdarzeniaKroku, przesunZdarzenia: przesunZdarzenia,
+    rozpiszWersy: rozpiszWersy, chwileZdarzen: chwileZdarzen, DZWIEK: DZWIEK, wysokoscRozdzialu: wysokoscRozdzialu, tonWindy: tonWindy,
+    tonyKrokow: tonyKrokow, mikserFilmu: mikserFilmu, zegarFilmu: zegarFilmu, oknoAkcentow: oknoAkcentow, zdarzeniaKroku: zdarzeniaKroku, przesunZdarzenia: przesunZdarzenia,
     ciaglyKat: ciaglyKat, ciaglyKierunek: ciaglyKierunek, resetCiaglosci: resetCiaglosci, obrazJednej: obrazJednej, obrazPrzejscia: obrazPrzejscia, zPrzejsciami: zPrzejsciami, rozdzialyFilmu: rozdzialyFilmu, celPrzewiniecia: celPrzewiniecia, OBROT_MAX: OBROT_MAX, OBROT_MOST: OBROT_MOST, osCzasuFilmu: osCzasuFilmu, lokalizujFilm: lokalizujFilm, stanPrzejscia: stanPrzejscia, mieszajWokol: mieszajWokol, pozaFilmu: pozaFilmu,
     wygladz: wygladz, mieszaj3: mieszaj3, tempoRuchu: tempoRuchu, petla: petla, odcinek: odcinek,
     RYC4: RYC4, strefaPierscienia: strefaPierscienia, pozycjaNaOsi: pozycjaNaOsi, przemiatanie: przemiatanie,

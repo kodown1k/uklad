@@ -9,7 +9,8 @@
        oddech kamery; OrbitControls = tryb „rozejrzyj się” (przeciągnięcie albo `O`; Dalej/Wstecz wznawia reżyserię),
      - obraz: własny pass bloom + winieta + ziarno na render targetach (bez bibliotek), z bezpiecznym powrotem
        do zwykłego renderu, gdy pass się nie zbuduje,
-     - seans (auto-odtwarzanie, spacja = pauza), pełny ekran (`F`), opcjonalny dron Web Audio (domyślnie wyłączony).
+     - seans = film (spacja = pauza), pełny ekran (`F`), dźwięk (domyślnie wyłączony): w filmie silnik `dzwiek.js`
+       sterowany mikserem z logika.js i akcentami scen (zegar filmu idzie za currentTime), w krokach dron.
 
    WŁASNY renderer, scena i kamera na własnym <canvas> — nic nie trafia do sceny solar.js.
    Gdy `Zjawiska.aktywny === true`, pętla `animate` w solar.js nie renderuje (strażnik na jej początku).
@@ -17,13 +18,15 @@
    Kontrakt pliku zjawiska: `Zjawiska.rejestruj({ id, tytul, zrodla, pochodzenie, zestawy, kroki })`
      zestawy[nazwa](ctx) → { grupa, ustaw?(opcje), animuj?(t, dt, zd) }   — obiekty wspólne dla wielu kroków, budowane raz
      krok = { czesc, tytul, narracja[], ramka?, podpis, przypisy?, scena, ujecie:{ruch,tor,cel,fov,czas,komp?,przechyl?,dollyZoom?,tlo?},
-              zestawy?[], ustaw?(ctx, z), zbuduj?(ctx) → { grupa, etykiety?, krok?(t, z, zd), akcenty?(tOd, tDo, zd), ... },
-              etykiety?[], przyrzad?, animuj?(ctx, t, wlasne, z, dt, zd), zdarzenia?{nazwa: {wers, po?}}, tPogl?, strefa?[x,y,z,r] }
+              zestawy?[], ustaw?(ctx, z), zbuduj?(ctx) → { grupa, etykiety?, krok?(t, z, zd), akcenty?(tOd, tDo, zd, t0), ton?(t, t0), ... },
+              etykiety?[], przyrzad?, animuj?(ctx, t, wlasne, z, dt, zd), zdarzenia?{nazwa: {wers, po?}}, dzwiek?{wiatr},
+              tPogl?, strefa?[x,y,z,r] }
               (strefa = bryła, w którą kamera ujęcia nie wchodzi; pilnuje test „kontrakt kina”)
    Zdarzenia sceny przypięte do wersów: `zd` = {nazwa: chwila} w czasie odbiorcy (krok: t kroku; zestaw: jego t), liczone
    z napisów — w filmie z osi czasu (`os.kroki[i].zdarzenia` = czas filmu, `zdarzeniaKroku` = czas kroku), w krokach od
    wejścia w krok; null, gdy krok ich nie ma. `akcenty(tOd, tDo, zd)` → [{t, typ, …}] zdarzenia dźwiękowe sceny w oknie
-   [tOd, tDo) — okno, `zd` i wynik w czasie zestawów (film: czas filmu, `zd` = `os.kroki[i].zdarzenia`).
+   [tOd, tDo) — okno, `zd` i wynik w czasie zestawów (film: czas filmu, `zd` = `os.kroki[i].zdarzenia`); `t0` = chwila
+   filmu, w której krok ma czas 0. `ton?(t, t0)` w wyniku `zbuduj` → półtony dodane do tonu kroku (glissando sceny).
    Bez `animuj` widok co klatkę woła `krok(t, z)` z wyniku `zbuduj` (jeśli jest); `animuj` go zastępuje.
    `ctx.doKamery(obiekt)` → obiekt co klatkę zwrócony do kamery (po animacji kroku), bez lookAt w kodzie zjawiska.
    Film w przejściu rysuje DWA kroki w jednej klatce i przełącza między nimi zawartość, więc: `ustaw` (zestawu i kroku)
@@ -73,10 +76,12 @@
   var etAkt = [];                // aktywne etykiety 2D
   var slupki = null;             // { min, max, paski[] } bieżącego przyrządu
   var napisy = { h: [], el: [], idx: -1, caly: false };
-  var seans = { pauza: false };
   var obrazKlatki = null;        // obraz ostatniej klatki (diagnostyka Z.stan)
-  var film = null;               // Seans = film zjawiska: { os, t } — zegar filmu, oś czasu z logika.osCzasuFilmu (null = tryb kroków)
-  var dzwiek = null;             // { ctx, osc[], wzm } po pierwszym włączeniu
+  var film = null;               // Seans = film zjawiska: logika.zegarFilmu (t, pauza, mistrz) + os z logika.osCzasuFilmu (null = tryb kroków)
+  var dzwiekWl = false;          // przycisk dźwięku: w filmie gra silnik filmu (zjawiska/dzwiek.js), w krokach dron
+  var dron = null;               // { ctx, osc[], wzm } po pierwszym włączeniu w krokach (gra, gdy dzwiekWl && !film)
+  var silnik = null;             // dźwięk filmu (ZjawiskaDzwiek) — tylko w filmie z włączonym dźwiękiem
+  var planDo = 0, miksT = -1;    // planista: akcenty zaplanowane do tej chwili filmu; czas audio ostatniego miksu
   var smoke = false, smokeT = null, gotowosc = null;
   var mqRuch = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
   var maMysz = false;            // UI chowa się tylko wtedy, gdy ktoś naprawdę ruszał myszą (dotyk/klawiatura: UI zostaje)
@@ -630,7 +635,7 @@
   // `t0` = chwila startu [s]; bez niej film zaczyna od bieżącego kroku (na ostatnim — od początku).
   // `bezPowrotu` = wyjście z widoku (nie wracaj do ujęcia kroku).
   function ustawSeans(wl, t0, bezPowrotu) {
-    wl = !!wl && !!biez; seans.pauza = false;
+    wl = !!wl && !!biez;
     el.seans.setAttribute('aria-pressed', String(wl));
     el.seans.setAttribute('data-ikona', wl ? 'pauza' : 'gra');
     el.postep.hidden = !wl;
@@ -642,13 +647,15 @@
       var t = typeof t0 === 'number' ? t0 : (biez.krok >= biez.def.kroki.length ? 0 : L.celPrzewiniecia(os, os.kroki[biez.krok - 1].start, { idz: biez.krok }));
       if (ciecie) { clearTimeout(ciecie.zegar); ciecie = null; }
       el.czern.classList.remove('on');
-      film = { os: os, t: 0 };
+      film = L.zegarFilmu(os.calosc); film.os = os;
       zbudujZnacznikiRozdzialow();
       if (!rezyseria) ustawRezyserie(true);
       zrodloDojazdu = null;
       przewinFilm(t, true);
+      uzgodnijDzwiek();
     } else if (film) {
       film = null;
+      uzgodnijDzwiek();
       el.czern.style.opacity = '';
       if (post) post.zwolnijDrugi();
       el.postep.replaceChildren(document.createElement('i'));
@@ -658,7 +665,9 @@
   // Ustaw zegar filmu; zawartość kroku przełącza się od razu (klatka dociągnie kamerę i czerń z osi czasu).
   function przewinFilm(t, wymus) {
     if (!film || !biez) return;
-    film.t = Math.max(0, Math.min(film.os.calosc, t));
+    film.przewin(t);
+    if (silnik) silnik.przewin();               // zaplanowane akcenty dotyczą starego miejsca filmu
+    planDo = film.t;
     L.resetCiaglosci();                         // skok w czasie: glob/pierścień/słońce od razu w stanie celu, bez dokręcania
     var n = L.lokalizujFilm(film.os, film.t).krok;
     if (wymus || biez.pokazany !== n) krokFilmu(n);
@@ -679,8 +688,9 @@
     });
   }
   function pauzaSeansu() {
-    seans.pauza = !seans.pauza;
-    el.seans.setAttribute('data-ikona', seans.pauza ? 'gra' : 'pauza');
+    film.pauzuj(!film.pauza);
+    if (silnik) silnik.wstrzymaj(film.pauza);   // pauza = ctx.suspend(); zegar przestawia kotwice mistrza
+    el.seans.setAttribute('data-ikona', film.pauza ? 'gra' : 'pauza');
   }
   function pelnyEkran() {
     try {
@@ -688,28 +698,58 @@
       else if (el.korzen.requestFullscreen) el.korzen.requestFullscreen();
     } catch (_) { /* brak wsparcia — bez pełnego ekranu */ }
   }
-  // Dron: dwa lekko rozstrojone oscylatory przez filtr dolnoprzepustowy; wysokość z numeru kroku. Bez plików audio.
+  // Przycisk dźwięku: w filmie gra silnik filmu (dzwiek.js, zegar filmu idzie za jego currentTime), w krokach dron.
   function ustawDzwiek(wl) {
-    var AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) { el.dzwiek.disabled = true; return; }
-    if (wl && !dzwiek) {
-      var ctx = new AC(), wzm = ctx.createGain(), filtr = ctx.createBiquadFilter(), osc = [];
+    if (!(window.AudioContext || window.webkitAudioContext)) { el.dzwiek.disabled = true; return; }
+    dzwiekWl = !!wl;
+    el.dzwiek.setAttribute('aria-pressed', String(dzwiekWl));
+    uzgodnijDzwiek();
+  }
+  function uzgodnijDzwiek() {
+    var wFilmie = dzwiekWl && !!film && !smoke;
+    if (wFilmie && !silnik && window.ZjawiskaDzwiek) {
+      silnik = window.ZjawiskaDzwiek.utworz();
+      planDo = film.t; miksT = -1;
+      if (silnik && film.pauza) silnik.wstrzymaj(true);
+    }
+    if (!wFilmie && silnik) { silnik.zamknij(); silnik = null; if (film) film.ustawMistrza(null); }
+    ustawDronWl(dzwiekWl && !film);
+  }
+  // Dron (tryb kroków): dwa lekko rozstrojone oscylatory przez filtr dolnoprzepustowy; wysokość z numeru kroku.
+  function ustawDronWl(wl) {
+    if (wl && !dron) {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)(), wzm = ctx.createGain(), filtr = ctx.createBiquadFilter(), osc = [];
       filtr.type = 'lowpass'; filtr.frequency.value = 320; wzm.gain.value = 0;
       ['sine', 'triangle'].forEach(function (typ, i) { var o = ctx.createOscillator(); o.type = typ; o.detune.value = i ? 7 : -5; o.connect(filtr); o.start(); osc.push(o); });
       filtr.connect(wzm); wzm.connect(ctx.destination);
-      dzwiek = { ctx: ctx, osc: osc, wzm: wzm, on: false };
+      dron = { ctx: ctx, osc: osc, wzm: wzm };
     }
-    if (!dzwiek) return;
-    dzwiek.on = !!wl;
-    if (wl && dzwiek.ctx.state === 'suspended') dzwiek.ctx.resume();
-    dzwiek.wzm.gain.setTargetAtTime(wl ? 0.07 : 0, dzwiek.ctx.currentTime, 0.4);
-    el.dzwiek.setAttribute('aria-pressed', String(!!wl));
+    if (!dron) return;
+    if (wl && dron.ctx.state === 'suspended') dron.ctx.resume();
+    dron.wzm.gain.setTargetAtTime(wl ? 0.07 : 0, dron.ctx.currentTime, 0.4);
     ustawDron();
   }
   function ustawDron() {
-    if (!dzwiek || !dzwiek.on || !biez) return;
+    if (!dron || !dzwiekWl || film || !biez) return;   // dron gra tylko w krokach z włączonym dźwiękiem
     var f = L.czestotliwoscDronu(biez.krok, biez.def.kroki.length);
-    dzwiek.osc.forEach(function (o, i) { o.frequency.setTargetAtTime(f * (i ? 1.5 : 1), dzwiek.ctx.currentTime, 1.2); });
+    dron.osc.forEach(function (o, i) { o.frequency.setTargetAtTime(f * (i ? 1.5 : 1), dron.ctx.currentTime, 1.2); });
+  }
+  // Planista dźwięku filmu (co klatkę): zegar filmu idzie za currentTime, gdy kontekst biegnie (uśpiony przez
+  // przeglądarkę — zegar klatek); cele miksera ~10 razy na sekundę; akcenty kroku zawartości z wyprzedzeniem PLAN.
+  function planujDzwiek(p, lok) {
+    var biegnie = silnik.ctx.state === 'running';
+    if (!film.pauza && biegnie !== !!film.mistrz) film.ustawMistrza(biegnie ? silnik : null);
+    var t = film.t, teraz = silnik.teraz(), kr = film.os.kroki[lok.i], w = p.kroki[lok.i];
+    if (teraz - miksT >= 0.1) {
+      var m = L.mikserFilmu(p.def, film.os, t);
+      if (w && w.ton) m.ton += w.ton(t, kr.start);                 // glissando sceny (np. Mołnija z promienia satelity)
+      silnik.ustaw(m); miksT = teraz;
+    }
+    var o = (film.pauza || !biegnie) ? null : L.oknoAkcentow(planDo, t);
+    if (!o) return;
+    var ak = w && w.akcenty ? w.akcenty(o.od, o.do, kr.zdarzenia, kr.start) : [];
+    for (var j = 0; j < ak.length; j++) silnik.akcent(ak[j], teraz + (ak[j].t - t));
+    planDo = o.do;
   }
 
   /* ---------- UI: znika po bezruchu ---------- */
@@ -750,6 +790,7 @@
     Z.u = opis.u;
     if (film) el.czern.style.opacity = String(opis.obraz.czern);
     rysuj(p, opis, wolno);
+    if (film && silnik) planujDzwiek(p, opis.lok);
     obrazKlatki = opis.obraz;
     rzutujEtykiety(tKrok, opis.obraz.etykiety);
 
@@ -791,10 +832,10 @@
   // Film: jeden zegar (czas rzeczywisty; obcięcie 1 s tylko na długą przerwę, schowana karta pauzuje) — zawartość,
   // kamera, obraz przejścia i napisy z osi czasu. Smoke: zegar stoi w chwili `t`.
   function opisFilmu(p, dtR, dtSur, wolno) {
-    if (!smoke && !seans.pauza) film.t = Math.min(film.os.calosc, film.t + Math.min(dtSur, 1));
+    if (!smoke) film.krok(dtSur);
     var os = film.os, lok = L.lokalizujFilm(os, film.t);
     if (p.pokazany !== lok.krok) krokFilmu(lok.krok);
-    var dt = (smoke || seans.pauza) ? 0 : dtR;
+    var dt = (smoke || film.pauza) ? 0 : dtR;
     tReal += dt; tNapisy = film.t;
     var czasy = function (i) {
       var kr = os.kroki[i];
@@ -805,7 +846,7 @@
     var obraz = lok.przejscie
       ? L.obrazPrzejscia(lok.przejscie.typ, lok.przejscie.f, lok.przejscie.do - 1, lok.przejscie.do, zPassem)
       : L.obrazJednej(lok.i);
-    return { tKrok: c.tKrok, tGlob: film.t, dt: dt, u: c.u, poza: rezyseria ? L.pozaFilmu(p.def, os, film.t) : null, obraz: obraz, czasy: czasy };
+    return { tKrok: c.tKrok, tGlob: film.t, dt: dt, u: c.u, poza: rezyseria ? L.pozaFilmu(p.def, os, film.t) : null, obraz: obraz, czasy: czasy, lok: lok };
   }
   // Zawartość sceny `sc` ({i, gwiazdy}) w chwili klatki: tło ujęcia, animacje zestawów i kroku, obiekty do kamery.
   // `dtZestawow`: zestawy są wspólne dla obu scen przejścia, więc przyrost czasu dostają raz na klatkę (scena ostatnia).
@@ -859,7 +900,7 @@
       if (raf) { cancelAnimationFrame(raf); raf = 0; }
       if (ciecie) { clearTimeout(ciecie.zegar); ciecie = null; el.czern.classList.remove('on'); }
       if (film) ustawSeans(false, null, true);
-      if (dzwiek && dzwiek.on) ustawDzwiek(false);
+      if (dzwiekWl) ustawDzwiek(false);
       if (el.start) el.start.hidden = true;
       ustawPanel(false);
       if (t === 'uklad' && document.fullscreenElement === el.korzen) { try { document.exitFullscreen(); } catch (_) { /* nic */ } }
@@ -937,7 +978,7 @@
   Z.stan = function () {
     return { tryb: tryb, id: biez && tryb === 'prezentacja' ? biez.def.id : null, krok: biez ? biez.krok : 0, pokazany: biez ? biez.pokazany : 0,
       liczba: biez ? biez.def.kroki.length : 0, tween: !!zrodloDojazdu || !!ciecie, ciecie: !!ciecie, rezyseria: rezyseria,
-      seans: !!film, pauza: seans.pauza, obraz: obrazKlatki ? { sceny: obrazKlatki.sceny.length, miks: obrazKlatki.miks, warp: obrazKlatki.warp, czern: obrazKlatki.czern, etykiety: obrazKlatki.etykiety } : null, film: film ? { t: film.t, calosc: film.os.calosc, krok: biez && biez.pokazany } : null, u: Z.u || 0, napis: napisy.idx, wersow: napisy.h.length, cisza: el.korzen.classList.contains('zj-cisza'),
+      seans: !!film, pauza: !!(film && film.pauza), dzwiek: silnik ? { stan: silnik.ctx.state, mistrz: !!(film && film.mistrz), czas: silnik.teraz(), akcenty: silnik.zagrane } : null, obraz: obrazKlatki ? { sceny: obrazKlatki.sceny.length, miks: obrazKlatki.miks, warp: obrazKlatki.warp, czern: obrazKlatki.czern, etykiety: obrazKlatki.etykiety } : null, film: film ? { t: film.t, calosc: film.os.calosc, krok: biez && biez.pokazany } : null, u: Z.u || 0, napis: napisy.idx, wersow: napisy.h.length, cisza: el.korzen.classList.contains('zj-cisza'),
       kadr: { tryb: kadr.tryb, x: kadr.x, w: kadr.w, h: kadr.h, y: kadr.y }, post: !!post && jakosc === 'pelna', jakosc: jakosc, fps: Math.round(fps.wart), klatki: Z.klatki || 0,
       kamera: gl ? { poz: gl.kamera.position.toArray(), fov: stanKamery.fov, komp: stanKamery.komp } : null };
   };
@@ -945,6 +986,7 @@
   Z.katZestawu = function (nazwa) { var z = biez && biez.zestawy[nazwa]; return z && typeof z.kat === 'number' ? z.kat : null; };
   // Haki eye-checków: przewinięcie filmu (dokładne, bez pikseli paska), zestaw i zbudowana scena kroku (zdarzenia od wersu).
   Z.przewin = function (t) { przewinFilm(t); };
+  Z.poziomDzwieku = function () { return silnik ? silnik.poziom() : null; };
   Z.zestaw = function (nazwa) { return (biez && biez.zestawy[nazwa]) || null; };
   Z.scenaKroku = function (n) { return (biez && biez.kroki[n - 1]) || null; };
   // Liczniki zasobów — test „tam i z powrotem” ma dać te same liczby po drugim przejściu co po pierwszym.
@@ -991,7 +1033,7 @@
     el.start.hidden = false;
     if (!smoke) el.startDzwiek.focus({ preventScroll: true });
   }
-  el.dzwiek.addEventListener('click', function () { ustawDzwiek(!(dzwiek && dzwiek.on)); });
+  el.dzwiek.addEventListener('click', function () { ustawDzwiek(!dzwiekWl); });
   el.pelny.addEventListener('click', pelnyEkran);
   el.tekstBtn.addEventListener('click', function () { ustawPanel(el.panel.hidden); });
   ['pointermove', 'pointerdown', 'touchstart', 'wheel'].forEach(function (n) {
@@ -1021,7 +1063,7 @@
     else idz(a);
   }, true);
   window.addEventListener('keyup', function (e) { if (Z.aktywny) e.stopPropagation(); }, true);
-  document.addEventListener('visibilitychange', function () { if (document.hidden && film && !seans.pauza) pauzaSeansu(); });
+  document.addEventListener('visibilitychange', function () { if (document.hidden && film && !film.pauza) pauzaSeansu(); });
 
   function zAdresu() {
     var h = L.parsujHash(location.hash);

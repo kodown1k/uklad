@@ -111,6 +111,15 @@
     for (var e = Math.ceil(od * f - 1e-9); e / f < tDo; e++) out.push({ t: e / f, typ: 'bip', fala: (((-e) % K + K) % K) % 2 });
     return out;
   }
+  // Mołnija (dźwięk: „winda” w glissandzie): satelita na elipsie od perygeum RP do apogeum RA [j. sceny], czyli przez
+  // zakres km z tytułu rozdziału R8 (jedno źródło z windą); ton = winda z wysokości minus ton rozdziału (środek
+  // geometryczny zakresu), więc gra wokół tonu rozdziału.
+  var MOLNIJA = { RP: 2.35, RA: 9.2, OKRES: 9 };
+  function tonMolnii(f) {
+    var A = (MOLNIJA.RP + MOLNIJA.RA) / 2, E = (MOLNIJA.RA - MOLNIJA.RP) / (MOLNIJA.RA + MOLNIJA.RP), q = naElipsie(A, E, f);
+    var u = (Math.sqrt(q[0] * q[0] + q[1] * q[1]) - MOLNIJA.RP) / (MOLNIJA.RA - MOLNIJA.RP), km = L.wysokoscRozdzialu(R8);
+    return L.tonWindy(km[0] + u * (km[1] - km[0])) - L.tonWindy(Math.sqrt(km[0] * km[1]));
+  }
   function liczbaOdlamkow(harm, t, naZderzenie) {
     var n = 0;
     for (var i = 0; i < harm.length; i++) if (harm[i].t <= t) n += naZderzenie; else break;
@@ -675,6 +684,7 @@
       zestawy: ['laka'],
       // satelita rusza pod „jedna z gwiazd rusza” i gaśnie pod „I nagle gaśnie”
       zdarzenia: { wschod: { wers: 2, po: 1.2 }, gasnie: { wers: 4, po: 1.0 } },
+      dzwiek: { wiatr: 1 },
       zbuduj: function (c) {
         var l = c.zestaw('laka');
         return { etykiety: [{ tekst: 'satelita', cel: l.satelita, kotwica: 'prawo', klasa: 'zar', dx: 6 }, { tekst: 'samolot mruga', cel: l.samolot, kotwica: 'gora', klasa: 'm' }] };
@@ -1449,7 +1459,7 @@
       ujecie: { ruch: 'orbita: kamera obchodzi jajo, czas przyspieszony', tor: [[-6, 8.5, 12.5], [0, 10.4, 13.6], [6, 9.2, 12.4]], cel: [0, 2.6, -1.2], fov: 44, czas: 20, komp: [0, 0] }, tPogl: 4,
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0, slonce: [0.6, 0.5, 0.8] }); },
       zbuduj: function (c) {
-        var T = c.THREE, g = new T.Group(), RP = 2.35, RA = 9.2, A = (RP + RA) / 2, E = (RA - RP) / (RA + RP), INC = 63.5 * Math.PI / 180, B = A * Math.sqrt(1 - E * E);
+        var T = c.THREE, g = new T.Group(), RP = MOLNIJA.RP, RA = MOLNIJA.RA, A = (RP + RA) / 2, E = (RA - RP) / (RA + RP), INC = 63.5 * Math.PI / 180, B = A * Math.sqrt(1 - E * E);
         var N = new T.Vector3(0, Math.sin(INC), -Math.cos(INC)), P = N.clone().negate(), Q = new T.Vector3(1, 0, 0);
         function punktE(Ea) { return P.clone().multiplyScalar(A * (Math.cos(Ea) - E)).addScaledVector(Q, B * Math.sin(Ea)); }
         function punktF(f, out) { var q = naElipsie(A, E, f); return out.copy(P).multiplyScalar(q[0]).addScaledVector(Q, q[1]); }
@@ -1474,8 +1484,9 @@
         }
         var apo = new T.Object3D(); apo.position.copy(punktE(Math.PI)); g.add(apo);
         var peri = new T.Object3D(); peri.position.copy(punktE(0)); g.add(peri);
-        var OKRES = 9, tmp = new T.Vector3();
+        var OKRES = MOLNIJA.OKRES, tmp = new T.Vector3();
         return { grupa: g,
+          ton: function (t, t0) { return tonMolnii((t - t0) / OKRES); },     // glissando z promienia satelity 0 (jak w `krok`)
           etykiety: [
             { tekst: 'daleko nad północą: prawie staje', cel: apo, kotwica: 'gora', klasa: 'zloto', dy: -8 },
             { tekst: 'tuż nad Ziemią: gna jak szalony', cel: peri, kotwica: 'dol', klasa: 'zar', dy: 8 },
@@ -1802,7 +1813,8 @@
       podpis: 'Kaskada Kesslera narasta: każde zderzenie sypie odłamkami, które zderzają się dalej. Schemat: liczba odłamków, zderzenia i tempo umowne, nie w skali.',
       scena: 'smieci',
       ujecie: { ruch: 'dolly-out: kaskada rośnie, kamera odjeżdża', tor: [[1.6, 1.3, 4.7], [3.0, 3.0, 8.0], [4.0, 5.0, 11.2]], cel: [[1.2, 0.2, 2.2], [0.5, 0.2, 0.8], [0, 0, 0]], fov: 38, czas: 18, komp: [0, 0] }, tPogl: 14,
-      zdarzenia: { zderzenia: { wers: 1, po: 3.0 } },  // pierwsze zderzenie pod „zaczną się zderzać”, narasta przez „patrz, jak to narasta”
+      // cisza: pełna, po przeczytaniu ramki „Nie wiemy, jak blisko tego progu jesteśmy” (cisza jako znak)
+      zdarzenia: { zderzenia: { wers: 1, po: 3.0 }, cisza: { wers: 'ramka', po: 2.0 } },  // pierwsze zderzenie pod „zaczną się zderzać”, narasta przez „patrz, jak to narasta”
       ustaw: function (c, z) { z.ziemia.ustaw({ r: 2, obrot: 0.03, slonce: [0.6, 0.5, 0.7] }); },
       zbuduj: function (c) { return zbudujKaskade(c); },
     },
@@ -1835,6 +1847,7 @@
       ujecie: { ruch: 'crane: zza ramienia człowieka na łące w niebo', tor: [[0.6, 1.15, 2.7], [0.45, 1.45, 2.05], [0.32, 1.72, 1.55]], cel: [[0, 1.5, -3], [0, 12, -30], [0, 38, -52]], fov: [42, 52], czas: 18, komp: [0.12, 0] }, tPogl: 20,
       zestawy: ['laka'],
       zdarzenia: { wschod: { wers: 1, po: 2.0 }, gasnie: { wers: 5, po: 2.2 } },   // rusza pod „aż jedna z gwiazd ruszy”, gaśnie pod „Zgaśnie za chwilę”
+      dzwiek: { wiatr: 1 },
       ustaw: function (c, z) { z.laka.ustaw({ czlowiek: true }); },
       zbuduj: function (c) {
         var l = c.zestaw('laka');
@@ -2279,7 +2292,7 @@
     kroki: kroki,
     fizyka: { keplerE: keplerE, naElipsie: naElipsie, naOrbicie: naOrbicie, rzutNewtona: rzutNewtona, wCieniu: wCieniu,
       harmonogramKaskady: harmonogramKaskady, liczbaOdlamkow: liczbaOdlamkow, wSkali: wSkali, R_KM: R_KM,
-      akcentyKaskady: akcentyKaskady, przelotLaki: przelotLaki, LAKA: LAKA, fazaKregu: fazaKregu, bipySputnika: bipySputnika, SPUTNIK: SPUTNIK },
+      akcentyKaskady: akcentyKaskady, tonMolnii: tonMolnii, przelotLaki: przelotLaki, LAKA: LAKA, fazaKregu: fazaKregu, bipySputnika: bipySputnika, SPUTNIK: SPUTNIK },
     // pola, których krok nie podaje: większość scen dzieje się przy Ziemi o promieniu 2 w początku układu
     domyslne: { zestawy: ['gwiazdy', 'ziemia'], strefa: STREFA2 }
   });
