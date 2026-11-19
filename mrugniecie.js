@@ -7,6 +7,9 @@
    ============================================================ */
 (function (root) {
   'use strict';
+  // wspólne z filmem 1: krzywa cruise, proporcje kadru (wide) i cel po łuku (aimArc)
+  var Kino = (typeof require !== 'undefined') ? require('./kino.js') : root.Kino;
+  var cruise = Kino.cruise, wide = Kino.wide, aimArc = Kino.aimArc;
 
   // ---------- wektory ----------
   function add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
@@ -180,26 +183,41 @@
   function poseNadawanie(f, A) {
     var o = eveningDir(A), e = easeInOut(f);
     var dir = norm(add(add(A.pl, mul(o.s, 0.34)), [0, 0.12, 0]));
-    return { pos: add(A.E, mul(dir, A.rE * lerp(1.85, 1.42, e))), target: add(A.E, mul(A.pl, A.rE * 0.93)),
-             roll: lerp(2, -3, e) * DEG, fov: lerp(36, 31, e) };
+    // najazd kończy się na 1,62 promienia i 33,5° (było 1,42 i 31°): bliżej tekstura Ziemi i światła miast
+    // rozpadają się w rozmyte plamy (kadr t=25,5 s), a przy 1,7 promienia wybrzeża są jeszcze czytelne (t=20 s)
+    return { pos: add(A.E, mul(dir, A.rE * lerp(1.85, 1.62, e))), target: add(A.E, mul(A.pl, A.rE * 0.93)),
+             roll: lerp(2, -3, e) * DEG, fov: lerp(36, 33.5, e) };
   }
-  // pościg: kamera tuż za pociągiem błysków; pierwsze ~30% to obrót od Polski na kierunek sondy wokół Ziemi
+  // pościg: kamera tuż za pociągiem błysków; pierwsze ~36% to obrót od Polski na kierunek sondy wokół Ziemi
   function posePoscig(f, A, K) {
-    var u = norm(sub(A.V, A.Es)), B = basis(u), dF = frontPoscig(f, K), lead = 0.9;
-    var follow = add(add(A.Es, mul(u, Math.max(dF - lead, A.rE * 2.2))), add(mul(B.side, 0.22), mul(B.up, 0.1)));
-    var p0 = poseNadawanie(1, A), g = smooth(f / 0.3);
+    var u = norm(sub(A.V, A.Es)), B = basis(u), dF = frontPoscig(f, K);
+    // Pod koniec kamera zostaje w tyle za czołem (0,9 → 4,5 j.) i odsuwa się w bok proporcjonalnie: czoło staje
+    // 0,4 j. przed sondą, więc stałe 0,9 j. kończyło ujęcie 1,3 j. od środka modelu (wewnątrz jego obrysu —
+    // sonda 2,2× wyższa niż kadr, na niej etykieta błony i napis).
+    var lead = lerp(0.9, 4.5, smooth((f - 0.78) / 0.22)), lat = lead / 0.9;
+    var follow = add(add(A.Es, mul(u, Math.max(dF - lead, A.rE * 2.2))), add(mul(B.side, 0.22 * lat), mul(B.up, 0.1 * lat)));
+    var p0 = poseNadawanie(1, A), g = cruise(f / 0.36, 0.4);
     var d0 = norm(sub(p0.pos, A.Es)), d1 = norm(sub(follow, A.Es));
     var pos = add(A.Es, mul(slerp(d0, d1, g), logLerp(len(sub(p0.pos, A.Es)), len(sub(follow, A.Es)), g)));
     var ahead = add(A.Es, mul(u, dF + 3));
-    var target = lerpV(p0.target, ahead, smooth(f / 0.22));
+    // Ujęcie zaczyna się w pozie końca „nadawania" (bez przejścia w pose()), więc samo musi z niej płynnie wyjść:
+    // kierunek patrzenia po łuku (dawne liniowe mieszanie celów: 124°/s w 0,8 s po szwie), a przechył i pole
+    // widzenia od wartości „nadawania" (dawniej skok −3° → 0° i 31° → 42° w jednej klatce, przy tej samej pozycji).
+    var target = aimArc(pos, sub(p0.target, p0.pos), sub(ahead, pos), g);
     var speed = Math.sin(Math.PI * clamp01((f - 0.1) / 0.8));
-    return { pos: pos, target: target, roll: 2.5 * Math.sin(2 * Math.PI * f) * DEG, fov: 42 + 22 * speed * speed };
+    return { pos: pos, target: target, roll: lerp(p0.roll, 3.25 * Math.sin(2 * Math.PI * f) * Math.sin(Math.PI * f) * DEG, g),   // okno sin: zero prędkości przechyłu na końcu
+             fov: lerp(p0.fov, 42 + 22 * speed * speed, g) };
   }
   // przylot: z boku sondy — pociąg błysków nadlatuje od Ziemi i mija ją
   function posePrzylot(f, A) {
     var u = norm(sub(A.V, A.Es)), B = basis(u), e = easeInOut(f), k = A.pr;
     var off = add(add(mul(B.side, 6.5 * k), mul(u, lerp(-3.2, 0.8, e) * k)), mul(B.up, 1.6 * k));
-    var target = add(add(A.V, mul(u, lerp(-1.6, 0.3, e) * k)), mul(B.up, 1.1 * k));         // patrzy nad sondę → sonda niżej, pod tytułem
+    // patrzy nad sondę → sonda niżej, pod tytułem; pod koniec mniej (1,1 → 0,65), bo stałe 1,1 spychało sondę
+    // na dolny napis (t=58 s: środek sondy 87 px nad wierszem napisu, wysięgnik na literach)
+    // Oś lotu u leży na ekranie ukośnie (sonda 35° nad ekliptyką), więc „nad sondę" wzdłuż B.up to także przesunięcie
+    // w bok. W wąskim kadrze (telefon pionowo) pion celu idzie po pionie świata, a odsunięcie wzdłuż u maleje.
+    var w = wide(A), upT = norm(lerpV([0, 1, 0], B.up, clamp01((w - Kino.WIDE_MIN) / (1 - Kino.WIDE_MIN))));
+    var target = add(add(A.V, mul(u, lerp(-1.6, 0.3, e) * k * w)), mul(upT, lerp(1.1, 0.65, e) * k));
     return { pos: add(A.V, off), target: target, roll: lerp(-2, 3, e) * DEG, fov: lerp(44, 40, e) };
   }
   var KROPKA_FOV = 7;
@@ -207,9 +225,11 @@
   function poseKropka(f, A) {
     var u = norm(sub(A.V, A.Es)), B = basis(u), e = easeInOut(f), k = A.pr;
     var pos = add(A.V, add(add(mul(u, 3.2 * k), mul(B.side, 1.5 * k)), mul(B.up, 0.5 * k)));
-    var look = lerpV(A.V, A.E, smooth(f / 0.35));
+    // wzrok przechodzi z sondy na Ziemię po łuku (26°): punkt pośredni na odcinku sonda–Ziemia (6400 j.) uciekał
+    // spod kamery w pierwszych klatkach i cały skręt wypadał na początku ujęcia
+    var look = slerp(norm(sub(A.V, pos)), norm(sub(A.E, pos)), smooth(f / 0.35));
     // cel trzymany 30 j. przed kamerą: próg skali „interstellar" liczy się od celu, nie od Słońca (jak w kino.js)
-    var target = add(pos, mul(norm(sub(look, pos)), 30));
+    var target = add(pos, mul(look, 30));
     return { pos: pos, target: target, roll: lerp(3, 0, e) * DEG, fov: logLerp(48, KROPKA_FOV, easeInOut(clamp01((f - 0.18) / 0.72))) };
   }
   var POSES = { zmierzch: poseZmierzch, nadawanie: poseNadawanie, poscig: posePoscig, przylot: posePrzylot, kropka: poseKropka };
@@ -220,7 +240,8 @@
       // przy Ziemi przejście po łuku wokół jej środka (prosta cięciwa potrafi przejść przez glob)
       var a = sub(prev.pos, A.E), b = sub(p.pos, A.E), nearE = len(a) < 60 * A.rE && len(b) < 60 * A.rE;
       var pos = nearE ? add(A.E, mul(slerp(norm(a), norm(b), w), logLerp(len(a), len(b), w))) : lerpV(prev.pos, p.pos, w);
-      p = { pos: pos, target: lerpV(prev.target, p.target, w), roll: lerp(prev.roll, p.roll, w), fov: logLerp(prev.fov, p.fov, w) };
+      // cel po łuku (Kino.aimArc): liniowe mieszanie celów skręca nierówno, gdy cele leżą w różnych odległościach
+      p = { pos: pos, target: aimArc(pos, sub(prev.target, prev.pos), sub(p.target, p.pos), w), roll: lerp(prev.roll, p.roll, w), fov: logLerp(prev.fov, p.fov, w) };
     }
     return p;
   }
@@ -230,8 +251,8 @@
     dayOfYear: dayOfYear, sunDecl: sunDecl, eqTimeMin: eqTimeMin, subSolarLon: subSolarLon, sinElev: sinElev, dusk: dusk, evening: evening, sendTime: sendTime,
     SHOTS: SHOTS, BLEND: BLEND, total: total, shotStart: shotStart, shotDur: shotDur, locate: locate,
     front: front, clockMs: clockMs, clockRate: clockRate, tAtClock: tAtClock, tPass: tPass,
-    pose: pose, POSES: POSES, KROPKA_FOV: KROPKA_FOV, basis: basis, eveningDir: eveningDir,
-    smooth: smooth, easeInOut: easeInOut, logLerp: logLerp,
+    pose: pose, POSES: POSES, wide: wide, KROPKA_FOV: KROPKA_FOV, basis: basis, eveningDir: eveningDir,
+    smooth: smooth, easeInOut: easeInOut, cruise: cruise, logLerp: logLerp,
     _v: { add: add, sub: sub, mul: mul, dot: dot, cross: cross, len: len, norm: norm, slerp: slerp }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

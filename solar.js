@@ -5780,9 +5780,16 @@ function placeBodiesAt(ms){
   if(trueDots && trueDots.visible) trueDots.geometry.setFromPoints(bodies.map(worldPos));
 }
 
+// Etykiety błon dnia świetlnego to napisy w scenie: na starcie filmu i pod kartą końcową schowane wszystkie (etykieta
+// błony Voyagera 2 wchodziła w kadr tytułowy, a etykieta bohatera lądowała na tytule karty); w trakcie filmu etykietą
+// bohatera steruje co klatkę pętla filmu. Wracają po „Zostań w scenie".
+function kinoMembraneLabels(visible){
+  probes.lightDay.forEach(m=>{ m.label.visible = visible; });
+}
+
 function kinoAnchors(){
   const e = worldPos(bodies.find(b=>b.data.id==='earth')), v = kino.mk.position;
-  return { S:[0,0,0], E:[e.x,e.y,e.z], V:[v.x,v.y,v.z], R:kino.ld.R };
+  return { S:[0,0,0], E:[e.x,e.y,e.z], V:[v.x,v.y,v.z], R:kino.ld.R, aspect:camera.aspect };
 }
 
 const _kfmt = (ms, sec) => new Date(ms).toLocaleString('pl-PL', {timeZone:'UTC', day:'numeric', month:'long', year:'numeric',
@@ -5800,7 +5807,8 @@ function kinoCues(){
   };
   const c = [];
   const add = (shot, a, b, slot, html) => c.push({ a: (shot ? st(shot) : 0) + a, b: (shot ? st(shot) : 0) + b, slot, html });
-  add('uklad', 1.2, 9.2, 'title', '<div class="k-eye">Symulacja · efemerydy NASA/JPL Horizons</div><div class="k-h1">Voyager 1</div><div class="k-sub">na granicy jednego dnia świetlnego</div>');
+  add('uklad', 1.2, 7.8, 'title',   // do 7,8 s: napis gaśnie 1,1 s, a od ~8,7 s w jego miejsce wjeżdża Ziemia
+     '<div class="k-eye">Symulacja · efemerydy NASA/JPL Horizons</div><div class="k-h1">Voyager 1</div><div class="k-sub">na granicy jednego dnia świetlnego</div>');
   ['ziemia','droga','sonda','granica','echo'].forEach(id=>{ const s = Kino.SHOTS.find(x=>x.id===id);
     add(id, 0.3, 4.6, 'chapter', `<span>${s.chapter}</span>`); });
   add('ziemia', 3.2, 7.0, 'line', 'Stąd wystartował 5 września 1977 roku.');
@@ -5841,7 +5849,7 @@ function kinoBuildDom(){
   document.getElementById('kSkip').onclick = ()=>kinoEnd(true);
   document.getElementById('kAgain').onclick = ()=>kinoStart();
   document.getElementById('kStay').onclick = ()=>{ document.getElementById('kino').classList.remove('end');
-    document.body.classList.remove('kino-on'); };
+    document.body.classList.remove('kino-on'); kinoMembraneLabels(true); };
   document.getElementById('kSound').onclick = ()=>kinoAudioToggle();
   document.getElementById('kPause').onclick = ()=>kinoPauseToggle();
   // pełny ekran: tylko gdzie przeglądarka go daje (iPhone Safari nie — tam przycisk się nie pokazuje)
@@ -5915,6 +5923,7 @@ function kinoStart(){
   controls.enabled = false; controls.minDistance = 0; controls.maxDistance = Infinity;
   renderer.domElement.style.pointerEvents = 'none';
   PROBES.forEach(p=>{ if(p.atBody && probes.byId[p.id]) probes.byId[p.id].mk.visible = false; });   // JWST siedziałby w Ziemi w zbliżeniu
+  kinoMembraneLabels(false);
   kino.cues = kinoCues();
   document.querySelectorAll('#kino .k-slot').forEach(s=>{ s._cue = null; s.classList.remove('show'); });
   document.getElementById('kino').classList.remove('end', 'loading');
@@ -5931,7 +5940,7 @@ function kinoEnd(skipped){
   kinoPauseSet(false);
   kino.active = false; cancelAnimationFrame(kino.raf);
   placeBodiesAt(reality.clockMs); updateProbes();                       // z powrotem na „teraz" 1:1
-  kino.ld.film.material.color.setScalar(1); kino.ld.label.visible = true;
+  kino.ld.film.material.color.setScalar(1); kinoMembraneLabels(false);   // karta końcowa: bez etykiet błon w kadrze
   PROBES.forEach(p=>{ if(p.atBody && probes.byId[p.id]) probes.byId[p.id].mk.visible = true; });
   camera.up.set(0,1,0); camera.fov = kino.saved.fov; camera.updateProjectionMatrix(); camera.lookAt(controls.target);
   controls.minDistance = 2; controls.maxDistance = 60000; controls.enabled = true;   // jak focusProbe: można krążyć przy sondzie
@@ -6124,7 +6133,8 @@ function vgrCues(){
   const add = (shot, a, b, slot, html) => c.push({ a: st(shot) + a, b: st(shot) + b, slot, html });
   add('zmierzch', 1.0, 8.2, 'title', '<div class="k-eye">Akcja NASA · 17 listopada 2026</div><div class="k-h1">Mrugnięcie</div><div class="k-sub">V-G-R alfabetem Morse\'a — z Ziemi do Voyagera 1</div>');
   Mrug.SHOTS.forEach(s=>{ if(s.id !== 'zmierzch') add(s.id, 0.3, 4.3, 'chapter', `<span>${s.chapter}</span>`); });
-  add('zmierzch', 5.0, 14.6, 'counter', ()=> vgr.city ? `<div class="k-big k-city">${vgr.city}</div><div class="k-cap">mruga teraz V-G-R</div>` : '');
+  add('zmierzch', 8.5, 14.6, 'counter',   // po tytule (do 8,2 s): na telefonie licznik i tytuł stoją w tym samym miejscu
+     ()=> vgr.city ? `<div class="k-big k-city">${vgr.city}</div><div class="k-cap">mruga teraz V-G-R</div>` : '');
   add('zmierzch', 8.6, 14.7, 'line', 'Gdzie zachodzi słońce, ludzie świecą w niebo latarkami. Fala mrugnięć idzie za zmierzchem na zachód.');
   add('nadawanie', 0.8, 11.8, 'counter', vgrMorseHtml);
   add('nadawanie', 2.0, 6.8, 'line', `Warszawa, 17 listopada, ${_vfmtPL(K.sendMs)} — chwilę po zachodzie słońca.`);
@@ -6157,7 +6167,7 @@ function vgrMorseHtml(t){
 function vgrAnchors(){
   const E = worldPos(bodies.find(b=>b.data.earth));
   vgr.hero.getWorldPosition(_vV);
-  return { E:_va(E), Es:vgr.Es, V:_va(kino.mk.position), S:_va(sun.position), rE:vgr.rE, pr:vgr.pr,
+  return { E:_va(E), Es:vgr.Es, V:_va(kino.mk.position), S:_va(sun.position), rE:vgr.rE, pr:vgr.pr, aspect:camera.aspect,
            pl: Kino._v.norm([_vV.x - E.x, _vV.y - E.y, _vV.z - E.z]) };
 }
 
@@ -6223,7 +6233,8 @@ function vgrLoop(now){
   const tp = vgr.tPass;
   const fl = id === 'przylot' ? Math.exp(-Math.pow((t - tp)/(t < tp ? 0.3 : 1.1), 2)) : 0;
   kino.ld.film.material.color.setScalar(1 + 5*fl); flash = Math.max(flash, 0.45*fl);
-  kino.ld.label.visible = id !== 'kropka' && !(t > tp - 0.5 && t < tp + 5.4);
+  // etykieta błony stoi tuż przy sondzie: od dolotu (ostatnia sekunda pościgu) do końca tytułu „Doleciało" leżałaby na modelu
+  kino.ld.label.visible = id !== 'kropka' && !(t > Mrug.shotStart('przylot') - 1 && t < tp + 5.4);
   // V: kropka Ziemi zza sondy mruga V-G-R (światło sprzed doby); ciemne niebo od połowy odjazdu
   vgr.dot.visible = id === 'kropka';
   vgrDark(id === 'kropka' && L.f > 0.22);
@@ -6289,6 +6300,7 @@ function vgrStart(){
   controls.enabled = false; controls.minDistance = 0; controls.maxDistance = Infinity;
   renderer.domElement.style.pointerEvents = 'none';
   PROBES.forEach(p=>{ if(p.atBody && probes.byId[p.id]) probes.byId[p.id].mk.visible = false; });
+  kinoMembraneLabels(false);
   vgrShow(true);
   kino.cues = vgrCues();
   document.querySelectorAll('#kino .k-slot').forEach(s=>{ s._cue = null; s.classList.remove('show'); });
