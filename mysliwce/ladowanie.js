@@ -15,7 +15,7 @@
   // Kolejność leniwego ładowania: tylko pliki, które istnieją. Kolejne zadania dopisują swoje (ogien.js, dzwiek.js,
   // kino.js, hangar.js, pokaz.js) PRZED widok.js — widok.js jest ostatni, bo korzysta z reszty.
   var PLIKI = ['mysliwce/dane.js', 'mysliwce/czesci.js', 'mysliwce/sylwetki.js', 'mysliwce/platowiec.js',
-    'mysliwce/makieta.js', 'mysliwce/studio.js', 'mysliwce/widok.js'];
+    'mysliwce/makieta.js', 'mysliwce/studio.js', 'mysliwce/ogien.js', 'mysliwce/dzwiek.js', 'mysliwce/silniki.js', 'mysliwce/widok.js'];
   var FONTY = 'https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap';
 
   function dekoduj(s) { try { return decodeURIComponent(s); } catch (_) { return s; } }

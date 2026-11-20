@@ -43,6 +43,11 @@
 .my-guzik[aria-pressed="true"] { color: #fff; border-color: var(--my-akcent); background: rgba(255, 196, 107, .1); box-shadow: inset 0 -2px 0 var(--my-akcent); }
 .my-guzik:focus-visible { outline: 2px solid var(--my-podsw); outline-offset: 1px; }
 .my-zamknij { font-size: 15px; padding: 7px 11px; }
+/* suwak ciągu (widoczny przy włączonym dopalaczu) */
+.my-ciag { display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--my-akcent); background: rgba(255, 196, 107, .06);
+  font: 600 12px/1 var(--my-kroj-nag); letter-spacing: .14em; text-transform: uppercase; color: var(--my-atrament-2); }
+.my-suwak { width: 110px; accent-color: var(--my-akcent); cursor: pointer; }
+.my-ciag-wart { min-width: 9.5em; font: 500 11.5px/1 var(--my-kroj-mono); letter-spacing: .02em; text-transform: none; color: var(--my-akcent); }
 
 .my-pasek #zakladki { background: none; border: 1px solid var(--my-linia); border-radius: 0; padding: 0; gap: 0; backdrop-filter: none; flex: none; }
 .my-pasek #zakladki button { font: 600 12px/1 var(--my-kroj-nag); letter-spacing: .14em; text-transform: uppercase; color: var(--my-atrament-3);

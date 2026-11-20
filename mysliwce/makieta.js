@@ -3,6 +3,7 @@
    Makieta.zbuduj(THREE, id, { lod, env, anizotropia, odcien }) →
      { id, grupa, czesci: { [rodzaj]: Object3D (userData.czesc = Czesc z czesci.js, userData.kotwica = Vector3 w układzie
        części) }, dysze: Object3D[] (środek wylotu, lokalna oś −x = kierunek strumienia; userData { szer, wys, typ }),
+       wyloty: [{ punkt, kierunek, szer, wys, typ }] (z platowiec.js, układ części `dysze` — dla Ogien.utworz z rodzicem czesci.dysze),
        obwiednia: { min, max } [m], rozloz(u), komory(u), plan(wl), podswietl(rodzaj|null), aktualizuj(czas), zwolnij() }
    Materiały: matowy RAM (ciemnoszary z odcieniem kraju, efektywna szorstkość ~0,75 z tekstury), owiewka złocista
    półprzezroczysta z odbiciem (env z PMREM sceny proceduralnej — podaje widok), metal dysz i podwozia, ciemny kanał
@@ -475,6 +476,7 @@
     var stanRozl = 0, stanKomor = 0;
     var api = {
       id: id, grupa: grupa, czesci: czesci, dysze: dysze, obwiednia: bryla.obwiednia, niesfotografowany: niesf,
+      wyloty: (bryla.czesci.dysze && bryla.czesci.dysze.wyloty) || [],
       rozloz: function (u) {
         stanRozl = u; var e = wygladz(u);
         Object.keys(czesci).forEach(function (r) { czesci[r].position.copy(czesci[r].userData.rozlozenie).multiplyScalar(e); });

@@ -5,10 +5,17 @@
    wejście otwiera makietę (bez id: pierwszą maszynę raportu).
    Makieta: OrbitControls, raycast tylko po częściach makiety (bieżące transformacje — rozłożenie, drzwi komór),
    hover → podświetlenie części (fresnel), klik → karta części (nazwa, opis, pewność, źródło), przełączniki
-   Rozłóż / Komory / Plan, karta danych maszyny z raportu, pełny ekran (F) na kontenerze #mysliwce.
+   Rozłóż / Komory / Plan / Dopalacz (+ suwak ciągu), dźwięk (M), karta danych maszyny z raportu, pełny ekran (F) na
+   kontenerze #mysliwce.
+   Dopalacz: mysliwce/silniki.js (płomień na wszystkich wylotach dopięty do części `dysze` — rozkłada się z nią, jedno
+   światło zbiorcze, bezwładność ciągu, przekazywanie do dźwięku); silniki są budowane z makietą i zwalniane z nią.
+   Dźwięk: mysliwce/dzwiek.js, AudioContext tworzony leniwie dopiero w geście (Dopalacz albo M), karta w tle = pauza,
+   powrót = rampa głośności; wyjście do Układu zamyka kontekst.
    Scena (tło, posadzka, światła, env PMREM) i makieta są budowane przy wejściu i zwalniane przy wyjściu do Układu;
    zostaje tylko renderer (jeden kontekst WebGL na całe życie strony).
-   Hak testowy: ?smoke&mysliwiec=<id>&makieta → stały kadr, natychmiastowe stany, marker `MYSLIWCE_READY <id> makieta`.
+   Hak testowy: ?smoke&mysliwiec=<id>&makieta → stały kadr, natychmiastowe stany, marker `MYSLIWCE_READY <id> makieta`;
+   `&dopalacz[=0..1]` = silniki od razu na danym ciągu (domyślnie 1), płomień w stałej chwili t = 1 s, bez dźwięku;
+   `&kadr=ogien|ogienbok|ogientyl` = kadry płomienia (¾ z tyłu, bok, prosto w dysze).
    Tekst z danych trafia do DOM wyłącznie przez textContent. Błędy własne: prefiks „Myśliwce: ”. */
 (function () {
   var T = window.THREE, D = window.MysliwceDane, L = window.MysliwceLadowanie;
@@ -39,6 +46,16 @@
     ui.rozloz = guzik(ui.narzedzia, 'Rozłóż', 'Widok rozstrzelony — części odsuwają się od kadłuba (R)');
     ui.komory = guzik(ui.narzedzia, 'Komory', 'Otwórz drzwi komór uzbrojenia (K)');
     ui.plan = guzik(ui.narzedzia, 'Plan', 'Rentgen: siatka krawędzi zamiast powłoki (P)');
+    // suwak PRZED przyciskiem: pasek jest wyrównany do prawej, więc pojawienie się suwaka nie przesuwa „Dopalacza”
+    // spod kursora (drugi klik w to samo miejsce wyłącza silniki, a nie trafia w inny przycisk)
+    ui.ciag = el('label', 'my-ciag', null, ui.narzedzia); ui.ciag.hidden = true;
+    el('span', 'my-ciag-nazwa', 'Ciąg', ui.ciag);
+    ui.suwak = el('input', 'my-suwak', null, ui.ciag);
+    ui.suwak.type = 'range'; ui.suwak.min = '15'; ui.suwak.max = '100'; ui.suwak.step = '1'; ui.suwak.value = '100';
+    ui.suwak.title = 'Ciąg silników: 15% bieg jałowy, 60% pełna moc bez dopalacza, powyżej — dopalacz';
+    ui.ciagTekst = el('output', 'my-ciag-wart', '100%', ui.ciag);
+    ui.dopalacz = guzik(ui.narzedzia, 'Dopalacz', 'Silniki na dopalaczu — ogień i dźwięk (A)');
+    ui.dzwiek = guzik(ui.narzedzia, '♪ Dźwięk', 'Dźwięk silników (M)', 'my-dzwiek');
     ui.karta = guzik(ui.narzedzia, 'Karta', 'Karta danych maszyny z raportu (D)');
     ui.pelny = guzik(ui.narzedzia, 'Pełny ekran', 'Pełny ekran (F)');
     ui.zamknij = guzik(ui.narzedzia, '✕', 'Wróć do Układu Słonecznego (Esc)', 'my-zamknij');
@@ -77,6 +94,9 @@
   var fps = { wart: 60, n: 0, t0: 0, slabe: 0 }, jakosc = 'pelna', przesun = { biez: 0, cel: 0 };
   var wymusPelna = /[?&]jakosc=pelna(?=&|$)/.test(location.search);   // hak sondy: bez przejścia na „lekką” przy niskim fps
   var rc = new T.Raycaster(), wekNdc = new T.Vector2();
+  // silniki (mysliwce/silniki.js: bezwładność, płomień, światło zbiorcze) bieżącej makiety; silnikiWl = przycisk Dopalacz;
+  // dzwiekWl null = jeszcze nie wybrano (pierwsze włączenie dopalacza włącza dźwięk), false = wyciszony klawiszem M
+  var sil = null, silnikiWl = false, dzwiek = null, dzwiekWl = null;
 
   function token(nazwa) { return getComputedStyle(doc.documentElement).getPropertyValue(nazwa).trim(); }
   function komunikat(t) {
@@ -166,6 +186,7 @@
   }
   function zwolnijScene() {
     if (!sc) return;
+    zwolnijSilniki();
     if (mk) { mk.zwolnij(); mk = null; }
     sc.studio.zwolnij();
     if (sc.sterowanie) sc.sterowanie.dispose();
@@ -176,6 +197,8 @@
   /* ---------- makieta ---------- */
   function pokazMakiete(id) {
     if (mk && mk.id === id) return;
+    var ciagPrzed = sil ? sil.stan().ciag : 0;
+    zwolnijSilniki();
     if (mk) { mk.zwolnij(); mk = null; }
     var dane = D.mysliwiec(id);
     mk = window.Makieta.zbuduj(T, id, { lod: 'pelny', env: sc.studio.env.texture, anizotropia: gl.renderer.capabilities.getMaxAnisotropy(),
@@ -184,6 +207,10 @@
     sc.scena.add(mk.grupa);
     idBiez = id; hover = null; wybrana = null;
     mk.rozloz(wart.rozloz); mk.komory(wart.komory); if (planWl) mk.plan(true);
+    // silniki nowej maszyny przejmują bieżący ciąg (zmiana maszyny na dopalaczu nie gasi i nie rozkręca od zera)
+    sil = window.Silniki.utworz(T, { scena: sc.scena, wyloty: mk.wyloty, rodzic: mk.czesci.dysze, dzwiek: dzwiekWl ? dzwiek : null, jakosc: jakosc });
+    if (ciagPrzed > 0) sil.ustaw(ciagPrzed, true);
+    sil.ustaw(silnikiWl ? ciagSuwaka() : 0, smoke);
     ustawKadr();
     wypelnijDane(dane);
     zamknijCzesc();
@@ -202,6 +229,7 @@
   }
   // Zbliżenie na część (hak smoke `&kadr=<rodzaj>`): kamera przy kotwicy części, od tyłu dla usterzenia i dysz.
   function kadrCzesci(rodzaj) {
+    if (/^ogien/.test(rodzaj)) return kadrOgnia(rodzaj);
     var w = mk.czesci[rodzaj];
     if (!w) return null;
     var o = mk.obwiednia, dl = o.max[0] - o.min[0];
@@ -210,6 +238,19 @@
     var tyl = rodzaj === 'usterzenie' || rodzaj === 'dysze', kier = new T.Vector3(tyl ? -0.75 : 0.7, 0.42, tyl ? 0.55 : 0.6).normalize();
     var d = dl * (rodzaj === 'kabina' ? 0.2 : 0.32);
     return { poz: c.clone().addScaledVector(kier, d).toArray(), cel: c.toArray() };
+  }
+  // Kadry płomienia (hak smoke, zrzuty dysz): środek płomieni przy pełnym ciągu; ¾ z tyłu, bok, prosto w dysze.
+  function kadrOgnia(nazwa) {
+    var cz = mk.czesci.dysze;
+    if (!cz || !mk.wyloty.length) return null;
+    mk.grupa.updateMatrixWorld(true);
+    var c = new T.Vector3(), dl = 0, wylot = new T.Vector3();
+    mk.wyloty.forEach(function (w) { c.add(cz.localToWorld(new T.Vector3().fromArray(w.punkt))); dl = Math.max(dl, window.Ogien.wymiary(w, 1).dl); });
+    c.multiplyScalar(1 / mk.wyloty.length); wylot.copy(c);
+    var kier = { ogien: [-0.78, 0.34, 0.52], ogienbok: [-0.05, 0.1, 1], ogientyl: [-1, 0.16, 0.12] }[nazwa] || [-0.78, 0.34, 0.52];
+    var srodek = nazwa === 'ogientyl' ? wylot : c.clone().add(new T.Vector3(-dl * 0.42, 0, 0));
+    var d = { ogien: dl * 1.6, ogienbok: dl * 1.75, ogientyl: dl * 1.35 }[nazwa] || dl * 1.6;
+    return { poz: srodek.clone().addScaledVector(new T.Vector3().fromArray(kier).normalize(), d).toArray(), cel: srodek.toArray() };
   }
   function kadrBiezacy() { return kadr(cel.komory ? 'komory' : cel.rozloz ? 'rozloz' : 'start'); }
   function ustawKadr(kd) {
@@ -318,6 +359,49 @@
     if (co === 'komory') b.textContent = wl ? 'Zamknij komory' : 'Komory';
   }
   function wlaczone(co) { return ui[co].getAttribute('aria-pressed') === 'true'; }
+
+  /* ---------- dopalacz i dźwięk ---------- */
+  function zwolnijSilniki() { if (sil) { sil.zwolnij(); sil = null; } }
+  function ciagSuwaka() { return Math.max(0.15, Math.min(1, (+ui.suwak.value || 100) / 100)); }
+  function opiszCiag() {
+    var c = ciagSuwaka();
+    ui.ciagTekst.textContent = Math.round(c * 100) + '%' + (c >= window.Ogien.PROG_AB ? ' · dopalacz' : c <= 0.15 ? ' · jałowy' : '');
+  }
+  function ustawSilniki(wl) {
+    silnikiWl = !!wl;
+    ui.dopalacz.setAttribute('aria-pressed', String(silnikiWl));
+    ui.ciag.hidden = !silnikiWl;
+    opiszCiag();
+    if (sil) sil.ustaw(silnikiWl ? ciagSuwaka() : 0, smoke);
+    if (silnikiWl && dzwiekWl !== false && !smoke) ustawDzwiek(true);   // klik przycisku = gest: kontekst audio wolno utworzyć
+  }
+  function ustawDzwiek(wl) {
+    if (wl && !dzwiek) {
+      dzwiek = window.Dzwiek && window.Dzwiek.silnik();
+      if (!dzwiek) { ui.dzwiek.disabled = true; komunikat('Dźwięk niedostępny w tej przeglądarce.'); dzwiekWl = false; return; }
+      dzwiek.ambient('hangar');
+    }
+    dzwiekWl = !!wl;
+    ui.dzwiek.setAttribute('aria-pressed', String(dzwiekWl));
+    ui.dzwiek.textContent = dzwiekWl ? '♪ Dźwięk' : '♪ Cisza';
+    if (!dzwiek) return;
+    if (sil) sil.dzwiek(dzwiekWl ? dzwiek : null);
+    if (dzwiekWl) { if (!doc.hidden) dzwiek.wznow(); } else dzwiek.pauza();
+  }
+  function zwolnijDzwiek() {
+    if (sil) sil.dzwiek(null);
+    if (dzwiek) { dzwiek.zwolnij(); dzwiek = null; }
+    dzwiekWl = null;
+    ui.dzwiek.setAttribute('aria-pressed', 'false'); ui.dzwiek.textContent = '♪ Dźwięk';
+  }
+  ui.dopalacz.addEventListener('click', function () { ustawSilniki(!silnikiWl); });
+  ui.suwak.addEventListener('input', function () { opiszCiag(); if (silnikiWl && sil) sil.ustaw(ciagSuwaka(), smoke); });
+  ui.dzwiek.addEventListener('click', function () { ustawDzwiek(!dzwiekWl); });
+  // karta w tle: dźwięk pauzuje (ctx.suspend), po powrocie rusza z rampą głośności (Dzwiek.wzmocnienieWznowienia)
+  doc.addEventListener('visibilitychange', function () {
+    if (!dzwiek || !dzwiekWl) return;
+    if (doc.hidden) dzwiek.pauza(); else dzwiek.wznow();
+  });
   function zastosuj() { if (mk) { mk.rozloz(wart.rozloz); mk.komory(wart.komory); } }
   function ograniczonyRuch() { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
   function pelnyEkran() {
@@ -395,6 +479,7 @@
       zmiana = true;
     });
     if (zmiana) zastosuj();
+    if (sil) sil.krok(dt, smoke ? 1 : (teraz - czasStartu) / 1000);
     krokLotu(dt);
     if (Math.abs(przesun.cel - przesun.biez) > 0.5) { przesun.biez += (przesun.cel - przesun.biez) * Math.min(1, dt * 6); zastosujPrzesuniecie(); }
     if (sc.sterowanie) sc.sterowanie.update();
@@ -407,6 +492,7 @@
     jakosc = j;
     gl.renderer.setPixelRatio(j === 'pelna' ? Math.min(window.devicePixelRatio || 1, 2) : 1);
     if (sc) sc.studio.cienie(j === 'pelna');
+    if (sil) sil.jakosc(j);
     gl.w = 0; dopasuj();
   }
 
@@ -418,10 +504,12 @@
     var tag = e.target && e.target.tagName, natywny = tag === 'BUTTON' || tag === 'A' || tag === 'INPUT' || tag === 'SUMMARY';
     var k = e.key;
     if (natywny && (k === ' ' || k === 'Enter')) return;
+    if (tag === 'INPUT' && /^(Arrow|Page|Home$|End$)/.test(k)) return;      // suwak ciągu: strzałki zmieniają ciąg, nie maszynę
     var akcje = {
       Escape: function () { if (!ui.czesc.hidden) zamknijCzesc(); else if (doc.fullscreenElement) doc.exitFullscreen(); else window.Zakladki.zamknijDoUkladu(); },
       f: pelnyEkran, r: function () { przelacz('rozloz', !wlaczone('rozloz')); }, k: function () { przelacz('komory', !wlaczone('komory')); },
       p: function () { przelacz('plan', !wlaczone('plan')); }, d: function () { ustawDane(ui.dane.hidden); },
+      a: function () { ustawSilniki(!silnikiWl); }, m: function () { ustawDzwiek(!dzwiekWl); },
       ArrowRight: function () { krokMaszyny(1); }, ArrowLeft: function () { krokMaszyny(-1); },
     };
     var a = akcje[k] || akcje[k.toLowerCase()];
@@ -449,6 +537,8 @@
         ['rozloz', 'komory', 'plan'].forEach(function (k) { if (new RegExp('[?&]' + k + '(?=&|$)').test(location.search)) przelacz(k, true); });
         var mc = /[?&]czesc=([a-z]+)/.exec(location.search);
         if (mc) pokazCzesc(mc[1]);
+        var mdp = /[?&]dopalacz(?:=([0-9.]+))?(?=&|$)/.exec(location.search);
+        if (mdp) { ui.suwak.value = String(Math.round(100 * (mdp[1] != null ? Math.min(1, +mdp[1]) : 1))); ustawSilniki(true); }
         var mkd = /[?&]kadr=([a-z]+)/.exec(location.search), kd = mkd && kadrCzesci(mkd[1]);
         if (kd) ustawKadr(kd);
         if (zap.tryb === 'makieta') gotowosc = id + ' makieta';
@@ -468,6 +558,8 @@
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
     if (doc.fullscreenElement === korzen) { try { doc.exitFullscreen(); } catch (_) { /* nic */ } }
     zamknijCzesc(); ustawHover(null); wskaznik = null;
+    ustawSilniki(false);
+    zwolnijDzwiek();
     zwolnijScene();
     idBiez = null;
   }
@@ -478,7 +570,9 @@
     stan: function () {
       return { tryb: aktywny ? 'makieta' : null, id: idBiez, ujecie: null, fps: Math.round(fps.wart), jakosc: jakosc,
         rozloz: wart.rozloz, komory: wart.komory, plan: planWl, czesc: wybrana && mk ? mk.czesci[wybrana].userData.czesc.id : null,
-        podswietlona: mk ? mk.stan().podswietl : null, przelot: !!lot, przesuniecie: Math.round(przesun.biez), przesuniecieCel: Math.round(przesun.cel) };
+        podswietlona: mk ? mk.stan().podswietl : null, przelot: !!lot, przesuniecie: Math.round(przesun.biez), przesuniecieCel: Math.round(przesun.cel),
+        dopalacz: { wl: silnikiWl, ciag: sil ? sil.stan().ciag : 0, cel: sil ? sil.stan().cel : 0, ognie: sil ? sil.stan().strugi : 0 },
+        dzwiek: Object.assign({ wl: dzwiekWl, utworzony: !!dzwiek }, dzwiek ? dzwiek.stan() : null) };
     },
     diagnostyka: function () {
       if (!gl) return null;
@@ -490,6 +584,9 @@
     },
     // Haki sondy (scripts/probe-mysliwce.mjs): bieżąca makieta i rzut kotwicy części na ekran (px w oknie).
     makieta: function () { return mk; },
+    // źródła gorąca płomieni (świat) — wejście passu falowania (Task 7) i kontrola sondy
+    zrodlaGoraca: function () { return sil ? sil.zrodlaGoraca() : []; },
+    poziomDzwieku: function () { return dzwiek ? dzwiek.poziom() : null; },
     przelacz: przelacz,
     // spoczynek = true: gdzie kotwica byłaby bez przesunięcia rozłożenia (w bieżącej kamerze) — kontrola negatywna sondy
     rzutKotwicy: function (rodzaj, spoczynek) {
