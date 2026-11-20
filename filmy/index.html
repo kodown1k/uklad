@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Filmy — Voyager 1 i Mrugnięcie</title>
+<!-- Strona z nagraniami filmów (MP4) i odnośnikami do zjawisk naukowych. Pliki wideo NIE są w repo: leżą na ryzenie
+     w ~/certbot/www/uklad-filmy (nginx: location /uklad/filmy/pliki/ → alias), bo publish-build.sh czyści webroot
+     /uklad/ (rsync --delete). Adresy plików są absolutne (kodownik.co), więc kopia na voyager.kodownik.co też je pokazuje
+     — z Polski; kodownik.co z zagranicy nie odpowiada (geoblokada na 443). Nagrania: scripts/video-kino.mjs. -->
+<meta name="description" content="Nagrania dwóch filmów-symulacji na danych NASA/JPL: Voyager 1 na granicy jednego dnia świetlnego oraz Mrugnięcie — V-G-R z Ziemi do Voyagera 1.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--tlo:#05080d;--karta:#0b1320;--linia:rgba(159,230,255,.18);--tekst:#cfeaff;--slaby:#8fb4c8;--akcent:#9fe6ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--tlo);color:var(--tekst);font:16px/1.55 "Space Grotesk",system-ui,sans-serif}
+  main{max-width:1040px;margin:0 auto;padding:40px 16px 64px}
+  .oko{font:500 12px "IBM Plex Mono",monospace;letter-spacing:.3em;text-transform:uppercase;color:var(--slaby)}
+  h1{font-weight:500;font-size:clamp(30px,5vw,48px);margin:6px 0 8px;color:#eaf8ff}
+  .wstep{color:var(--slaby);max-width:62ch;margin:0 0 36px}
+  section{background:var(--karta);border:1px solid var(--linia);border-radius:14px;padding:18px;margin:0 0 28px}
+  h2{font-weight:500;font-size:clamp(22px,3vw,28px);margin:2px 0 4px;color:#eaf8ff}
+  .opis{margin:0 0 14px;color:var(--tekst)}
+  video{display:block;width:100%;aspect-ratio:16/9;background:#000;border-radius:8px}
+  .linki{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;font:13px "IBM Plex Mono",monospace}
+  a{color:var(--akcent);text-decoration:none;border-bottom:1px solid rgba(159,230,255,.35)}
+  a:hover{color:#fff;border-bottom-color:#fff}
+  .uwaga{font:12px "IBM Plex Mono",monospace;color:var(--slaby);margin-top:10px}
+  ul.zj{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:10px}
+  ul.zj li{border-top:1px solid var(--linia);padding-top:10px}
+  footer{color:var(--slaby);font-size:13px;margin-top:8px}
+</style>
+</head>
+<body>
+<main>
+  <div class="oko">Kodownik · Układ Słoneczny</div>
+  <h1>Filmy</h1>
+  <p class="wstep">Dwie symulacje zbudowane na efemerydach NASA/JPL Horizons. W przeglądarce działają na żywo; tutaj są nagrania do obejrzenia i pobrania.</p>
+
+  <section id="voyager1">
+    <div class="oko">Film 1 · 86 s · bez dźwięku</div>
+    <h2>Voyager 1 na granicy jednego dnia świetlnego</h2>
+    <p class="opis">Światło z Ziemi leci do sondy całą dobę. W listopadzie 2026 Voyager 1 jako pierwszy obiekt zbudowany przez człowieka oddala się od Ziemi na jeden dzień świetlny.</p>
+    <video controls preload="none" playsinline poster="https://kodownik.co/uklad/filmy/pliki/voyager1-film-plakat.jpg">
+      <source src="https://kodownik.co/uklad/filmy/pliki/voyager1-film-1080p.mp4" type="video/mp4">
+    </video>
+    <div class="linki">
+      <a href="../?film">Obejrzyj na żywo</a>
+      <a href="https://kodownik.co/uklad/filmy/pliki/voyager1-film-1080p.mp4" download>MP4 1080p (96 MB)</a>
+      <a href="https://kodownik.co/uklad/filmy/pliki/voyager1-film-720p.mp4" download>MP4 720p (9 MB)</a>
+    </div>
+  </section>
+
+  <section id="mrugniecie">
+    <div class="oko">Film 2 · 75 s · z dźwiękiem</div>
+    <h2>Mrugnięcie — V-G-R z Ziemi do Voyagera 1</h2>
+    <p class="opis">17 listopada 2026, po zachodzie słońca, ludzie mrugali latarkami w niebo literami V-G-R alfabetu Morse'a. Mrugnięcie z Warszawy leci dobę i mija Voyagera tuż za granicą dnia świetlnego.</p>
+    <video controls preload="none" playsinline poster="https://kodownik.co/uklad/filmy/pliki/mrugniecie-plakat.jpg">
+      <source src="https://kodownik.co/uklad/filmy/pliki/mrugniecie-1080p.mp4" type="video/mp4">
+    </video>
+    <div class="linki">
+      <a href="../?mrugniecie">Obejrzyj na żywo</a>
+      <a href="https://kodownik.co/uklad/filmy/pliki/mrugniecie-1080p.mp4" download>MP4 1080p (91 MB)</a>
+      <a href="https://kodownik.co/uklad/filmy/pliki/mrugniecie-720p.mp4" download>MP4 720p (9 MB)</a>
+    </div>
+  </section>
+
+  <section id="zjawiska">
+    <div class="oko">Na żywo · w przeglądarce</div>
+    <h2>Zjawiska naukowe</h2>
+    <p class="opis">Interaktywne objaśnienia krok po kroku, z trybem seansu (klawisz S) i pełnym ekranem (F).</p>
+    <ul class="zj">
+      <li><a href="../#zjawisko=silnik-grawitacyjny">Kosmiczny silnik grawitacyjny</a></li>
+      <li><a href="../#zjawisko=satelity">Rodzaje sztucznych satelitów Ziemi</a></li>
+    </ul>
+  </section>
+
+  <footer>Symulacja: efemerydy NASA/JPL Horizons · <a href="../">Układ Słoneczny na żywo</a></footer>
+</main>
+</body>
+</html>
