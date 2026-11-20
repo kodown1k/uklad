@@ -15,6 +15,8 @@
 <!-- Zjawiska naukowe: kroje „Depeszy" + arkusz stylów nakładki (zakładki i prezentacja) -->
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Charis+SIL:ital,wght@0,400;0,700;1,400&family=Noto+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="zjawiska/zjawiska.css">
+<!-- Myśliwce: arkusz nakładki (moduł mysliwce/ ładuje się leniwie przy pierwszym wejściu w zakładkę) -->
+<link rel="stylesheet" href="mysliwce/mysliwce.css">
 
 <!-- Planet textures referenced from JS — lifted for offline bundling -->
 <meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/sunmap.jpg" data-resource-id="sunmap">
@@ -626,7 +628,8 @@
   </section>
 </div>
 
-<!-- nakładka „Myśliwce”: pusta do rejestracji w mysliwce/ (zakładka rejestruje się przez zakladki.js) -->
+<!-- nakładka „Myśliwce”: pasek i widok buduje mysliwce/ (ladowanie.js rejestruje zakładkę, reszta modułu leniwie);
+     przycisk #zakMysliwce widoczny tylko z ?mysliwce w adresie (zakładka w budowie) -->
 <div id="mysliwce" hidden tabindex="-1" role="region" aria-label="Myśliwce"></div>
 
 <div id="rail" class="hud"></div>
@@ -853,6 +856,7 @@
 <script src="mrugniecie.js"></script>
 <script src="selectables.js"></script>
 <script src="zakladki.js"></script>
+<script src="mysliwce/ladowanie.js"></script>
 <script src="solar.js"></script>
 <!-- Cloudflare Web Analytics: liczy wejścia na voyager.kodownik.co i kodownik.co/uklad/ (bez ciasteczek; test/analytics.test.js) --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "e8ab645d2daa4c95b7802a3a5f306a18"}'></script><!-- End Cloudflare Web Analytics -->
 <!-- Zjawiska naukowe: czysta logika + rejestr + silnik prezentacji; pliki zjawisk ładuje widok (pole `skrypt` rejestru) -->
