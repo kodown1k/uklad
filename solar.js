@@ -5857,6 +5857,30 @@ function kinoBuildDom(){
   kFull.hidden = !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
   kFull.onclick = ()=>kinoFullscreenToggle();
   ['fullscreenchange','webkitfullscreenchange'].forEach(ev=>document.addEventListener(ev, kinoFullscreenLabel));
+  // ruch myszy, dotyk, kółko i klawisz pokazują przyciski (capture: przed handlerami Esc/spacji, które zatrzymują zdarzenie)
+  ['pointermove','pointerdown','touchstart','wheel','keydown'].forEach(n=>addEventListener(n, e=>{
+    if(!kino.active) return;                                             // poza filmem nic do budzenia
+    if(n === 'pointermove'){                                             // przeglądarka wysyła też „ruch" bez ruchu (po zmianie układu strony)
+      const xy = e.clientX + ',' + e.clientY; if(xy === kino.ciszaXY) return; kino.ciszaXY = xy; }
+    kinoWake();
+  }, { passive:true, capture:true }));
+}
+
+/* ---------- przyciski filmu i kursor znikają po 3 s bezruchu ----------
+   Wzorzec z zakładki „Zjawiska naukowe" (zjawiska/widok.js: obudzUI + klasa .zj-cisza w zjawiska.css) odtworzony tutaj,
+   bo tam jest zaszyty w widoku zjawisk (prywatny stan, klasa na #zjawiska). To samo: 3 s, klasa na korzeniu, opacity 0
+   + pointer-events none, kursor none, fokus klawiatury na przycisku wstrzymuje chowanie. Różnica: film chowa przyciski
+   także bez myszy (start z linku, dotyk), a na pauzie i po końcu filmu nie chowa ich nigdy. */
+const KINO_CISZA_MS = 3000;
+function kinoWake(){
+  document.body.classList.remove('kino-cisza');
+  clearTimeout(kino.ciszaT); kino.ciszaT = 0;
+  if(!kino.active || kino.paused) return;
+  kino.ciszaT = setTimeout(()=>{
+    const a = document.activeElement, ctl = document.querySelector('#kino .k-ctl');
+    if(a && ctl && ctl.contains(a) && a.matches(':focus-visible')) return;   // fokus klawiatury na przycisku: zostają
+    document.body.classList.add('kino-cisza');                          // każda zmiana active/paused przechodzi przez kinoWake (clearTimeout)
+  }, KINO_CISZA_MS);
 }
 
 function kinoSlots(t){
@@ -5930,6 +5954,7 @@ function kinoStart(){
   document.body.classList.add('kino-on', 'kino-run');
   kino.active = true; kino.lastClock = NaN; kino.lastHour = -1;
   kinoPauseSet(false); kino.t0 = performance.now();
+  kinoWake();                                                            // kinoPauseSet(false) na nie-pauzie wychodzi wcześnie i nie budzi
   if(kino.audio && kino.audio.on) kinoAudioStart();
   cancelAnimationFrame(kino.raf); kino.raf = requestAnimationFrame(kinoLoop);
 }
@@ -5938,7 +5963,7 @@ function kinoEnd(skipped){
   if(!kino.active) return;
   if(kino.film === 'vgr') vgrCleanup();
   kinoPauseSet(false);
-  kino.active = false; cancelAnimationFrame(kino.raf);
+  kino.active = false; cancelAnimationFrame(kino.raf); kinoWake();
   placeBodiesAt(reality.clockMs); updateProbes();                       // z powrotem na „teraz" 1:1
   kino.ld.film.material.color.setScalar(1); kinoMembraneLabels(false);   // karta końcowa: bez etykiet błon w kadrze
   PROBES.forEach(p=>{ if(p.atBody && probes.byId[p.id]) probes.byId[p.id].mk.visible = true; });
@@ -5961,6 +5986,7 @@ function kinoPauseSet(on){
   const b = document.getElementById('kPause'); if(b) b.textContent = on ? '▶ Wznów' : '⏸ Pauza';
   const el = document.getElementById('kino'); if(el) el.classList.toggle('paused', on);
   const A = kino.audio; if(A && A.ctx && A.live){ if(on) A.ctx.suspend(); else A.ctx.resume(); }
+  kinoWake();                                                            // pauza: przyciski widoczne; wznowienie: 3 s od nowa
 }
 function kinoPauseToggle(){ if(kino.active) kinoPauseSet(!kino.paused); }
 
@@ -6308,6 +6334,7 @@ function vgrStart(){
   document.body.classList.add('kino-on', 'kino-run');
   kino.active = true; kino.lastClock = NaN;
   kinoPauseSet(false); kino.t0 = performance.now();
+  kinoWake();                                                            // kinoPauseSet(false) na nie-pauzie wychodzi wcześnie i nie budzi
   if(kino.audio && kino.audio.on) kinoAudioStart();
   cancelAnimationFrame(kino.raf); kino.raf = requestAnimationFrame(vgrLoop);
 }

@@ -131,7 +131,8 @@
   // K = { startMs (początek zmierzchu), sendMs (mrugnięcie z Polski), D (|V − Ziemia w chwili nadania|, j. sceny),
   //       c (j. sceny na ms), rE (promień Ziemi w scenie), dEnd (czoło zatrzymuje się dEnd przed sondą na koniec pościgu) }
   // Pościg: odległość czoła od Ziemi (z chwili nadania) — logarytmicznie, od 3 promieni do tuż przed sondą.
-  function frontPoscig(f, K) { return logLerp(K.rE * 3, K.D - K.dEnd, easeInOut(f)); }
+  // Druga połowa ujęcia to dojazd wykładniczy z kino.js (wspólny z dolotem do sondy w filmie 1).
+  function frontPoscig(f, K) { var koniec = K.D - K.dEnd; return Kino.dojazdDo(f, logLerp(K.rE * 3, koniec, easeInOut(f)), koniec); }
   // odległość czoła od Ziemi [j. sceny] w chwili t filmu; null przed pościgiem
   function front(t, K) {
     var L = locate(t);
@@ -194,7 +195,9 @@
     // Pod koniec kamera zostaje w tyle za czołem (0,9 → 4,5 j.) i odsuwa się w bok proporcjonalnie: czoło staje
     // 0,4 j. przed sondą, więc stałe 0,9 j. kończyło ujęcie 1,3 j. od środka modelu (wewnątrz jego obrysu —
     // sonda 2,2× wyższa niż kadr, na niej etykieta błony i napis).
-    var lead = lerp(0.9, 4.5, smooth((f - 0.78) / 0.22)), lat = lead / 0.9;
+    // Okno 0,6–0,9 ujęcia (było 0,78–1): po zmianie na dojazd wykładniczy czoło stoi przy sondzie już ok. 0,9, więc
+    // późniejsze cofanie kamery oddalałoby ją od sondy. cruise ma ciągłe przyspieszenie (easeInOut zmienia jego znak skokiem).
+    var lead = lerp(0.9, 4.5, cruise((f - 0.6) / 0.3, 0.5)), lat = lead / 0.9;
     var follow = add(add(A.Es, mul(u, Math.max(dF - lead, A.rE * 2.2))), add(mul(B.side, 0.22 * lat), mul(B.up, 0.1 * lat)));
     var p0 = poseNadawanie(1, A), g = cruise(f / 0.36, 0.4);
     var d0 = norm(sub(p0.pos, A.Es)), d1 = norm(sub(follow, A.Es));

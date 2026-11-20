@@ -40,11 +40,29 @@
   function easeInOut(x) { x = clamp01(x); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; }
   // rozbieg–przelot–hamowanie: prędkość narasta jak smooth przez ułamek a, potem stała, na końcu lustrzanie.
   // Szczyt prędkości = 1/(1−a) średniej (easeInOut: 3×), a przyspieszenie na obu końcach jest zerowe.
+  // rozbieg: droga przebyta do x (bez normalizacji) przy prędkości narastającej jak smooth przez ułamek a, potem stałej
+  function rozbieg(x, a) { var X = Math.min(x, a) / a; return a * (X * X * X - X * X * X * X / 2) + Math.max(0, x - a); }
   function cruise(x, a) {
     x = clamp01(x);
     if (x > 0.5) return 1 - cruise(1 - x, a);
-    var X = Math.min(x, a) / a;
-    return (a * (X * X * X - X * X * X * X / 2) + Math.max(0, x - a)) / (1 - a);
+    return rozbieg(x, a) / (1 - a);
+  }
+  // dojazd wykładniczy: mnożnik POZOSTAŁEJ drogi, 1 → 0. Po miękkim rozbiegu (30% okna, zerowa prędkość i przyspieszenie
+  // na starcie) droga do celu maleje jak exp(−k·s), czyli prędkość, przyspieszenie i zryw gasną razem, asymptotycznie.
+  // Poprawka e^(−k)·(1 + k(1−s)) domyka krzywą: w x=1 mnożnik i jego prędkość są dokładnie zerem (szew bez skoku).
+  function dojazd(x, k) {
+    x = clamp01(x);
+    var r = 0.3, s = rozbieg(x, r) / (1 - r / 2);
+    var ek = Math.exp(-k);
+    return (Math.exp(-k * s) - ek * (1 + k * (1 - s))) / (1 - ek * (1 + k));
+  }
+  // Dolot do obiektu w drugiej połowie ujęcia: `stara` to położenie z krzywej logarytmicznej, `koniec` to punkt postoju.
+  // Sama krzywa logarytmiczna zostawiała na ostatnie 0,6 s hamowanie z 3,4 odległości od sondy na sekundę do zera
+  // (film 1: skręt 33,5°/s i −139,6°/s²; film 2: to samo liniowo). Pierwsza połowa ujęcia zostaje bez zmian co do bitu.
+  var DOJAZD = { od: 0.5, k: 5 };
+  function dojazdDo(f, stara, koniec) {
+    if (f <= DOJAZD.od) return stara;                                     // pierwsza połowa: dokładnie stara krzywa
+    return koniec - (koniec - stara) * dojazd((f - DOJAZD.od) / (1 - DOJAZD.od), DOJAZD.k);
   }
   function lerp(a, b, t) { return a + (b - a) * t; }
   // garb 0→1→0 z zerową prędkością na obu końcach (przechył kamery: sin(πf) urywał się na szwie z prędkością ~1,3°/s)
@@ -167,11 +185,15 @@
 
   // odległość kamery od Ziemi wzdłuż promienia w ujęciu „droga" (od −4 do D−8): logarytmicznie — powoli przy
   // Ziemi, szybko w pustce, hamowanie przed sondą
-  function drogaDist(f, D) { return logLerp(4, D, easeInOut(f)) - 8; }
+  function drogaDist(f, D) { return dojazdDo(f, logLerp(4, D, easeInOut(f)) - 8, D - 8); }
   function poseDroga(f, A) {
     var u = norm(sub(A.V, A.E)), B = basis(u), D = len(sub(A.V, A.E));
     var dd = drogaDist(f, D);
     var lat = lerpV(add(mul(B.side, 2.2), mul(B.up, 1.6)), add(mul(B.side, 2.6), mul(B.up, 1.1)), smooth(f));
+    // po minięciu Ziemi (f > 0,3; przelot obok globu zostaje bez zmian) kamera przechodzi nad oś lotu — tam zaczyna
+    // się okrążenie sondy skrócone do 270° (dolotBok)
+    var wBok = smooth((f - 0.3) / 0.7);
+    if (wBok > 0) lat = lerpV(lat, dolotBok(B), wBok);
     var pos = add(add(A.E, mul(u, dd)), lat);
     // patrzy cały czas na sondę (z bocznego odsunięcia kierunek ≈ u, zbiega płynnie); cel trzymany blisko kamery
     // (< próg interstellar), a przy sondzie = sonda. Dawny cel „6 j. przed kamerą" + przejście na sondę skręcał 155°/s.
@@ -184,16 +206,29 @@
   // początek ujęcia „granica" (bok, lekko od strony Ziemi) — „sonda" kończy dokładnie tu
   function granicaOffset(B, k) { return add(add(mul(B.side, 5.6 * k), mul(B.u, -1.6 * k)), mul(B.up, 0.95 * k)); }
 
+  // Okrążenie sondy: 270° wokół osi lotu (było pełne 360° + 13° różnicy azymutów, razem 373°). Oba końce są przypięte:
+  // koniec do początku „granicy" (granicaOffset), początek do końca „drogi". Krótszy łuk wymaga więc innego azymutu
+  // startu: „droga" kończy NAD osią lotu (dolotBok), 270° przed pozycją „granicy", a nie z boku.
+  var OKRAZENIE = 1.5 * Math.PI;
+  // boczne odsunięcie kamery od osi lotu na końcu „drogi" (2,82 j. jak dawne 2,6·side + 1,1·up, inny azymut)
+  function dolotBok(B) {
+    var g = granicaOffset(B, 1), bok = sub(g, mul(B.u, dot(g, B.u)));
+    return mul(rotate(norm(bok), B.u, OKRAZENIE), 2.82);
+  }
+
   function poseSonda(f, A) {
     var u = norm(sub(A.V, A.E)), B = basis(u);
-    var startOff = add(mul(u, -8), add(mul(B.side, 2.6), mul(B.up, 1.1)));
-    var endOff = granicaOffset(B, 1);
-    // cruise zamiast easeInOut: pełny obrót wokół osi lotu w 14 s ma szczyt prędkości 1,4× średniej, nie 3× —
-    // sześcienna krzywa upychała okrążenie w środku ujęcia (58,8°/s w t=44 s, pod napisem z odległością)
+    var startOff = add(mul(u, -8), dolotBok(B));
+    // koniec łuku cofnięty o całe okrążenie leży w tej samej płaszczyźnie z osią lotu co start, więc slerp zmienia
+    // tylko kąt do osi, a cały obrót wokół niej (dokładnie OKRAZENIE) robi rotate — w e=1 wychodzi granicaOffset
+    var endOff = rotate(granicaOffset(B, 1), u, OKRAZENIE);
+    // cruise zamiast easeInOut: szczyt prędkości 1,4× średniej, nie 3× — sześcienna krzywa upychała okrążenie
+    // w środku ujęcia (58,8°/s w t=44 s, pod napisem z odległością)
     var e = cruise(f, 0.3);
-    var dir = rotate(slerp(norm(startOff), norm(endOff), e), u, 2 * Math.PI * e);   // pełny obrót wokół osi lotu
+    var dir = rotate(slerp(norm(startOff), norm(endOff), e), u, -OKRAZENIE * e);
     var r = logLerp(len(startOff), len(endOff), e) * (1 - 0.35 * Math.sin(Math.PI * e)); // najazd w połowie
-    return { pos: add(A.V, mul(dir, r)), target: A.V, roll: -6 * hump(f) * DEG, fov: 45 };
+    // przechył z przeciwnym znakiem niż przy dawnym okrążeniu: kamera krąży teraz w drugą stronę
+    return { pos: add(A.V, mul(dir, r)), target: A.V, roll: 6 * hump(f) * DEG, fov: 45 };
   }
 
   // „granica": kamera przypięta do membrany (punkt przebicia P = Ziemia + u·R) — sonda przepływa przez błonę.
@@ -264,8 +299,8 @@
     SHOTS: SHOTS, TIMELAPSE: TIMELAPSE, BLEND: BLEND, LAUNCH_MS: LAUNCH_MS,
     total: total, shotStart: shotStart, shotDur: shotDur, locate: locate, clockMs: clockMs, clockRate: clockRate,
     crossFraction: crossFraction, timelapseParams: timelapseParams, timelapseHours: timelapseHours,
-    pose: pose, POSES: POSES, wide: wide, WIDE_MIN: WIDE_MIN, aimArc: aimArc, basis: basis, behindEarth: behindEarth, drogaDist: drogaDist,
-    smooth: smooth, easeInOut: easeInOut, cruise: cruise, logLerp: logLerp, window01: window01, slerp: slerp, rotate: rotate,
+    pose: pose, POSES: POSES, wide: wide, WIDE_MIN: WIDE_MIN, aimArc: aimArc, basis: basis, behindEarth: behindEarth, drogaDist: drogaDist, OKRAZENIE: OKRAZENIE,
+    smooth: smooth, easeInOut: easeInOut, cruise: cruise, dojazd: dojazd, dojazdDo: dojazdDo, DOJAZD: DOJAZD, logLerp: logLerp, window01: window01, slerp: slerp, rotate: rotate,
     yearsSince: yearsSince, fmtInt: fmtInt, fmtDec: fmtDec,
     _v: { add: add, sub: sub, mul: mul, dot: dot, cross: cross, len: len, norm: norm }
   };
