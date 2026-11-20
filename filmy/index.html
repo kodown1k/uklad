@@ -29,6 +29,7 @@
   .uwaga{font:12px "IBM Plex Mono",monospace;color:var(--slaby);margin-top:10px}
   ul.zj{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:10px}
   ul.zj li{border-top:1px solid var(--linia);padding-top:10px}
+  .zj-opis{color:var(--slaby);font-size:14px;margin-top:4px}
   footer{color:var(--slaby);font-size:13px;margin-top:8px}
 </style>
 </head>
@@ -70,13 +71,15 @@
     <div class="oko">Na żywo · w przeglądarce</div>
     <h2>Zjawiska naukowe</h2>
     <p class="opis">Interaktywne objaśnienia krok po kroku, z trybem seansu (klawisz S) i pełnym ekranem (F).</p>
-    <ul class="zj">
-      <li><a href="../#zjawisko=silnik-grawitacyjny">Kosmiczny silnik grawitacyjny</a></li>
-      <li><a href="../#zjawisko=satelity">Rodzaje sztucznych satelitów Ziemi</a></li>
-    </ul>
+    <!-- lista budowana z zjawiska/rejestr.js (filmy/lista-zjawisk.js) — nowego zjawiska tu NIE dopisuj -->
+    <ul class="zj" id="zjawiskaLista"></ul>
+    <noscript><p><a href="../#zjawiska">Zjawiska naukowe w Układzie Słonecznym</a></p></noscript>
   </section>
 
   <footer>Symulacja: efemerydy NASA/JPL Horizons · <a href="../">Układ Słoneczny na żywo</a></footer>
 </main>
+<script src="../zjawiska/rejestr.js"></script>
+<script src="../zjawiska/logika.js"></script>
+<script src="lista-zjawisk.js"></script>
 </body>
 </html>
