@@ -42,10 +42,12 @@
   // Szczyt prędkości = 1/(1−a) średniej (easeInOut: 3×), a przyspieszenie na obu końcach jest zerowe.
   // rozbieg: droga przebyta do x (bez normalizacji) przy prędkości narastającej jak smooth przez ułamek a, potem stałej
   function rozbieg(x, a) { var X = Math.min(x, a) / a; return a * (X * X * X - X * X * X * X / 2) + Math.max(0, x - a); }
-  function cruise(x, a) {
-    x = clamp01(x);
-    if (x > 0.5) return 1 - cruise(1 - x, a);
-    return rozbieg(x, a) / (1 - a);
+  // b (opcjonalnie) = osobny ułamek hamowania: krótki rozbieg i długie hamowanie (okrążenie sondy rusza z postoju szybciej,
+  // niż zwalnia przed „granicą”). Bez b krzywa symetryczna.
+  function cruise(x, a, b) {
+    x = clamp01(x); if (b === undefined) b = a;
+    var L = 1 - a / 2 - b / 2;                                            // droga przy prędkości przelotowej 1
+    return (x <= 1 - b ? rozbieg(x, a) : L - rozbieg(1 - x, b)) / L;
   }
   // dojazd wykładniczy: mnożnik POZOSTAŁEJ drogi, 1 → 0. Po miękkim rozbiegu (30% okna, zerowa prędkość i przyspieszenie
   // na starcie) droga do celu maleje jak exp(−k·s), czyli prędkość, przyspieszenie i zryw gasną razem, asymptotycznie.
@@ -95,7 +97,7 @@
     { id: 'uklad',   dur: 11 },
     { id: 'ziemia',  dur: 11, chapter: 'I · Ziemia' },
     { id: 'droga',   dur: 15, chapter: 'II · Droga światła' },
-    { id: 'sonda',   dur: 14, chapter: 'III · Voyager 1' },
+    { id: 'sonda',   dur: 14, chapter: 'III · Voyager 1', noBlend: true },   // start = koniec „drogi” z budowy → bez BLEND (jak w mrugniecie.js)
     { id: 'granica', dur: 20, chapter: 'IV · Granica' },
     { id: 'echo',    dur: 15, chapter: 'V · Echo' }
   ];
@@ -185,22 +187,25 @@
 
   // odległość kamery od Ziemi wzdłuż promienia w ujęciu „droga" (od −4 do D−8): logarytmicznie — powoli przy
   // Ziemi, szybko w pustce, hamowanie przed sondą
+  var FOV_PRZELOT = 44;                                                                // FOV „drogi” w spoczynku (też start „sondy”)
+  var BOK_OD = 2 / 3;                                                                   // początek przejścia nad oś (ułamek „drogi”)
   function drogaDist(f, D) { return dojazdDo(f, logLerp(4, D, easeInOut(f)) - 8, D - 8); }
   function poseDroga(f, A) {
     var u = norm(sub(A.V, A.E)), B = basis(u), D = len(sub(A.V, A.E));
     var dd = drogaDist(f, D);
     var lat = lerpV(add(mul(B.side, 2.2), mul(B.up, 1.6)), add(mul(B.side, 2.6), mul(B.up, 1.1)), smooth(f));
-    // po minięciu Ziemi (f > 0,3; przelot obok globu zostaje bez zmian) kamera przechodzi nad oś lotu — tam zaczyna
-    // się okrążenie sondy skrócone do 270° (dolotBok)
-    var wBok = smooth((f - 0.3) / 0.7);
-    if (wBok > 0) lat = lerpV(lat, dolotBok(B), wBok);
+    // w ostatniej ⅓ lotu kamera przechodzi nad oś lotu — tam zaczyna się okrążenie sondy skrócone do 270° (dolotBok).
+    // Runda 2 robiła to od f = 0,3: promień Ziemia–sonda kręcił się w kadrze przez cały lot w pustce (spirala 27° w 26,5–32 s).
+    // Kąt wokół osi po łuku (slerp kierunku, promień osobno): cięciwa lerpV ścinała łuk i skupiała obrót w środku okna.
+    var wBok = cruise((f - BOK_OD) / (1 - BOK_OD), 0.3);
+    if (wBok > 0) { var lb = dolotBok(B); lat = mul(slerp(norm(lat), norm(lb), wBok), lerp(len(lat), len(lb), wBok)); }
     var pos = add(add(A.E, mul(u, dd)), lat);
     // patrzy cały czas na sondę (z bocznego odsunięcia kierunek ≈ u, zbiega płynnie); cel trzymany blisko kamery
     // (< próg interstellar), a przy sondzie = sonda. Dawny cel „6 j. przed kamerą" + przejście na sondę skręcał 155°/s.
     var toV = sub(A.V, pos), dV = len(toV);
     var target = dV <= 40 ? A.V : add(pos, mul(toV, 40 / dV));
     var speed = Math.sin(Math.PI * clamp01((f - 0.08) / 0.84));                       // szeroki kąt przy dużej prędkości
-    return { pos: pos, target: target, roll: 3.9 * Math.sin(2 * Math.PI * f) * Math.sin(Math.PI * f) * DEG, fov: 44 + 20 * speed * speed };
+    return { pos: pos, target: target, roll: 3.9 * Math.sin(2 * Math.PI * f) * Math.sin(Math.PI * f) * DEG, fov: FOV_PRZELOT + 20 * speed * speed };
   }
 
   // początek ujęcia „granica" (bok, lekko od strony Ziemi) — „sonda" kończy dokładnie tu
@@ -224,11 +229,14 @@
     var endOff = rotate(granicaOffset(B, 1), u, OKRAZENIE);
     // cruise zamiast easeInOut: szczyt prędkości 1,4× średniej, nie 3× — sześcienna krzywa upychała okrążenie
     // w środku ujęcia (58,8°/s w t=44 s, pod napisem z odległością)
-    var e = cruise(f, 0.3);
+    // Rozbieg 15% (2,1 s), hamowanie 30% (4,2 s): postój na szwie „droga” → „sonda” 0,33 + 0,43 s zamiast 0,62 + 1,33 s.
+    // Runda 2 ruszała z postoju przez BLEND × cruise(0,3) (droga ∝ f⁵) — 1,3 s martwego kadru po szwie.
+    var e = cruise(f, 0.15, 0.3);
     var dir = rotate(slerp(norm(startOff), norm(endOff), e), u, -OKRAZENIE * e);
     var r = logLerp(len(startOff), len(endOff), e) * (1 - 0.35 * Math.sin(Math.PI * e)); // najazd w połowie
     // przechył z przeciwnym znakiem niż przy dawnym okrążeniu: kamera krąży teraz w drugą stronę
-    return { pos: add(A.V, mul(dir, r)), target: A.V, roll: 6 * hump(f) * DEG, fov: 45 };
+    // FOV z 44° (koniec „drogi”) do 45° — bez BLEND szew musi być ciągły sam z siebie
+    return { pos: add(A.V, mul(dir, r)), target: A.V, roll: 6 * hump(f) * DEG, fov: lerp(FOV_PRZELOT, 45, smooth(f / 0.3)) };
   }
 
   // „granica": kamera przypięta do membrany (punkt przebicia P = Ziemia + u·R) — sonda przepływa przez błonę.
@@ -282,11 +290,47 @@
   // (liczonej na bieżących kotwicach) — szwy bez skoków, nawet gdy kotwice się przesunęły.
   function pose(t, A) {
     var L = locate(t), p = POSES[L.shot.id](L.f, A);
-    if (L.i > 0 && L.f < BLEND) {
+    if (L.i > 0 && L.f < BLEND && !L.shot.noBlend) {
       var prev = POSES[SHOTS[L.i - 1].id](1, A);
       p = blendPose(prev, p, smooth(L.f / BLEND));
     }
     return p;
+  }
+
+  // ---------- etykieta błony a model sondy (wspólne dla obu filmów) ----------
+  // Etykieta błony to sprite stałej wielkości na ekranie, zaczepiony w punkcie przebicia P tuż przed sondą. Gdy kamera jest
+  // blisko sondy, model rośnie na ekranie, a etykieta zostaje tej samej wielkości — leży przy czaszy albo na niej.
+  // Reguła geometryczna zamiast okien czasowych: odstęp prostokąta etykiety od rzutu kuli opisanej na modelu (promień r
+  // wokół V) w płaszczyźnie kadru, w jednostkach tan (piksele ∝ tan; proporcje ekranu bez znaczenia, bo sprite trzyma rozmiar
+  // względem wysokości kadru). Kula, nie obrys czaszy: pod koniec „drogi” etykieta stoi 45 px NAD czaszą, nie na niej, a widz
+  // i tak czyta ją jako napis na sondzie — liczy się, że model jest duży i etykieta jest w jego polu (z wysięgnikami).
+  // box = {x0,x1,y0,y1}: prostokąt podkładki etykiety względem rzutu P (sprite: (u − center)·scale; solar.js liczy go z obiektu).
+  // Wynik < 0 = zachodzi; null = P albo sonda za kamerą (nic do porównania).
+  function odstepEtykiety(p, P, Vp, r, box) {
+    var f = norm(sub(p.target, p.pos)), x = norm(cross(f, rotate([0, 1, 0], f, p.roll || 0))), y = cross(x, f);
+    var dP = sub(P, p.pos), dV = sub(Vp, p.pos), gP = dot(dP, f), gV = dot(dV, f);
+    if (gP <= 0 || gV <= 0) return null;
+    var px = dot(dP, x) / gP, py = dot(dP, y) / gP, vx = dot(dV, x) / gV, vy = dot(dV, y) / gV;
+    var rho = Math.tan(Math.asin(Math.min(0.999, r / len(dV))));             // promień kątowy kuli (tan)
+    var cx = Math.max(px + box.x0, Math.min(vx, px + box.x1)), cy = Math.max(py + box.y0, Math.min(vy, py + box.y1));
+    return Math.sqrt((cx - vx) * (cx - vx) + (cy - vy) * (cy - vy)) - rho;
+  }
+  // Krycie etykiety 0..1 z odstępu w wysokościach etykiety: 0 poniżej ETYKIETA.od, pełne od ETYKIETA.do, miękko pomiędzy.
+  // Bez stanu — ta sama klatka daje zawsze ten sam wynik, więc pauza i przewijanie nie zostawiają etykiety w złym stanie.
+  // Daleko od sondy (kula = punkt) odstęp to własne odsunięcie etykiety od P (≈ 0,93 wysokości) → pełne krycie.
+  // od = 0,3: pod koniec „sondy” kula muska etykietę (odstęp 0,2 wysokości) — przy od = 0 wracał tam duch etykiety (krycie 0,12).
+  var ETYKIETA = { od: 0.3, do: 0.9 };
+  // Geometria sprite'a etykiety błony — jedno źródło dla solar.js (budowa sprite'a, kanwa, podkładka) i dla reguły krycia.
+  // W×H kanwy [px], pad = wiersze kanwy z podkładką, center = kotwica sprite'a, skala = szerokość względem wysokości kadru.
+  var ETYKIETA_SPRITE = { W: 1400, H: 200, pad: [30, 170], center: [-0.06, -0.35], skala: 0.49 };
+  // prostokąt podkładki względem rzutu kotwicy (jednostki tan); u = szerokość podkładki jako ułamek kanwy
+  function pudloEtykiety(u) {
+    var E = ETYKIETA_SPRITE, sx = E.skala, sy = E.skala * E.H / E.W, cx = E.center[0], cy = E.center[1];
+    return { x0: -cx * sx, x1: (u - cx) * sx, y0: (1 - E.pad[1] / E.H - cy) * sy, y1: (1 - E.pad[0] / E.H - cy) * sy };
+  }
+  function kryjEtykiete(p, P, Vp, r, box) {
+    var g = odstepEtykiety(p, P, Vp, r, box);
+    return g === null ? 1 : smooth((g / (box.y1 - box.y0) - ETYKIETA.od) / (ETYKIETA.do - ETYKIETA.od));
   }
 
   // ---------- liczby do napisów ----------
@@ -299,8 +343,9 @@
     SHOTS: SHOTS, TIMELAPSE: TIMELAPSE, BLEND: BLEND, LAUNCH_MS: LAUNCH_MS,
     total: total, shotStart: shotStart, shotDur: shotDur, locate: locate, clockMs: clockMs, clockRate: clockRate,
     crossFraction: crossFraction, timelapseParams: timelapseParams, timelapseHours: timelapseHours,
-    pose: pose, POSES: POSES, wide: wide, WIDE_MIN: WIDE_MIN, aimArc: aimArc, basis: basis, behindEarth: behindEarth, drogaDist: drogaDist, OKRAZENIE: OKRAZENIE,
+    pose: pose, POSES: POSES, wide: wide, WIDE_MIN: WIDE_MIN, aimArc: aimArc, basis: basis, behindEarth: behindEarth, drogaDist: drogaDist, OKRAZENIE: OKRAZENIE, BOK_OD: BOK_OD,
     smooth: smooth, easeInOut: easeInOut, cruise: cruise, dojazd: dojazd, dojazdDo: dojazdDo, DOJAZD: DOJAZD, logLerp: logLerp, window01: window01, slerp: slerp, rotate: rotate,
+    odstepEtykiety: odstepEtykiety, kryjEtykiete: kryjEtykiete, ETYKIETA: ETYKIETA, ETYKIETA_SPRITE: ETYKIETA_SPRITE, pudloEtykiety: pudloEtykiety,
     yearsSince: yearsSince, fmtInt: fmtInt, fmtDec: fmtDec,
     _v: { add: add, sub: sub, mul: mul, dot: dot, cross: cross, len: len, norm: norm }
   };

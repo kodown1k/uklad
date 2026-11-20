@@ -2310,7 +2310,9 @@ function buildProbes(){
 // Znaczniki godzin świetlnych: sygnały „wysłane" o pełnych godzinach UTC lecą od Ziemi do sondy z prędkością światła.
 const LD_RINGS = [1.5, 4, 10, 25, 60, 150, 400];
 const LD_FILM_R = [0, 0.3, 0.7, 1.5, 2.5, 4, 6.5, 10, 16, 25, 40, 60, 100, 150, 250, 400];   // pierścienie siatki błony
-const LD_LABEL_W = 1400, LD_LABEL_H = 200;   // szerokość: „… przebije ją za 1 d 23 h 59 min” w 44 px mono
+// geometria etykiety z Kino.ETYKIETA_SPRITE (to samo źródło liczy prostokąt dla reguły krycia w filmach);
+// szerokość 1400: „… przebije ją za 1 d 23 h 59 min” w 44 px mono
+const LD_LABEL_W = Kino.ETYKIETA_SPRITE.W, LD_LABEL_H = Kino.ETYKIETA_SPRITE.H, LD_LABEL_PAD = Kino.ETYKIETA_SPRITE.pad;
 function buildLightDayMembrane(p){
   const R = ProbeEphem.LIGHT_DAY_AU * AU_SCALE;
   const mat = op => new THREE.LineBasicMaterial({color:0x6fdcff, transparent:true, opacity:op,
@@ -2350,7 +2352,7 @@ function buildLightDayMembrane(p){
   const label = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, sizeAttenuation:false, transparent:true,
     depthTest:false, depthWrite:false}));
   // kotwica = punkt przebicia (przy sondzie zawsze w kadrze); center < 0 przesuwa napis w prawo i w górę na ekranie
-  label.center.set(-0.06, -0.35); label.scale.set(0.49, 0.49*LD_LABEL_H/LD_LABEL_W, 1); label.renderOrder = 10;
+  const ES = Kino.ETYKIETA_SPRITE; label.center.set(ES.center[0], ES.center[1]); label.scale.set(ES.skala, ES.skala*LD_LABEL_H/LD_LABEL_W, 1); label.renderOrder = 10;
   label.position.set(0, 0, R); group.add(label);
   scene.add(group);
   // promień Ziemia→sonda (blady) + znaczniki godzin świetlnych
@@ -2378,7 +2380,8 @@ function drawLightDayLabel(m, p, ms){
   // ciemna podkładka pod tekstem — czytelność na jasnej sondzie i błonie
   x.font = '600 58px "Space Grotesk", sans-serif'; const w1 = x.measureText('1 dzień świetlny od Ziemi').width;
   x.font = '44px "IBM Plex Mono", monospace'; const w2 = x.measureText(line2).width;
-  x.fillStyle = 'rgba(2,8,16,0.62)'; x.fillRect(0, 30, Math.min(LD_LABEL_W, 26 + Math.max(w1, w2) + 24), 140);
+  const bw = Math.min(LD_LABEL_W, 26 + Math.max(w1, w2) + 24); m.labelBox = Kino.pudloEtykiety(bw / LD_LABEL_W);   // prostokąt podkładki (reguła etykiety w filmach)
+  x.fillStyle = 'rgba(2,8,16,0.62)'; x.fillRect(0, LD_LABEL_PAD[0], bw, LD_LABEL_PAD[1] - LD_LABEL_PAD[0]);
   x.fillStyle = 'rgba(111,220,255,0.9)'; x.fillRect(0, 38, 6, 124);
   x.shadowColor = 'rgba(0,0,0,0.9)'; x.shadowBlur = 6;
   x.font = '600 58px "Space Grotesk", sans-serif'; x.fillStyle = '#bff2ff'; x.fillText('1 dzień świetlny od Ziemi', 26, 88);
@@ -5766,7 +5769,7 @@ addEventListener('keydown', e=>{ if(e.key==='Escape'){
    pasywna nietknięta), napisy, letterbox, dźwięk z Web Audio. Pętla kamery = własny rAF po animate
    (controls wyłączone, min/maxDistance zdjęte → controls.update() nie zmienia pozy).
    ============================================================ */
-Object.assign(kino, { t0:0, raf:0, crossMs:0, downMs:0, ld:null, mk:null, saved:null, cues:null,
+Object.assign(kino, { t0:0, raf:0, crossMs:0, downMs:0, ld:null, mk:null, pr:1, saved:null, cues:null,
   lastClock:NaN, lastHour:-1, audio:null, ready:false });
 const KINO_PROBE = 'voyager1';
 // Akcja NASA „Shine Bright for Voyager's Light-Day" (17.11.2026 po zmroku) — zaproszenie na karcie końcowej
@@ -5784,7 +5787,21 @@ function placeBodiesAt(ms){
 // błony Voyagera 2 wchodziła w kadr tytułowy, a etykieta bohatera lądowała na tytule karty); w trakcie filmu etykietą
 // bohatera steruje co klatkę pętla filmu. Wracają po „Zostań w scenie".
 function kinoMembraneLabels(visible){
-  probes.lightDay.forEach(m=>{ m.label.visible = visible; });
+  probes.lightDay.forEach(m=>{ m.label.visible = visible; m.label.material.opacity = 1; });   // krycie z kinoLabelFade wraca do 1
+}
+
+// Etykieta błony bohatera przy sondzie — reguła wspólna obu filmów (Kino.kryjEtykiete): gaśnie, gdy prostokąt etykiety wchodzi
+// w rzut kuli opisanej na modelu sondy (kamera blisko sondy). Okna filmów (tytuły, „echo”, „kropka”) zostają osobno.
+// Prostokąt podkładki (Kino.pudloEtykiety, liczony przy rysowaniu etykiety) w jednostkach tan względem kotwicy.
+function kinoLabelFade(p, A, pr, okno){
+  const L = kino.ld.label;
+  if(!okno){ L.visible = false; return; }
+  const P = Kino._v.add(A.E, Kino._v.mul(Kino._v.norm(Kino._v.sub(A.V, A.E)), kino.ld.R));
+  const a = Kino.kryjEtykiete(p, P, A.V, pr, kino.ld.labelBox || Kino.pudloEtykiety(1));
+  L.material.opacity = a; L.visible = a > 0.002;
+}
+function kinoProbeRadius(){                                            // promień kuli opisanej na modelu sondy (j. sceny)
+  return Math.max(0.05, new THREE.Box3().setFromObject(kino.mk).getBoundingSphere(new THREE.Sphere()).radius);
 }
 
 function kinoAnchors(){
@@ -5907,7 +5924,7 @@ function kinoLoop(now){
   const clk = Kino.clockMs(t, kino.crossMs);
   if(clk !== kino.lastClock){ kino.clockMs = clk; kino.lastClock = clk; placeBodiesAt(clk); updateProbes(); }
   // kamera
-  const p = Kino.pose(t, kinoAnchors());
+  const A = kinoAnchors(), p = Kino.pose(t, A);
   camera.position.set(p.pos[0], p.pos[1], p.pos[2]);
   controls.target.set(p.target[0], p.target[1], p.target[2]);
   const dir = Kino._v.norm(Kino._v.sub(p.target, p.pos)), up = Kino.rotate([0,1,0], dir, p.roll);
@@ -5919,7 +5936,7 @@ function kinoLoop(now){
   const fl = Math.exp(-Math.pow((t - tc)/(t < tc ? 0.25 : 0.9), 2));
   kino.ld.film.material.color.setScalar(1 + 7*fl + (t > tc ? 0.6 : 0));
   document.getElementById('kFlash').style.opacity = (0.55*fl).toFixed(3);
-  kino.ld.label.visible = !(t > tc - 0.4 && t < tc + 5.6) && Kino.locate(t).shot.id !== 'echo';
+  kinoLabelFade(p, A, kino.pr, !(t > tc - 0.4 && t < tc + 5.6) && Kino.locate(t).shot.id !== 'echo');
   // HUD: data i tempo czasu (od ujęcia „granica")
   const L = Kino.locate(t), dEl = document.getElementById('kDate');
   if(L.shot.id === 'granica' || L.shot.id === 'echo'){
@@ -5941,6 +5958,7 @@ function kinoStart(){
   kino.mk = probes.byId[KINO_PROBE].mk;
   kino.ld = probes.lightDay.find(m=>m.id===KINO_PROBE);
   if(!kino.ld){ kino.ld = buildLightDayMembrane(P); probes.lightDay.push(kino.ld); }   // poza oknem ±1 rok — film i tak ją pokazuje
+  kino.pr = kinoProbeRadius();
   if(!kino.saved) kino.saved = { min:controls.minDistance, max:controls.maxDistance, fov:camera.fov };
   focused = null; focusedMoon = null; focusedShip = false; tween = null; if(tour) stopTour();
   elInfo.classList.remove('show'); elBack.classList.remove('show');
@@ -6169,7 +6187,7 @@ function vgrCues(){
   add('poscig', 4.2, 9.6, 'line', 'Prawdziwa skala: kropka to 66 tys. km światła, kreska — 198 tys. km.');
   if(Number.isFinite(vgr.tCross)){
     const a = vgr.tCross - st('poscig');
-    add('poscig', a - 0.4, Math.min(a + 4.6, Mrug.shotDur('poscig')), 'line',
+    add('poscig', a - 0.4, Math.min(a + 2.6, Mrug.shotDur('poscig')), 'line',   // 3 s: dawne 5 s wisiało do 43,7 s, gdy kamera stała już przy sondzie
       `${_kfmt(kino.crossMs)}: Voyager przekracza granicę dnia świetlnego. Mrugnięcie leci ${Kino.fmtDec((vgr.arrMs - kino.crossMs)/3.6e6, 1)} h za nim.`);
   }
   const tp = vgr.tPass - st('przylot');
@@ -6259,8 +6277,9 @@ function vgrLoop(now){
   const tp = vgr.tPass;
   const fl = id === 'przylot' ? Math.exp(-Math.pow((t - tp)/(t < tp ? 0.3 : 1.1), 2)) : 0;
   kino.ld.film.material.color.setScalar(1 + 5*fl); flash = Math.max(flash, 0.45*fl);
-  // etykieta błony stoi tuż przy sondzie: od dolotu (ostatnia sekunda pościgu) do końca tytułu „Doleciało" leżałaby na modelu
-  kino.ld.label.visible = id !== 'kropka' && !(t > Mrug.shotStart('przylot') - 1 && t < tp + 5.4);
+  // etykieta błony: okno tytułu „Doleciało" i „kropki” + reguła wspólna z filmem 1 (gaśnie przy modelu sondy — w pościgu
+  // leżała na czaszy od 42,3 s, a po tytule stała przy sondzie do końca przylotu)
+  kinoLabelFade(p, A, vgr.pr, id !== 'kropka' && !(t > Mrug.shotStart('przylot') - 1 && t < tp + 5.4));
   // V: kropka Ziemi zza sondy mruga V-G-R (światło sprzed doby); ciemne niebo od połowy odjazdu
   vgr.dot.visible = id === 'kropka';
   vgrDark(id === 'kropka' && L.f > 0.22);
@@ -6277,7 +6296,7 @@ function vgrLoop(now){
   document.getElementById('kProg').style.width = (100*t/T).toFixed(2) + '%';
   document.getElementById('kFade').style.opacity = Math.max(1 - t/1.6, Math.max(0, (t - (T - 1.2))/1.2)).toFixed(3);
   kinoSlots(t);
-  vgr.snd = { gate, open: vgrAudioOpen(L) };                         // stan dźwięku klatki (nagranie wideo: scripts/video-mrug.mjs)
+  vgr.snd = { gate, open: vgrAudioOpen(L) };                         // stan dźwięku klatki (nagranie wideo: scripts/video-kino.mjs)
   vgrAudioTick(L, gate);
 }
 
@@ -6317,7 +6336,7 @@ function vgrStart(){
   for(let i=0; i<4; i++){ D = Kino._v.len(Kino._v.sub(_va(eclToScene(ProbeEphem.positionAt(e.samples, Ephemeris.julianDate(arr)))), vgr.Es)); arr = sendMs + D/c; }
   const em = bodies.find(b=>b.data.earth).mesh; if(!em.geometry.boundingSphere) em.geometry.computeBoundingSphere();
   vgr.rE = em.geometry.boundingSphere.radius * em.getWorldScale(_vV).x;
-  vgr.pr = Math.max(0.05, new THREE.Box3().setFromObject(kino.mk).getBoundingSphere(new THREE.Sphere()).radius);
+  vgr.pr = kinoProbeRadius();
   vgr.K = { startMs: Date.UTC(2026, 10, 17, 6, 30), sendMs, D, c, rE: vgr.rE, dEnd: 0.4 };
   vgr.arrMs = arr; vgr.tCross = Mrug.tAtClock(kino.crossMs, vgr.K); vgr.tPass = Mrug.tPass(vgr.K); vgr.passed = false;
   if(!kino.saved) kino.saved = { min:controls.minDistance, max:controls.maxDistance, fov:camera.fov };
