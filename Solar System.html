@@ -625,13 +625,17 @@
   </section>
 </div>
 
+<!-- nakładka „Myśliwce”: pusta do rejestracji w mysliwce/ (zakładka rejestruje się przez zakladki.js) -->
+<div id="mysliwce" hidden tabindex="-1" role="region" aria-label="Myśliwce"></div>
+
 <div id="rail" class="hud"></div>
 
 <div id="topbar">
-  <!-- zakładki widoku (obsługa: zjawiska/widok.js; w widoku zjawisk węzeł przenosi się do paska nakładki) -->
+  <!-- zakładki widoku (obsługa: zakladki.js; w nakładce węzeł przenosi się do jej paska) -->
   <nav id="zakladki" aria-label="Widok">
     <button type="button" id="zakUklad" class="on" aria-pressed="true"><span class="zak-dl">Układ Słoneczny</span><span class="zak-kr">Układ</span></button>
     <button type="button" id="zakZjawiska" aria-pressed="false"><span class="zak-dl">Zjawiska naukowe</span><span class="zak-kr">Zjawiska</span></button>
+    <button type="button" id="zakMysliwce" aria-pressed="false" hidden><span class="zak-dl">Myśliwce</span><span class="zak-kr">Myśliwce</span></button>
     <span id="zakInfo" role="status"></span>
   </nav>
   <button id="back"><span class="arrow">←</span> Widok układu</button>
@@ -847,6 +851,7 @@
 <script src="system-scale.js"></script>
 <script src="mrugniecie.js"></script>
 <script src="selectables.js"></script>
+<script src="zakladki.js"></script>
 <script src="solar.js"></script>
 <!-- Cloudflare Web Analytics: liczy wejścia na voyager.kodownik.co i kodownik.co/uklad/ (bez ciasteczek; test/analytics.test.js) --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "e8ab645d2daa4c95b7802a3a5f306a18"}'></script><!-- End Cloudflare Web Analytics -->
 <!-- Zjawiska naukowe: czysta logika + rejestr + silnik prezentacji; pliki zjawisk ładuje widok (pole `skrypt` rejestru) -->

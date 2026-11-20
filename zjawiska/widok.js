@@ -41,8 +41,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   var el = {
-    korzen: $('zjawiska'), zakladki: $('zakladki'), pasek: $('zjPasek'), topbar: $('topbar'),
-    zakUklad: $('zakUklad'), zakZjawiska: $('zakZjawiska'), zakInfo: $('zakInfo'),
+    korzen: $('zjawiska'), pasek: $('zjPasek'), zakZjawiska: $('zakZjawiska'),
     nazwa: $('zjNazwa'), doListy: $('zjDoListy'), zamknij: $('zjZamknij'),
     seans: $('zjSeans'), dzwiek: $('zjDzwiek'), pelny: $('zjPelny'), tekstBtn: $('zjTekstBtn'),
     lista: $('zjLista'), karty: $('zjKarty'), komunikat: $('zjKomunikat'),
@@ -101,14 +100,6 @@
       palety[nazwa] = v || '#ffffff';
     }
     return palety[nazwa];
-  }
-  function lotAktywny() {        // `flight` = globalny const solar.js (tryb lotu orbitalnego)
-    try { return typeof flight !== 'undefined' && !!flight && flight.active === true; } catch (_) { return false; }
-  }
-  function info(tekst) {
-    el.zakInfo.textContent = tekst || '';
-    if (info._t) clearTimeout(info._t);
-    if (tekst) info._t = setTimeout(function () { el.zakInfo.textContent = ''; }, 4500);
   }
   function wpisRejestru(id) { for (var i = 0; i < REJESTR.length; i++) if (REJESTR[i].id === id) return REJESTR[i]; return null; }
   function generator(ziarno) {   // mulberry32 — deterministyczne „losowe” rozmieszczenia (stały wygląd scen)
@@ -922,11 +913,6 @@
     el.korzen.hidden = !wl;
     el.korzen.classList.toggle('zj-tryb-lista', t === 'lista');
     el.korzen.classList.toggle('zj-tryb-prezentacja', t === 'prezentacja');
-    // zakładki: w Układzie w górnym pasku HUD, w zjawiskach w pasku nakładki (ten sam węzeł)
-    var dom = wl ? el.pasek : el.topbar;
-    if (dom && el.zakladki.parentNode !== dom) dom.insertBefore(el.zakladki, dom.firstChild);
-    el.zakUklad.classList.toggle('on', !wl); el.zakZjawiska.classList.toggle('on', wl);
-    el.zakUklad.setAttribute('aria-pressed', String(!wl)); el.zakZjawiska.setAttribute('aria-pressed', String(wl));
     el.lista.hidden = t !== 'lista';
     el.prezentacja.hidden = t !== 'prezentacja';
     if (t !== 'prezentacja') {
@@ -955,15 +941,10 @@
       li.appendChild(b); el.karty.appendChild(li);
     });
   }
-  // Wejście w widok zjawisk. Tryb lotu orbitalnego BLOKUJE zakładkę (lot ma własny, warpowalny zegar i stan
-  // manewru — nie wychodzimy z niego po cichu); użytkownik dostaje komunikat.
-  function wolnoWejsc() {
-    if (!lotAktywny()) return true;
-    info('Najpierw zakończ lot orbitalny (Esc) — potem otwórz zjawiska.');
-    return false;
-  }
-  Z.otworzListe = function (komunikat) {
-    if (tryb === 'uklad' && !wolnoWejsc()) return false;
+  // Wejście w widok zjawisk przechodzi przez wspólny rejestr zakładek (zakladki.js): on blokuje wejście w locie
+  // orbitalnym, zamyka poprzednią zakładkę, przełącza przyciski/pasek i woła `otworz(stan)` poniżej.
+  var oczekujacyKomunikat = '';
+  function wejdzLista(komunikat) {
     zbudujListe();
     el.komunikat.textContent = komunikat || '';
     var zUkladu = tryb === 'uklad';
@@ -971,10 +952,24 @@
     try { history[zUkladu ? 'pushState' : 'replaceState'](null, '', location.pathname + location.search + L.budujHash(null)); } catch (_) { /* file:// */ }
     if (!smoke) el.korzen.focus({ preventScroll: true });
     return true;
+  }
+  Z.otworzListe = function (komunikat) {
+    if (tryb === 'uklad') {
+      oczekujacyKomunikat = komunikat || '';
+      var ok = window.Zakladki.przelacz('zjawiska', null);
+      if (ok === false) oczekujacyKomunikat = '';          // wejście zablokowane: komunikat nie ma przeżyć do następnego otwarcia
+      return ok;
+    }
+    return wejdzLista(komunikat);
   };
   Z.otworz = function (id, krok) {
-    if (tryb === 'uklad' && !wolnoWejsc()) return Promise.resolve(false);
-    if (!wpisRejestru(id)) { Z.otworzListe('Nie znam zjawiska „' + id + '”. Wybierz jedno z listy.'); return Promise.resolve(false); }
+    if (tryb === 'uklad') {
+      return Promise.resolve(window.Zakladki.przelacz('zjawiska', { zjawisko: id, krok: krok }));   // false (blokada) albo obietnica z otworzZeStanu
+    }
+    return wejdzZjawisko(id, krok);
+  };
+  function wejdzZjawisko(id, krok) {
+    if (!wpisRejestru(id)) { wejdzLista('Nie znam zjawiska „' + id + '”. Wybierz jedno z listy.'); return Promise.resolve(false); }
     if (tryb === 'uklad') { zbudujListe(); ustawTryb('lista'); try { history.pushState(null, '', location.pathname + location.search + L.budujHash(null)); } catch (_) { /* file:// */ } }
     el.komunikat.textContent = 'Wczytuję…';
     return zaladuj(id).then(function (def) {
@@ -994,20 +989,19 @@
         return true;
       } catch (e) {
         console.error('Zjawiska: błąd budowy sceny', e);
-        Z.otworzListe('Nie udało się zbudować sceny 3D tego zjawiska (' + (e && e.message || e) + ').');
+        wejdzLista('Nie udało się zbudować sceny 3D tego zjawiska (' + (e && e.message || e) + ').');
         return false;
       }
     }, function (e) {
-      if (tryb !== 'uklad') Z.otworzListe('Nie udało się wczytać zjawiska: ' + (e && e.message || e) + '.');
+      if (tryb !== 'uklad') wejdzLista('Nie udało się wczytać zjawiska: ' + (e && e.message || e) + '.');
       return false;
     });
   };
   Z.zamknij = function () {
     if (tryb === 'uklad') return;
-    ustawTryb('uklad');
-    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) { /* file:// */ }
-    el.zakZjawiska.focus({ preventScroll: true });
+    window.Zakladki.zamknijDoUkladu();         // rejestr woła zamknijWidok() poniżej, czyści hash i oddaje fokus przyciskowi
   };
+  function zamknijWidok() { if (tryb !== 'uklad') ustawTryb('uklad'); }   // bez history/fokusu — to robi wywołujący
   Z.idz = idz;
   Z.stan = function () {
     return { tryb: tryb, id: biez && tryb === 'prezentacja' ? biez.def.id : null, krok: biez ? biez.krok : 0, pokazany: biez ? biez.pokazany : 0,
@@ -1037,8 +1031,6 @@
   };
 
   /* ---------- zdarzenia ---------- */
-  el.zakZjawiska.addEventListener('click', function () { if (tryb === 'uklad') Z.otworzListe(); });
-  el.zakUklad.addEventListener('click', function () { Z.zamknij(); });
   el.zamknij.addEventListener('click', function () { Z.zamknij(); });
   el.doListy.addEventListener('click', function () { Z.otworzListe(); });
   el.wstecz.addEventListener('click', function () { idz('wstecz'); });
@@ -1100,19 +1092,20 @@
   window.addEventListener('keyup', function (e) { if (Z.aktywny) e.stopPropagation(); }, true);
   document.addEventListener('visibilitychange', function () { if (document.hidden && film && !film.pauza) pauzaSeansu(); });
 
-  function zAdresu() {
-    var h = L.parsujHash(location.hash);
-    if (!h) { if (tryb !== 'uklad') ustawTryb('uklad'); return; }
-    if (!h.zjawisko) { if (tryb !== 'lista') Z.otworzListe(); return; }
+  // Stan z hasha (L.parsujHash) → widok; wołane przez rejestr zakładek (pierwszy parser, który rozpozna hash).
+  function otworzZeStanu(h) {
+    if (!h || !h.zjawisko) { var k = oczekujacyKomunikat; oczekujacyKomunikat = ''; if (tryb !== 'lista') wejdzLista(k); return; }
     if (tryb === 'prezentacja' && biez && biez.def.id === h.zjawisko) {
       if (h.film && !film) pokazKarteStartu(h.t);
       else if (h.krok !== biez.krok) idz({ idz: h.krok });
       return;
     }
-    Z.otworz(h.zjawisko, h.krok).then(function (ok) { if (ok && h.film) pokazKarteStartu(h.t); });
+    return wejdzZjawisko(h.zjawisko, h.krok).then(function (ok) { if (ok && h.film) pokazKarteStartu(h.t); return ok; });
   }
-  window.addEventListener('hashchange', zAdresu);
-  window.addEventListener('popstate', zAdresu);
+  window.Zakladki.zarejestruj({
+    id: 'zjawiska', przycisk: el.zakZjawiska, pasek: function () { return el.pasek; },
+    otworz: otworzZeStanu, zamknij: zamknijWidok, parsujHash: L.parsujHash
+  });
 
   // Start: `?smoke&zjawisko=<id>&krok=N[&t=0..1]` (hak testowy) albo link z hashem `#zjawisko=<id>&krok=N`.
   var q = L.parsujZapytanie(location.search);
@@ -1126,5 +1119,5 @@
       if (mt) { var tv = parseFloat(mt[1]); if (isFinite(tv)) smokeT = Math.max(0, Math.min(1, tv)); }
       Z.otworz(q.zjawisko, q.krok);
     }
-  } else if (L.parsujHash(location.hash)) zAdresu();
+  } else if (L.parsujHash(location.hash)) window.Zakladki.zAdresu(location.hash);
 })();

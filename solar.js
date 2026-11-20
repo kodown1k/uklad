@@ -5381,9 +5381,9 @@ function tickTween(now){
 
 function animate(){
   requestAnimationFrame(animate);
-  // Zjawiska naukowe (zjawiska/widok.js): nakładka ma własny renderer — Układ wtedy nie renderuje (GPU).
+  // Nakładki zakładek (zakladki.js: Zjawiska, Myśliwce): własny renderer — Układ wtedy nie renderuje (GPU).
   // reality.clockMs akumuluje dt, więc pauza by go zamroziła → po powrocie snap na realne „teraz" (wzorzec exitFlight).
-  if(window.Zjawiska && window.Zjawiska.aktywny){ animate.wstrzymany = true; return; }
+  if(window.Zakladki && window.Zakladki.aktywna()){ animate.wstrzymany = true; return; }
   if(animate.wstrzymany){ animate.wstrzymany = false; clock.getDelta(); reality.clockMs = Date.now(); }
   const dt = Math.min(clock.getDelta(), 0.05);
 
