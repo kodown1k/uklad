@@ -425,24 +425,38 @@
     var warga = naroza.map(function (q) { return [xL + dx(q[0], q[1]), yc + q[0], zc + q[1]]; });
     var wew = naroza.map(function (q) { return [xL + dx(q[0], q[1]), yc + q[0] * ky, zc + q[1] * kz]; });
     // środek wargi i głębokość kanału: dno wnętrza kończy się przed pierwszym miejscem, w którym oś kanału wchodzi w kadłub
-    // (albo gondolę), żeby z przodu w głębi wlotu było widać ciemne wnętrze, a nie burtę kadłuba
+    // (albo gondolę), żeby z przodu w głębi wlotu było widać ciemne wnętrze, a nie burtę kadłuba. Każdy narożnik dna dostaje
+    // też własną granicę z sond w narożniku i w środkach przyległych ścian: krawędź łączenia kadłuba potrafi przejść przez
+    // ścianę kanału od strony kadłuba, choć oś jest wolna (szary klin w kanale F-35 widziany ukosem) — wtedy dno w tym rogu
+    // podchodzi pod wargę (skośne dno), a reszta kanału zostaje tak głęboka jak była.
     var srodek = srednia(warga);
-    var du = 0.002, uS = (dl / 2 - srodek[0]) / dl, glMax = 0.75 * L, glG = glMax;
-    for (var uu = uS + du; uu <= uS + glMax / dl; uu += du) if (wKadlubie(K, uu, srodek[1], srodek[2])) { glG = (uu - uS - du) * dl - 0.005 * dl; break; }
-    var glb = Math.max(0.05 * L, Math.min(glMax, glG));
-    var gleb = naroza.map(function (q) { return [xL + dx(q[0], q[1]) - glb, yc + q[0] * ky * 0.85, zc + q[1] * kz * 0.85]; });
+    var du = 0.002, glMax = 0.75 * L;
+    function glebokosc(p) {
+      var uS = (dl / 2 - p[0]) / dl;
+      for (var uu = uS + du; uu <= uS + glMax / dl; uu += du) if (wKadlubie(K, uu, p[1], p[2])) return (uu - uS - du) * dl - 0.005 * dl;
+      return glMax;
+    }
+    var glb = Math.max(0.05 * L, Math.min(glMax, glebokosc(srodek)));
+    var dno = wew.map(function (p) { return [p[0], yc + (p[1] - yc) * 0.85, zc + (p[2] - zc) * 0.85]; });
+    var gNar = dno.map(glebokosc), gSc = dno.map(function (p, i) { return glebokosc(srednia([p, dno[(i + 1) % 4]])); });
+    var gleb = naroza.map(function (q, i) {
+      var g = Math.min(glb, Math.max(0.01 * L, Math.min(gNar[i], gSc[i], gSc[(i + 3) % 4])));
+      return [xL + dx(q[0], q[1]) - g, yc + q[0] * ky * 0.85, zc + q[1] * kz * 0.85];
+    });
     var s = loft([tyl, warga, wew, gleb], true), seg = s.seg;
     var oslona = wybierz(s, function (t) { return seg[t] <= 1; }, 'ram');
     var wnetrze = wybierz(s, function (t) { return seg[t] >= 2; }, 'wnetrze');
-    if (w.garb) dolacz(oslona, garb(K, w, xL, yc, zc, W, H));
+    if (w.garb) dolacz(oslona, garb(K, w, xL + dx(0, -W / 2), yc, zc, W, H));
     // kotwica: środek dolnej krawędzi obramowania wlotu
     var kot = srednia([warga[2], warga[3], wew[2], wew[3]]);
     return { siatki: [oslona, wnetrze], kotwica: kot, osiowy: osiowy, otwor: { punkt: srodek, kierunek: [-1, 0, 0] } };
   }
-  // Garb DSI: niski ostrosłup na burcie przed wewnętrzną ścianą kanału.
-  function garb(K, w, xL, yc, zc, W, H) {
-    var dlg = w.garb.dl * K.dl, wys = w.garb.wys * K.dl, zb = zc - W / 2, xm = xL + dlg * 0.35;
-    var podst = [[xL + dlg, yc, zb], [xm, yc + H * 0.45, zb], [xL - dlg * 0.1, yc, zb], [xm, yc - H * 0.45, zb]];
+  // Garb DSI: niski ostrosłup na burcie przed wewnętrzną ścianą kanału. Tył podstawy na krawędzi wargi od strony kadłuba
+  // (xWargi — warga jest ścięta skośnie, więc ta krawędź wysunięta przed xL): wcześniej tył sięgał 0,1 dl garbu za xL
+  // i ostrosłup wchodził za wargę, kilka centymetrów w głąb kanału (F-35: ~4 cm ponad wewnętrzną ścianę).
+  function garb(K, w, xWargi, yc, zc, W, H) {
+    var dlg = w.garb.dl * K.dl, wys = w.garb.wys * K.dl, zb = zc - W / 2, xm = xWargi + dlg * 0.4;
+    var podst = [[xWargi + dlg, yc, zb], [xm, yc + H * 0.45, zb], [xWargi, yc, zb], [xm, yc - H * 0.45, zb]];
     var szczyt = [xm + dlg * 0.05, yc, zb + wys];
     var s = Siatka('ram');
     var ip = podst.map(function (p) { return wierz(s, p[0], p[1], p[2], 0, 0); }), is = wierz(s, szczyt[0], szczyt[1], szczyt[2], 1, 1);

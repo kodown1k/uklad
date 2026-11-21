@@ -62,6 +62,13 @@
 /* winieta kinowa nad sceną (nie łapie kursora) */
 .my-scena::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
   background: radial-gradient(ellipse 75% 70% at 55% 50%, transparent 55%, rgba(0, 0, 0, .55) 100%); }
+/* post kina (Kino.post) ma własną winietę — CSS-owa tylko, gdy obraz idzie zwykłym renderem */
+.my-scena.my-post::after { content: none; }
+/* pokaz: kanwa w kadrze 2.39:1 (pozycja i wymiar z Kino.kadrKinowy w widok.js), pasy w kolorze tła nakładki */
+.my-tryb-pokaz { background: #000; }
+.my-tryb-pokaz .my-canvas { cursor: default; }
+/* napis pokazu mieści się w dolnym pasie kadru: szerszy wiersz = najwyżej dwie linie przy wersach do ~140 znaków */
+.my-tryb-pokaz .my-kino-wers { max-width: min(88ch, 92%); }
 .my-ladowanie, .my-komunikat { position: absolute; left: 50%; transform: translateX(-50%); z-index: 4; font: 500 13px/1.4 var(--my-kroj-mono);
   letter-spacing: .06em; color: var(--my-atrament); background: var(--my-szklo); border: 1px solid var(--my-linia-2); padding: 9px 16px; }
 .my-ladowanie { top: 45%; }

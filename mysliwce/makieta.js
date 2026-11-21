@@ -1,11 +1,13 @@
 'use strict';
 /* Zakładka Myśliwce — makieta 3D maszyny: THREE.Group z wyjścia mysliwce/platowiec.js (plik przeglądarkowy, THREE r128).
-   Makieta.zbuduj(THREE, id, { lod, env, anizotropia, odcien }) →
+   Makieta.zbuduj(THREE, id, { lod, env, anizotropia }) →
      { id, grupa, czesci: { [rodzaj]: Object3D (userData.czesc = Czesc z czesci.js, userData.kotwica = Vector3 w układzie
        części) }, dysze: Object3D[] (środek wylotu, lokalna oś −x = kierunek strumienia; userData { szer, wys, typ }),
        wyloty: [{ punkt, kierunek, szer, wys, typ }] (z platowiec.js, układ części `dysze` — dla Ogien.utworz z rodzicem czesci.dysze),
-       obwiednia: { min, max } [m], rozloz(u), komory(u), plan(wl), podswietl(rodzaj|null), aktualizuj(czas), zwolnij() }
-   Materiały: matowy RAM (ciemnoszary z odcieniem kraju, efektywna szorstkość ~0,75 z tekstury), owiewka złocista
+       obwiednia: { min, max } [m], bryla (wynik Platowiec.zbuduj — kotwice dla Pokaz.plan), rozloz(u), komory(u), plan(wl),
+       podswietl(rodzaj|null), aktualizuj(czas), zwolnij() }
+   Materiały: matowy RAM (neutralny ciemnoszary — kolor państwa to akcent UI i tabliczek, nie lakieru; efektywna
+   szorstkość ~0,75 z tekstury), owiewka złocista
    półprzezroczysta z odbiciem (env z PMREM sceny proceduralnej — podaje widok), metal dysz i podwozia, ciemny kanał
    wlotu, jasne wnętrza komór, guma. Linie paneli, ząbkowane krawędzie drzwiczek i nity — tekstura canvas na UV
    z platowiec.js przeskalowanych do metrów (stała gęstość tekstury na każdej siatce). Maszyny `niesfotografowany`
@@ -15,7 +17,6 @@
 (function (root) {
   var KAFEL = 4;                    // [m] — tyle płatowca obejmuje jeden kafel tekstury paneli
   var PX = 1024;
-  var ODCIEN = { USA: '#6fa3d6', Rosja: '#d6879c', Chiny: '#c9a94e' };   // zapas, gdy widok nie poda odcienia
   var KOLOR_PODSW = 0x22b4ff;
 
   function generator(ziarno) {      // mulberry32 — deterministyczny wygląd paneli
@@ -285,11 +286,11 @@
     '  gl_FragColor = vec4(uKolor * a, a);\n' +
     '}';
 
-  function materialy(T, opcje, kraj, tex, niesf) {
+  function materialy(T, opcje, tex, niesf) {
     var env = opcje.env || null;
     // kolory w sRGB → liniowe (renderer wyprowadza sRGB): to, co wpisane, to, co widać przy świetle 1
     var lin = function (k) { return new T.Color(k).convertSRGBToLinear(); };
-    var ram = new T.Color('#474c53').lerp(new T.Color(opcje.odcien || ODCIEN[kraj] || '#808080'), 0.06);
+    var ram = new T.Color('#474c53');                    // bez odcienia kraju (Chiny wychodziły khaki; J-20 jest ciemnoszary)
     if (niesf) ram.lerp(new T.Color('#3a6170'), 0.35);
     ram.convertSRGBToLinear();
     var ramMat = function (rodzajPlata) {
@@ -392,7 +393,7 @@
     var tex = tekstury(maluj(los));
     tex.plat = tekstury(maluj(generator(ziarnoZ(id + '/plat')), { drzwi: 0 }));
     var niesf = !!dane.niesfotografowany;
-    var fabryka = materialy(T, opcje, dane.kraj, tex, niesf);
+    var fabryka = materialy(T, opcje, tex, niesf);
     var opisy = {};
     (C.CZESCI[id] || []).forEach(function (c) { opisy[c.rodzaj] = c; });
 
@@ -475,7 +476,7 @@
     function wygladz(u) { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); }
     var stanRozl = 0, stanKomor = 0;
     var api = {
-      id: id, grupa: grupa, czesci: czesci, dysze: dysze, obwiednia: bryla.obwiednia, niesfotografowany: niesf,
+      id: id, grupa: grupa, czesci: czesci, dysze: dysze, obwiednia: bryla.obwiednia, bryla: bryla, niesfotografowany: niesf,
       wyloty: (bryla.czesci.dysze && bryla.czesci.dysze.wyloty) || [],
       rozloz: function (u) {
         stanRozl = u; var e = wygladz(u);

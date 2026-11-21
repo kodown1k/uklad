@@ -1,6 +1,8 @@
 'use strict';
 /* Zakładka Myśliwce — kino pokazu: kadr 2.39:1, harmonogram i warstwa napisów, kamera pościgowa, post obrazu.
-   Plik dual-export: całość ładuje się w node (testy), część z THREE/DOM dostaje je w argumentach.
+   Plik dual-export: całość ładuje się w node (testy), część z THREE/DOM dostaje je w argumentach. W przeglądarce
+   window.MysliwceKino — NIE window.Kino, które należy do filmu Voyagera (kino.js w korzeniu, ~33 odwołania w solar.js);
+   poniżej „Kino” to skrót tej nazwy (test/globalne-nazwy.test.js pilnuje unikalności nazw globalnych).
    Czyste:
      Kino.kadrKinowy(w, h, proporcja=2.39) → { x, y, w, h, pasGora, pasDol, tryb: 'pasy'|'pelny' } — poziomo kadr 2.39:1
        z równymi pasami (okno szersze niż 2.39 → pasy po bokach, pasGora = pasDol = 0); telefon w pionie (h > w) → pełny.
@@ -320,7 +322,7 @@
       zwolnijZasoby(zasoby);
       throw e;
     }
-    var bufor = new T.Vector2(), w = 0, h = 0, jakosc = 'pelna';
+    var bufor = new T.Vector2(), w = 0, h = 0, jakosc = 'pelna', rozgrzany = false;
     function przebieg(m, cel) { siatka.material = m; renderer.setRenderTarget(cel); renderer.render(sc, kam); }
     // rozmycie Gaussa (z → pomoc → cel), `n` iteracji z rosnącym krokiem; kolejne iteracje cel → pomoc → cel
     function rozmyj(z, cel, pomoc, rw, rh, n) {
@@ -372,7 +374,10 @@
         var p = rp, c = rc, pelna = jakosc === 'pelna';
         renderer.setRenderTarget(rtScena); renderer.render(scena, kamera);
         var zIskra = zrodla(kamera, o && o.zrodlaGoraca);         // po renderze sceny: macierze kamery bieżące
-        if (zIskra) {
+        // pierwsza klatka przechodzi też przez iskrę (bez strug = zero ze znakiem): jej cele i program powstają od razu,
+        // nie przy pierwszym płomieniu — liczniki zasobów renderera nie rosną potem przy włączeniu dopalacza
+        if (zIskra || !rozgrzany) {
+          rozgrzany = true;
           mIskra.uniforms.tD.value = rtScena.texture; mIskra.uniforms.uProg.value = POST.iskraProg; mIskra.uniforms.uOkno.value = POST.iskraOkno;
           przebieg(mIskra, rtI);
           if (pelna) rozmyj(rtI, rtB, rtB2, p[0], p[1], 1);
@@ -472,5 +477,5 @@
     post: post, napisy: napisy,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Kino;
-  else root.Kino = Kino;
+  else root.MysliwceKino = Kino;   // nie `Kino`: tę nazwę ma film Voyagera (kino.js w korzeniu, solar.js)
 })(typeof window !== 'undefined' ? window : globalThis);

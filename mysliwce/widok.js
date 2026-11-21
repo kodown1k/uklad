@@ -1,8 +1,13 @@
 'use strict';
 /* Zakładka Myśliwce — nakładka z własnym rendererem (plik przeglądarkowy; ładuje go leniwie mysliwce/ladowanie.js).
-   window.Mysliwce = { otworz(stan), zamknij(), stan(), diagnostyka(), makieta(), rzutKotwicy(rodzaj) }.
-   Tryby: hangar / pokaz / makieta. Hangar (Task 9) i pokaz (Task 8) jeszcze nie istnieją — do tego czasu każde
-   wejście otwiera makietę (bez id: pierwszą maszynę raportu).
+   window.Mysliwce = { otworz(stan), zamknij(), stan(), diagnostyka(), makieta(), pokaz(), rzutKotwicy(rodzaj) }.
+   Tryby: hangar / pokaz / makieta. Hangaru (Task 9) jeszcze nie ma — wejście bez id otwiera pokaz pierwszej maszyny
+   (albo ostatnio oglądanej), „Hangar” i Esc w makiecie wracają do Układu, dopóki hangar nie powstanie.
+   Pokaz (mysliwce/pokaz.js): kadr 2.39:1 (kanwa w kadrze z Kino.kadrKinowy, pasy = tło nakładki), napisy w dolnym pasie,
+   kamera pościgowa wokół lecącej maszyny, dźwięk domyślnie włączony (gestem jest klik zakładki/maszyny; bez gestu — przy
+   pierwszym kliknięciu albo klawiszu). Klawisze: spacja pauza, ←/→ ujęcie, F pełny ekran, M dźwięk, Esc → makieta tej
+   maszyny; przyciski Pauza / Makieta / Hangar. Obraz pokazu i makiety idzie przez Kino.post (jeden na renderer); gdy post
+   działa, kanwa nie dostaje drugiej winiety z CSS (klasa .my-post na .my-scena).
    Makieta: OrbitControls, raycast tylko po częściach makiety (bieżące transformacje — rozłożenie, drzwi komór),
    hover → podświetlenie części (fresnel), klik → karta części (nazwa, opis, pewność, źródło), przełączniki
    Rozłóż / Komory / Plan / Dopalacz (+ suwak ciągu), dźwięk (M), karta danych maszyny z raportu, pełny ekran (F) na
@@ -13,7 +18,8 @@
    powrót = rampa głośności; wyjście do Układu zamyka kontekst.
    Scena (tło, posadzka, światła, env PMREM) i makieta są budowane przy wejściu i zwalniane przy wyjściu do Układu;
    zostaje tylko renderer (jeden kontekst WebGL na całe życie strony).
-   Hak testowy: ?smoke&mysliwiec=<id>&makieta → stały kadr, natychmiastowe stany, marker `MYSLIWCE_READY <id> makieta`;
+   Hak testowy: ?smoke&mysliwiec=<id>&ujecie=N[&t=0..1] → kadr pokazu w chwili t ujęcia N, marker `MYSLIWCE_READY <id> <N>`;
+   ?smoke&mysliwiec=<id>&makieta → stały kadr, natychmiastowe stany, marker `MYSLIWCE_READY <id> makieta`;
    `&dopalacz[=0..1]` = silniki od razu na danym ciągu (domyślnie 1), płomień w stałej chwili t = 1 s, bez dźwięku;
    `&kadr=ogien|ogienbok|ogientyl` = kadry płomienia (¾ z tyłu, bok, prosto w dysze).
    Tekst z danych trafia do DOM wyłącznie przez textContent. Błędy własne: prefiks „Myśliwce: ”. */
@@ -55,6 +61,12 @@
     ui.suwak.title = 'Ciąg silników: 15% bieg jałowy, 60% pełna moc bez dopalacza, powyżej — dopalacz';
     ui.ciagTekst = el('output', 'my-ciag-wart', '100%', ui.ciag);
     ui.dopalacz = guzik(ui.narzedzia, 'Dopalacz', 'Silniki na dopalaczu — ogień i dźwięk (A)');
+    // pokaz: pauza, przejście do makiety tej maszyny, powrót do hangaru
+    ui.pauza = guzik(ui.narzedzia, 'Pauza', 'Zatrzymaj pokaz (spacja)');
+    ui.doMakiety = guzik(ui.narzedzia, 'Makieta', 'Makieta tej maszyny — obracanie, części, dopalacz (Esc)');
+    ui.doMakiety.removeAttribute('aria-pressed');
+    ui.doHangaru = guzik(ui.narzedzia, 'Hangar', 'Wróć do hangaru');
+    ui.doHangaru.removeAttribute('aria-pressed');
     ui.dzwiek = guzik(ui.narzedzia, '♪ Dźwięk', 'Dźwięk silników (M)', 'my-dzwiek');
     ui.karta = guzik(ui.narzedzia, 'Karta', 'Karta danych maszyny z raportu (D)');
     ui.pelny = guzik(ui.narzedzia, 'Pełny ekran', 'Pełny ekran (F)');
@@ -66,6 +78,7 @@
     ui.canvas.setAttribute('aria-label', 'Makieta 3D — przeciągnij, by obrócić; kółko przybliża; kliknij część, by ją opisać');
     ui.etykieta = el('div', 'my-etykieta', null, ui.scena); ui.etykieta.hidden = true;
     ui.komunikat = el('div', 'my-komunikat', null, ui.scena); ui.komunikat.setAttribute('role', 'status'); ui.komunikat.hidden = true;
+    ui.napisy = window.MysliwceKino.napisy(ui.scena);
 
     ui.dane = el('aside', 'my-panel my-dane', null, ui.scena); ui.dane.setAttribute('aria-label', 'Karta danych maszyny');
     ui.czesc = el('aside', 'my-panel my-czesc', null, ui.scena); ui.czesc.setAttribute('aria-label', 'Karta części'); ui.czesc.hidden = true;
@@ -97,8 +110,9 @@
   // silniki (mysliwce/silniki.js: bezwładność, płomień, światło zbiorcze) bieżącej makiety; silnikiWl = przycisk Dopalacz;
   // dzwiekWl null = jeszcze nie wybrano (pierwsze włączenie dopalacza włącza dźwięk), false = wyciszony klawiszem M
   var sil = null, silnikiWl = false, dzwiek = null, dzwiekWl = null;
+  // tryb bieżący ('makieta' | 'pokaz'), odtwarzacz pokazu, kadr kinowy (Kino.kadrKinowy) i oczekiwanie na gest dla dźwięku
+  var tryb = null, pk = null, kadrK = null, czekaNaGest = false;
 
-  function token(nazwa) { return getComputedStyle(doc.documentElement).getPropertyValue(nazwa).trim(); }
   function komunikat(t) {
     ui.komunikat.textContent = t || ''; ui.komunikat.hidden = !t;
     if (zegarKom) clearTimeout(zegarKom);
@@ -113,7 +127,7 @@
     r.outputEncoding = T.sRGBEncoding;
     r.toneMapping = T.ACESFilmicToneMapping; r.toneMappingExposure = 0.82;
     r.shadowMap.enabled = true; r.shadowMap.type = T.PCFSoftShadowMap;
-    gl = { renderer: r, w: 0, h: 0 };
+    gl = { renderer: r, w: 0, h: 0, post: window.MysliwceKino.post(T, r) };
     window.addEventListener('resize', dopasuj);
     doc.addEventListener('fullscreenchange', function () { dopasuj(); ui.pelny.setAttribute('aria-pressed', String(doc.fullscreenElement === korzen)); });
     return gl;
@@ -123,6 +137,16 @@
     var w = ui.scena.clientWidth, h = ui.scena.clientHeight;
     if (!(w > 0 && h > 0) || (w === gl.w && h === gl.h)) return;
     gl.w = w; gl.h = h;
+    if (tryb === 'pokaz') {
+      // kanwa w kadrze 2.39:1 (pasy = tło nakładki), napisy w dolnym pasie
+      var k = kadrK = window.MysliwceKino.kadrKinowy(w, h), st = ui.canvas.style;
+      st.left = k.x + 'px'; st.top = k.y + 'px'; st.width = k.w + 'px'; st.height = k.h + 'px'; st.right = 'auto'; st.bottom = 'auto';
+      gl.renderer.setSize(k.w, k.h, false);
+      ui.napisy.kadr(k);
+      if (pk) pk.rozmiar(k.w, k.h);
+      return;
+    }
+    kadrK = null; ui.canvas.style.cssText = '';
     gl.renderer.setSize(w, h, false);
     if (sc) { sc.kamera.aspect = w / h; kadrPoboczny(true); }
   }
@@ -201,8 +225,7 @@
     zwolnijSilniki();
     if (mk) { mk.zwolnij(); mk = null; }
     var dane = D.mysliwiec(id);
-    mk = window.Makieta.zbuduj(T, id, { lod: 'pelny', env: sc.studio.env.texture, anizotropia: gl.renderer.capabilities.getMaxAnisotropy(),
-      odcien: token(D.KRAJE[dane.kraj].kolor) || null });
+    mk = window.Makieta.zbuduj(T, id, { lod: 'pelny', env: sc.studio.env.texture, anizotropia: gl.renderer.capabilities.getMaxAnisotropy() });
     mk.grupa.position.y = -mk.obwiednia.min[1];               // koła na posadzce
     sc.scena.add(mk.grupa);
     idBiez = id; hover = null; wybrana = null;
@@ -280,6 +303,7 @@
   }
   function wybierz(id) {
     if (!aktywny || !D.mysliwiec(id)) return;
+    if (tryb === 'pokaz') { wejdzPokaz(id); ustawAdres(id, false); return; }
     pokazMakiete(id);
     ustawAdres(id, false);
   }
@@ -289,7 +313,7 @@
   }
   function ustawAdres(id, nowy) {
     if (smoke) return;
-    var h = '#mysliwiec=' + id + '&tryb=makieta';
+    var h = '#mysliwiec=' + id + '&tryb=' + (tryb || 'makieta');
     if (location.hash === h) return;
     try { history[nowy ? 'pushState' : 'replaceState'](null, '', location.pathname + location.search + h); } catch (_) { /* file:// */ }
   }
@@ -379,17 +403,20 @@
     if (wl && !dzwiek) {
       dzwiek = window.Dzwiek && window.Dzwiek.silnik();
       if (!dzwiek) { ui.dzwiek.disabled = true; komunikat('Dźwięk niedostępny w tej przeglądarce.'); dzwiekWl = false; return; }
-      dzwiek.ambient('hangar');
+      dzwiek.ambient(tryb === 'pokaz' ? 'niebo' : 'hangar');
     }
     dzwiekWl = !!wl;
     ui.dzwiek.setAttribute('aria-pressed', String(dzwiekWl));
     ui.dzwiek.textContent = dzwiekWl ? '♪ Dźwięk' : '♪ Cisza';
     if (!dzwiek) return;
     if (sil) sil.dzwiek(dzwiekWl ? dzwiek : null);
-    if (dzwiekWl) { if (!doc.hidden) dzwiek.wznow(); } else dzwiek.pauza();
+    if (pk) pk.dzwiek(dzwiekWl ? dzwiek : null);
+    if (dzwiekWl) { if (!doc.hidden && !(pk && pk.stan().pauza)) dzwiek.wznow(); } else dzwiek.pauza();
   }
   function zwolnijDzwiek() {
     if (sil) sil.dzwiek(null);
+    if (pk) pk.dzwiek(null);
+    czekaNaGest = false;
     if (dzwiek) { dzwiek.zwolnij(); dzwiek = null; }
     dzwiekWl = null;
     ui.dzwiek.setAttribute('aria-pressed', 'false'); ui.dzwiek.textContent = '♪ Dźwięk';
@@ -400,8 +427,25 @@
   // karta w tle: dźwięk pauzuje (ctx.suspend), po powrocie rusza z rampą głośności (Dzwiek.wzmocnienieWznowienia)
   doc.addEventListener('visibilitychange', function () {
     if (!dzwiek || !dzwiekWl) return;
-    if (doc.hidden) dzwiek.pauza(); else dzwiek.wznow();
+    if (doc.hidden) dzwiek.pauza(); else if (!(pk && pk.stan().pauza)) dzwiek.wznow();
   });
+  // Pokaz bez gestu (wejście z linku): dźwięk rusza przy pierwszym kliknięciu albo klawiszu (polityka autoplay) — M to wybór
+  // użytkownika, więc go nie wyprzedzamy.
+  function gestDzwieku(e) {
+    if (!czekaNaGest || !aktywny || tryb !== 'pokaz') return;
+    // M i przycisk „♪ Dźwięk” (klik, Enter/spacja z fokusem) same przełączają dźwięk — gest tylko zdejmuje oczekiwanie,
+    // inaczej pierwszy klik w przycisk najpierw włączał (pointerdown), a zaraz potem wyciszał (click)
+    if ((e.type === 'keydown' && (e.key === 'm' || e.key === 'M')) || (e.target && ui.dzwiek.contains(e.target))) { czekaNaGest = false; return; }
+    czekaNaGest = false;
+    if (dzwiekWl !== false) ustawDzwiek(true);
+  }
+  window.addEventListener('pointerdown', gestDzwieku, true);
+  window.addEventListener('keydown', gestDzwieku, true);
+  function dzwiekPokazu() {
+    if (smoke || dzwiekWl === false) return;
+    var gest = !navigator.userActivation || navigator.userActivation.isActive;
+    if (gest) ustawDzwiek(true); else czekaNaGest = true;
+  }
   function zastosuj() { if (mk) { mk.rozloz(wart.rozloz); mk.komory(wart.komory); } }
   function ograniczonyRuch() { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
   function pelnyEkran() {
@@ -416,6 +460,9 @@
   ui.karta.addEventListener('click', function () { ustawDane(ui.dane.hidden); });
   ui.pelny.addEventListener('click', pelnyEkran);
   ui.zamknij.addEventListener('click', function () { window.Zakladki.zamknijDoUkladu(); });
+  ui.pauza.addEventListener('click', function () { pauzaPokazu(); });
+  ui.doMakiety.addEventListener('click', zPokazuDoMakiety);
+  ui.doHangaru.addEventListener('click', doHangaru);
   ui.czescZamknij.addEventListener('click', zamknijCzesc);
 
   /* ---------- wskazywanie części (raycast tylko po częściach, bieżące transformacje) ---------- */
@@ -462,7 +509,7 @@
   /* ---------- pętla ---------- */
   function klatka(teraz) {
     raf = aktywny ? requestAnimationFrame(klatka) : 0;
-    if (!sc || !mk) return;
+    if (!mk || (!sc && !pk)) return;
     var dt = Math.min(0.25, Math.max(0, (teraz - tOst) / 1000)); tOst = teraz;   // animacje w czasie rzeczywistym także przy niskim fps
     fps.n++;
     if (teraz - fps.t0 >= 1000) {
@@ -471,6 +518,12 @@
       if (fps.slabe >= 2 && jakosc === 'pelna' && !wymusPelna) ustawJakosc('lekka');
     }
     dopasuj();
+    if (pk) {
+      pk.krok(dt);
+      klasaPostu();
+      if (gotowosc) { console.log('MYSLIWCE_READY ' + gotowosc); gotowosc = null; }
+      return;
+    }
     var zmiana = false;
     ['rozloz', 'komory'].forEach(function (k) {
       if (wart[k] === cel[k]) return;
@@ -485,15 +538,123 @@
     if (sc.sterowanie) sc.sterowanie.update();
     if (wskaznik) { var w = wskaznik; ustawHover(trafienie(w.x, w.y), w.x, w.y); }
     mk.aktualizuj(smoke ? 0 : (teraz - czasStartu) / 1000);
-    gl.renderer.render(sc.scena, sc.kamera);
+    gl.post.renderuj(sc.scena, sc.kamera, { czas: smoke ? 1 : (teraz - czasStartu) / 1000, zrodlaGoraca: sil ? sil.zrodlaGoraca() : [] });
+    klasaPostu();
     if (gotowosc) { console.log('MYSLIWCE_READY ' + gotowosc); gotowosc = null; }
   }
+  // winieta jedna: gdy post działa (ma własną), CSS-owa nad kanwą znika; po powrocie do zwykłego renderu wraca
+  function klasaPostu() { ui.scena.classList.toggle('my-post', !!(gl && gl.post.stan().aktywny)); }
   function ustawJakosc(j) {
     jakosc = j;
     gl.renderer.setPixelRatio(j === 'pelna' ? Math.min(window.devicePixelRatio || 1, 2) : 1);
+    gl.post.jakosc(j);
     if (sc) sc.studio.cienie(j === 'pelna');
     if (sil) sil.jakosc(j);
+    if (pk) pk.jakosc(j);
     gl.w = 0; dopasuj();
+  }
+
+  /* ---------- tryby: pokaz i makieta ---------- */
+  // Przyciski i panele trybu: pokaz chowa narzędzia makiety, pasek maszyn i karty (karta danych wraca w finale).
+  function trybUI() {
+    var p = tryb === 'pokaz';
+    [ui.rozloz, ui.komory, ui.plan, ui.dopalacz, ui.karta].forEach(function (b) { b.hidden = p; });
+    ui.ciag.hidden = p || !silnikiWl;
+    [ui.pauza, ui.doMakiety, ui.doHangaru].forEach(function (b) { b.hidden = !p; });
+    ui.dol.hidden = p;
+    ui.scena.classList.toggle('my-tryb-pokaz', p);
+    ui.canvas.setAttribute('aria-label', p ? 'Pokaz kinowy maszyny — spacja pauza, strzałki zmieniają ujęcie, Esc otwiera makietę'
+      : 'Makieta 3D — przeciągnij, by obrócić; kółko przybliża; kliknij część, by ją opisać');
+    if (p) { zamknijCzesc(); ustawHover(null); wskaznik = null; ui.dane.hidden = true; }
+    gl.w = 0; dopasuj();
+  }
+  function wejdzMakieta(id) {
+    var bylPokaz = tryb === 'pokaz';
+    if (pk) zwolnijPokaz();
+    tryb = 'makieta';
+    if (!sc) zbudujScene();
+    trybUI();
+    if (bylPokaz) { ustawDane(smoke || (korzen.clientWidth || window.innerWidth) >= 900); ustawSilniki(false); }
+    if (dzwiek) dzwiek.ambient('hangar');
+    pokazMakiete(id);
+  }
+  function zwolnijPokaz() {
+    if (!pk) return;
+    pk.zwolnij(); pk = null;
+    if (mk) { mk.zwolnij(); mk = null; }
+    ui.etykieta.hidden = true;
+    ui.pauza.setAttribute('aria-pressed', 'false'); ui.pauza.textContent = 'Pauza';
+  }
+  // Pokaz maszyny od ujęcia o.n (domyślnie 0) w chwili o.t [s]; świat i makieta budowane od nowa, studio makiety zwolnione.
+  function wejdzPokaz(id, o) {
+    o = o || {};
+    if (sc) zwolnijScene();
+    zwolnijPokaz();
+    tryb = 'pokaz';
+    zapewnijGL();
+    trybUI();
+    var dane = D.mysliwiec(id), czesci = (window.MysliwceCzesci.CZESCI[id] || []);
+    idBiez = id;
+    // plan potrzebuje bryły makiety (kotwice) — budujemy świat z makietą, potem odtwarzacz z planem
+    var ujecia = null;
+    try {
+      pk = window.Pokaz.uruchom({
+        THREE: T, renderer: gl.renderer, post: gl.post, mysliwiec: dane, czesci: czesci, smoke: smoke, jakosc: jakosc,
+        dzwiek: dzwiekWl ? dzwiek : null, napisy: ui.napisy,
+        makieta: function (env) {
+          mk = window.Makieta.zbuduj(T, id, { lod: 'pelny', env: env, anizotropia: gl.renderer.capabilities.getMaxAnisotropy() });
+          ujecia = window.Pokaz.plan(dane, czesci, mk.bryla);
+          return mk;
+        },
+        etykieta: function (tekst, x, y) {
+          if (!tekst) { ui.etykieta.hidden = true; return; }
+          ui.etykieta.textContent = tekst;
+          var k = kadrK || { x: 0, y: 0 };
+          ui.etykieta.style.transform = 'translate(' + Math.round(k.x + x + 14) + 'px,' + Math.round(k.y + y - 34) + 'px)';
+          ui.etykieta.hidden = false;
+        },
+        karta: function (wl) { ui.dane.hidden = !wl; },
+        przesuniecieKarty: function () { return ui.dane.hidden || !gl || gl.w < 900 ? 0 : (ui.dane.offsetWidth + 16) / 2; },
+        koniec: function () { ui.pauza.textContent = 'Od nowa'; },
+      }, function () { return ujecia; });
+    } catch (e) {
+      // Pokaz.uruchom sprzątnął swój świat; makieta jest nasza. Powrót do spójnego trybu: makieta tej maszyny.
+      pk = null;
+      if (mk) { mk.zwolnij(); mk = null; }
+      ui.napisy.pokaz(null); ui.napisy.tytul(null); ui.etykieta.hidden = true;
+      var powod = (e && e.message) || String(e);
+      console.warn('Myśliwce: pokaz się nie uruchomił (' + powod + ') — makieta');
+      wejdzMakieta(id);                                     // tryb wciąż 'pokaz': makieta przywraca kartę i narzędzia
+      komunikat('Pokaz się nie uruchomił (' + powod + '). Pokazuję makietę.');
+      return false;
+    }
+    wypelnijDane(dane);
+    ui.dane.hidden = true;
+    ui.tytul.textContent = 'Myśliwce · ' + dane.nazwa + ' · pokaz';
+    Object.keys(ui.przyciskiMaszyn).forEach(function (k) { ui.przyciskiMaszyn[k].setAttribute('aria-pressed', String(k === id)); });
+    gl.w = 0; dopasuj();
+    if (o.n || o.t) pk.ustaw(o.n || 0, o.t || 0);
+    if (smoke) pk.pauza(true); else dzwiekPokazu();
+  }
+  function zPokazuDoMakiety() { if (idBiez) { wejdzMakieta(idBiez); ustawAdres(idBiez, true); } }
+  function pauzaPokazu(wl) {
+    if (!pk) return;
+    var s = pk.stan();
+    if (s.koniec) { pk.idz(0); pk.pauza(false); wl = false; }
+    else { wl = wl == null ? !s.pauza : !!wl; pk.pauza(wl); }
+    ui.pauza.setAttribute('aria-pressed', String(wl)); ui.pauza.textContent = wl ? 'Dalej' : 'Pauza';
+    if (dzwiek && dzwiekWl) { if (wl) dzwiek.pauza(); else if (!doc.hidden) dzwiek.wznow(); }
+  }
+  function krokUjecia(d) {
+    if (!pk) return;
+    var s = pk.stan();
+    pk.idz(Math.max(0, Math.min(s.ujec - 1, s.ujecie + d)));
+    ui.pauza.textContent = pk.stan().pauza ? 'Dalej' : 'Pauza';
+  }
+  // Hangar (Task 9) jeszcze nie istnieje — do tego czasu powrót do Układu.
+  function doHangaru() {
+    if (window.Mysliwce && window.Mysliwce.hangar) window.Mysliwce.hangar();
+    else window.Zakladki.zamknijDoUkladu();
   }
 
   /* ---------- klawiatura (capture: skróty Układu nie dostają klawiszy, gdy zakładka jest aktywna) ---------- */
@@ -505,8 +666,19 @@
     var k = e.key;
     if (natywny && (k === ' ' || k === 'Enter')) return;
     if (tag === 'INPUT' && /^(Arrow|Page|Home$|End$)/.test(k)) return;      // suwak ciągu: strzałki zmieniają ciąg, nie maszynę
+    if (tryb === 'pokaz') {
+      var ap = {
+        ' ': function () { pauzaPokazu(); }, f: pelnyEkran, m: function () { ustawDzwiek(!dzwiekWl); },
+        ArrowRight: function () { krokUjecia(1); }, ArrowLeft: function () { krokUjecia(-1); },
+        Escape: function () { if (doc.fullscreenElement) doc.exitFullscreen(); else zPokazuDoMakiety(); },
+      };
+      var fp = ap[k] || ap[k.toLowerCase()];
+      if (!fp) return;
+      e.preventDefault(); fp();
+      return;
+    }
     var akcje = {
-      Escape: function () { if (!ui.czesc.hidden) zamknijCzesc(); else if (doc.fullscreenElement) doc.exitFullscreen(); else window.Zakladki.zamknijDoUkladu(); },
+      Escape: function () { if (!ui.czesc.hidden) zamknijCzesc(); else if (doc.fullscreenElement) doc.exitFullscreen(); else doHangaru(); },
       f: pelnyEkran, r: function () { przelacz('rozloz', !wlaczone('rozloz')); }, k: function () { przelacz('komory', !wlaczone('komory')); },
       p: function () { przelacz('plan', !wlaczone('plan')); }, d: function () { ustawDane(ui.dane.hidden); },
       a: function () { ustawSilniki(!silnikiWl); }, m: function () { ustawDzwiek(!dzwiekWl); },
@@ -525,14 +697,24 @@
     try {
       if (!aktywny) {
         aktywny = true;
-        zbudujScene();
+        zapewnijGL();
         ustawDane(smoke || (korzen.clientWidth || window.innerWidth) >= 900);   // telefon: karta na żądanie
       }
       var id = stan.id || idBiez || D.MYSLIWCE[0].id;
       if (stan.nieznany) komunikat('Nie znam maszyny „' + stan.nieznany + '”. Pokazuję ' + D.mysliwiec(id).nazwa + '.');
-      pokazMakiete(id);
+      if (stan.tryb === 'makieta') wejdzMakieta(id);
+      else {
+        // pokaz (także wejście bez id, dopóki nie ma hangaru); hak smoke: ujęcie N w chwili t (ułamek czasu ujęcia)
+        if (wejdzPokaz(id) !== false && smoke && stan.ujecie != null) {
+          var n = Math.max(0, Math.min(pk.stan().ujec - 1, stan.ujecie | 0));
+          pk.ustaw(n, 0); pk.ustaw(n, (+stan.t || 0) * pk.stan().czas);
+          // marker tylko dla ujęcia, które naprawdę jest w kadrze: numer spoza planu = błąd, nie cichy kadr innego ujęcia
+          if (n === stan.ujecie) gotowosc = id + ' ' + n;
+          else console.error('Myśliwce: hak smoke — ujęcie ' + stan.ujecie + ' poza planem ' + id + ' (ujęć: ' + pk.stan().ujec + ')');
+        }
+      }
       ustawAdres(id, pierwsze && !L.parsujHashMysliwcow(location.hash));
-      if (smoke) {
+      if (smoke && tryb === 'makieta') {
         // stany do zrzutów: &rozloz &komory &plan &czesc=<rodzaj> (tylko w haku testowym)
         ['rozloz', 'komory', 'plan'].forEach(function (k) { if (new RegExp('[?&]' + k + '(?=&|$)').test(location.search)) przelacz(k, true); });
         var mc = /[?&]czesc=([a-z]+)/.exec(location.search);
@@ -560,7 +742,9 @@
     zamknijCzesc(); ustawHover(null); wskaznik = null;
     ustawSilniki(false);
     zwolnijDzwiek();
+    zwolnijPokaz();
     zwolnijScene();
+    tryb = null; ui.scena.classList.remove('my-tryb-pokaz'); ui.canvas.style.cssText = '';
     idBiez = null;
   }
 
@@ -568,7 +752,7 @@
     otworz: otworz,
     zamknij: zamknij,
     stan: function () {
-      return { tryb: aktywny ? 'makieta' : null, id: idBiez, ujecie: null, fps: Math.round(fps.wart), jakosc: jakosc,
+      return { tryb: aktywny ? tryb : null, id: idBiez, ujecie: pk ? pk.stan().ujecie : null, pokaz: pk ? pk.stan() : null, fps: Math.round(fps.wart), jakosc: jakosc,
         rozloz: wart.rozloz, komory: wart.komory, plan: planWl, czesc: wybrana && mk ? mk.czesci[wybrana].userData.czesc.id : null,
         podswietlona: mk ? mk.stan().podswietl : null, przelot: !!lot, przesuniecie: Math.round(przesun.biez), przesuniecieCel: Math.round(przesun.cel),
         dopalacz: { wl: silnikiWl, ciag: sil ? sil.stan().ciag : 0, cel: sil ? sil.stan().cel : 0, ognie: sil ? sil.stan().strugi : 0 },
@@ -577,13 +761,15 @@
     diagnostyka: function () {
       if (!gl) return null;
       var n = 0, geo = {}, mat = {};
-      if (sc) sc.scena.traverse(function (o) { n++; if (o.geometry) geo[o.geometry.uuid] = 1; if (o.material) mat[o.material.uuid] = 1; });
+      var s0 = sc ? sc.scena : pk ? pk.scena : null;
+      if (s0) s0.traverse(function (o) { n++; if (o.geometry) geo[o.geometry.uuid] = 1; if (o.material) mat[o.material.uuid] = 1; });
       var m = gl.renderer.info.memory, pr = gl.renderer.info.programs;
       return { geometrieSceny: Object.keys(geo).length, materialy: Object.keys(mat).length, geometrieGPU: m.geometries, tekstury: m.textures,
         programy: pr ? pr.length : 0, obiekty: n };
     },
     // Haki sondy (scripts/probe-mysliwce.mjs): bieżąca makieta i rzut kotwicy części na ekran (px w oknie).
     makieta: function () { return mk; },
+    pokaz: function () { return pk; },
     // źródła gorąca płomieni (świat) — wejście passu falowania (Task 7) i kontrola sondy
     zrodlaGoraca: function () { return sil ? sil.zrodlaGoraca() : []; },
     poziomDzwieku: function () { return dzwiek ? dzwiek.poziom() : null; },
