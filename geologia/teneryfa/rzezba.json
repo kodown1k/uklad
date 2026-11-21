@@ -1,0 +1,82 @@
+{
+ "bbox": {
+  "lonMin": -17.05,
+  "lonMax": -15.95,
+  "latMin": 27.85,
+  "latMax": 28.75
+ },
+ "w": 1024,
+ "h": 952,
+ "mNaPiksel": 105.2,
+ "mNaPikselDanych": 67.3,
+ "mNaPikselDna": 1850,
+ "zrodlo": "AWS Terrain Tiles (terrarium; ląd SRTM/GMTED, dno ETOPO1; ląd z=11/12, dno z=10), z=11",
+ "zrodloDna": "ETOPO1, 1 minuta kątowa (ok. 1,85 km)",
+ "licencja": "Mapzen/AWS Terrain Tiles — dane SRTM (NASA/USGS), GMTED (USGS), ETOPO1 (NOAA); wymagane uznanie źródeł",
+ "pobrano": "2026-11-21",
+ "hMax": 3672,
+ "hMin": -3423,
+ "archipelag": {
+  "id": "archipelag",
+  "plik": "geologia/teneryfa/rzezba-archipelag.png",
+  "bbox": {
+   "lonMin": -18.4,
+   "lonMax": -12.6,
+   "latMin": 27.4,
+   "latMax": 29.6
+  },
+  "w": 1050,
+  "h": 453,
+  "mNaPiksel": 539.8,
+  "mNaPikselDanych": 537.4,
+  "mNaPikselDna": 1850
+ },
+ "wstawki": [
+  {
+   "id": "garachico",
+   "plik": "geologia/teneryfa/rzezba-garachico.png",
+   "bbox": {
+    "lonMin": -16.81409,
+    "lonMax": -16.71191,
+    "latMin": 28.29104,
+    "latMax": 28.39896
+   },
+   "w": 294,
+   "h": 353,
+   "mNaPiksel": 34,
+   "mNaPikselDanych": 67.3,
+   "mNaPikselDna": 1850
+  },
+  {
+   "id": "teide",
+   "plik": "geologia/teneryfa/rzezba-teide.png",
+   "bbox": {
+    "lonMin": -16.73147,
+    "lonMax": -16.58853,
+    "latMin": 28.20604,
+    "latMax": 28.31396
+   },
+   "w": 412,
+   "h": 353,
+   "mNaPiksel": 34,
+   "mNaPikselDanych": 67.3,
+   "mNaPikselDna": 1850
+  },
+  {
+   "id": "teno",
+   "plik": "geologia/teneryfa/rzezba-teno.png",
+   "bbox": {
+    "lonMin": -16.89106,
+    "lonMax": -16.78894,
+    "latMin": 28.23153,
+    "latMax": 28.31247
+   },
+   "w": 294,
+   "h": 265,
+   "mNaPiksel": 34,
+   "mNaPikselDanych": 67.3,
+   "mNaPikselDna": 1850
+  }
+ ],
+ "uwagi": "Dno: kafle z>=11 mają morze spłaszczone do 0 m, więc dno pochodzi z kafla z=10 (ETOPO1, ok. 1,85 km). Przy brzegu wynika z tego płaska „półka” 0 m szerokości 1-3 km (strefa, w której z=10 jeszcze liczy ląd/0), potem stromy spadek do dna — schodek wzdłuż linii brzegowej, widoczny zwłaszcza na wstawkach. Woda „realna” go zasłania, „szklana” odsłania. Udział lądu w bbox wyspy ok. 19%. Wstawki z=12 to upsample z=11 — rozdzielczość danych w mNaPikselDanych."
+}
