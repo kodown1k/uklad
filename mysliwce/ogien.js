@@ -5,7 +5,8 @@
      Ogien.wymiary(wylot, ciag) → { pol:[z,y] półwymiary przekroju u wylotu [m], rozrost:[z,y] [m/m], wykladnik (superelipsa
      przekroju: 2 = koło), dl (długość płomienia przy tym ciągu), dlMax, deq (średnica równoważna) }.
    Przeglądarkowe: Ogien.utworz(THREE, wylot | wyloty[≤3], rodzic, { jakosc? }) → { korzen, strugi, ustaw(ciag), animuj(t), moc() → { moc, kolor }, jakosc('pelna'|'lekka'),
-     zrodlaGoraca() → [{ poz:[x,y,z] (świat), kierunek:[x,y,z] (świat, z prądem strumienia), sila 0..1 }] (po strudze),
+     zrodlaGoraca() → [{ poz:[x,y,z] (świat), kierunek:[x,y,z] (świat, z prądem strumienia), sila 0..1, dl [m, świat] }]
+     (po strudze; dl = długość płomienia przy bieżącym ciągu — obrys iskry i stożek falowania w Kino.post),
      zwolnij() }.
      `wylot` = element Platowiec.zbuduj(...).czesci.dysze.wyloty ({ punkt, kierunek, szer, wys, typ }, metry, układ makiety)
      albo wszystkie wyloty maszyny (jedno pudło, pętla po strugach), `rodzic` = obiekt makiety, do którego płomień jest
@@ -123,7 +124,9 @@
     // prawie liniowy (diamenty nie giną). Nasycenie per kanał spłaszczało wszystkie kanały do 1 = biel.
     '  vec3 c = suma * dt; float Y = dot(c, vec3(0.2126, 0.7152, 0.0722));',
     '  c *= (1.0 - exp(-1.2 * Y)) / max(1.2 * Y, 1e-4);',
-    '  gl_FragColor = vec4(c, 1.0);',
+    // alfa = gęstość płomienia: blending zapisuje w kanale alfa celu a·(1 − alfa) — maska płomienia z poprawnym
+    // zasłanianiem (test głębi) dla iskry postu kina (Kino.post); kolor dodawany jak dotąd (ONE, ONE)
+    '  gl_FragColor = vec4(c, clamp(1.6 * (1.0 - exp(-1.2 * Y)) / 1.2, 0.0, 1.0));',
     '  #include <tonemapping_fragment>',
     '  #include <encodings_fragment>',
     '}',
@@ -178,7 +181,10 @@
     var wspolne = { uCzas: { value: 0 }, uAb: { value: 0 }, uSila: { value: 0 }, uWyk: { value: wym.wykladnik },
       uKolor: { value: new T.Color() }, uRdzen: { value: new T.Color() } };
     var mPlomien = new T.ShaderMaterial({
-      vertexShader: W_PLOMIEN, fragmentShader: F_PLOMIEN, transparent: true, depthWrite: false, blending: T.AdditiveBlending,
+      vertexShader: W_PLOMIEN, fragmentShader: F_PLOMIEN, transparent: true, depthWrite: false,
+      // = AdditiveBlending dla koloru (alfa nie skaluje światła), alfa celu × (1 − alfa płomienia) = maska dla postu
+      blending: T.CustomBlending, blendEquation: T.AddEquation, blendSrc: T.OneFactor, blendDst: T.OneFactor,
+      blendSrcAlpha: T.ZeroFactor, blendDstAlpha: T.OneMinusSrcAlphaFactor,
       uniforms: Object.assign({}, wspolne, {
         uDl: { value: dlMax }, uPol: { value: new T.Vector2(pol[0], pol[1]) }, uRoz: { value: new T.Vector2(roz[0], roz[1]) },
         uKolDiam: { value: new T.Color(1.0, 0.72, 0.42) }, uKam: { value: new T.Vector3() }, uMin: { value: uMin }, uMax: { value: uMax },
@@ -242,7 +248,8 @@
       zrodlaGoraca: function () {
         korzen.updateWorldMatrix(true, false);
         var o = new T.Vector3(-1, 0, 0).transformDirection(korzen.matrixWorld).toArray(), s2 = plomien.visible ? ciag : 0;
-        return srodki.map(function (c) { return { poz: korzen.localToWorld(pomoc.copy(c).add(new T.Vector3(-0.25 * wym.deq, 0, 0))).toArray(), kierunek: o, sila: s2 }; });
+        var dl = wymiary(w0, ciag).dl * korzen.matrixWorld.getMaxScaleOnAxis();
+        return srodki.map(function (c) { return { poz: korzen.localToWorld(pomoc.copy(c).add(new T.Vector3(-0.25 * wym.deq, 0, 0))).toArray(), kierunek: o, sila: s2, dl: dl }; });
       },
       zwolnij: function () {
         if (korzen.parent) korzen.parent.remove(korzen);

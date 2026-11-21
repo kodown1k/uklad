@@ -127,6 +127,23 @@
 .my-maszyna[aria-pressed="true"] { background: color-mix(in srgb, var(--k) 16%, rgba(10, 14, 19, .85)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k) 55%, transparent); }
 .my-maszyna[aria-pressed="true"] .my-maszyna-nazwa { color: #fff; }
 
+/* ---------- kino pokazu: napisy i plansza tytułu (mysliwce/kino.js, Kino.napisy) ----------
+   Warstwa nad kadrem, bez kursora. Napis w dolnym pasie kadru 2.39:1 (--my-kino-pas-dol z Kino.napisy().kadr),
+   bez pasa (telefon w pionie) — nad dolną krawędzią. Pojawienie = krótkie wejście (pokazanie po [hidden] restartuje animację). */
+.my-kino { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.my-kino-wers { position: absolute; left: 50%; transform: translateX(-50%); width: max-content; max-width: min(62ch, 88%); text-align: center;
+  bottom: max(18px, calc(var(--my-kino-pas-dol, 0px) / 2 - .75em)); animation: my-kino-wejscie .45s ease-out both; }
+.my-kino-wers-tekst { margin: 0; font: 400 clamp(15px, 1.3vw, 21px)/1.45 var(--my-kroj); letter-spacing: .01em; color: var(--my-atrament);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .9), 0 0 14px rgba(0, 0, 0, .65); }
+.my-kino-tytul { position: absolute; left: 50%; top: calc(var(--my-kino-y, 0px) + var(--my-kino-h, 100%) / 2); transform: translate(-50%, -50%);
+  text-align: center; animation: my-kino-wejscie .8s ease-out both; }
+.my-kino-tytul-tekst { margin: 0; font: 600 clamp(28px, 4.2vw, 64px)/1 var(--my-kroj-nag); letter-spacing: .22em; text-transform: uppercase; color: #fff;
+  text-shadow: 0 0 28px rgba(0, 0, 0, .75); white-space: nowrap; }
+.my-kino-tytul::after { content: ""; display: block; margin: 14px auto 0; width: 46%; height: 1px; opacity: .7;
+  background: linear-gradient(90deg, transparent, var(--my-akcent), transparent); }
+@keyframes my-kino-wejscie { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .my-kino-wers, .my-kino-tytul { animation: none; } }
+
 /* ---------- wąski ekran / telefon ---------- */
 @media (max-width: 760px) {
   .my-pasek { gap: 8px; padding: 6px 8px; flex-wrap: wrap; }
