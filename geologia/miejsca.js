@@ -6,7 +6,7 @@
    podmenu(miejsca, aktywne) → [{ id, nazwa, wcisniety }] — czysta lista pozycji podmenu na pasku. */
 (function (root) {
   var MIEJSCA = [
-    { id: 'teneryfa', nazwa: 'Teneryfa', pliki: [], katalog: 'geologia/teneryfa/' }
+    { id: 'teneryfa', nazwa: 'Teneryfa', pliki: ['geologia/teneryfa/dane.js'], katalog: 'geologia/teneryfa/' }
   ];
 
   function podmenu(miejsca, aktywne) {
