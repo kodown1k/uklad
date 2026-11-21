@@ -8,8 +8,11 @@
             (domyślnie pokaz, rozdział `polozenie`; makieta = bez rozdziału); #geologia=<nieznane> → miejsce domyślne
             + pole `nieznane`. Obcy hash → null.
    Zapytanie: ?geologia = przycisk zakładki widoczny (do czasu gotowości jest ukryty); hak testowy
-            ?smoke&geologia=<miejsce>[&rozdzial=<id>|&tryb=makieta][&t=0..1][&czas=<Ma>][&przekroj=<°>][&kontrola=biel|czern]
-            (marker GEOLOGIA_READY <miejsce> <rozdzial|makieta>). Hash i hak działają też bez ?geologia.
+            ?smoke&geologia=<miejsce>[&rozdzial=<id>|&makieta|&tryb=makieta][&t=0..1][&czas=<Ma>][&przekroj=<°>[&przesuniecie=<km>]][&geologiczna]
+            [&jakosc=pelna][&kontrola=biel|czern] (marker GEOLOGIA_READY <miejsce> <rozdzial|makieta>). `&makieta` = `&tryb=makieta`;
+            `&przesuniecie` = linia przekroju przesunięta o km od Teide;
+            `&geologiczna` = makieta w barwach jednostek; `&jakosc=pelna` = bez przejścia na lżejszą jakość przy niskim fps (G-L).
+            Hash i hak działają też bez ?geologia.
    Krzywe (ruling G-C): mysliwce/kino.js nadpisuje window.Kino — dlatego krzywe filmów Układu zapamiętujemy raz,
    przy wczytaniu tego pliku (jest za korzeniowym kino.js), i nigdy więcej nie czytamy window.Kino. */
 (function (root) {
@@ -24,7 +27,7 @@
   ];
   // Kolejność leniwego ładowania: tylko pliki, które istnieją. Kolejne zadania dopisują swoje PRZED widok.js —
   // widok.js jest ostatni, bo korzysta z reszty. Pliki konkretnego miejsca: GeologiaMiejsca.MIEJSCA[].pliki.
-  var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/widok.js'];
+  var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/scena.js', 'geologia/widok.js'];
   var KONTROLE = ['biel', 'czern'];
 
   function dekoduj(s) { try { return decodeURIComponent(s); } catch (_) { return s; } }
@@ -58,10 +61,11 @@
     var ro = wart('rozdzial'), t = liczba('t'), ko = wart('kontrola');
     return {
       smoke: flaga('smoke'), widoczna: flaga('geologia'), miejsce: miejsce,
-      tryb: miejsce ? (wart('tryb') === 'makieta' ? 'makieta' : 'pokaz') : null,
+      tryb: miejsce ? (wart('tryb') === 'makieta' || flaga('makieta') ? 'makieta' : 'pokaz') : null,
       rozdzial: czyRozdzial(ro) ? ro : null,
       t: t === null ? 0 : Math.max(0, Math.min(1, t)),
-      czas: liczba('czas'), przekroj: liczba('przekroj'),
+      czas: liczba('czas'), przekroj: liczba('przekroj'), przesuniecie: liczba('przesuniecie'), geologiczna: flaga('geologiczna'),
+      jakosc: wart('jakosc') === 'pelna' ? 'pelna' : null,
       kontrola: KONTROLE.indexOf(ko) >= 0 ? ko : null
     };
   }

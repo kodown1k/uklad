@@ -1,0 +1,1107 @@
+'use strict';
+/* Zakładka Geologia — scena makiety (plik przeglądarkowy, THREE r128; czysta część w node: dual-export).
+   GeologiaScena.zbuduj(T, renderer, { siatka, poziomy: { archipelag, wstawki }, dane, lod: 'pelny'|'lekki', przewyzszenie = 1.5 })
+     → { scena, kamera, teren, ocean, kolorowanie(tryb), przekroj(null | { kat_st, przesuniecie_km }) → profil, chmury(wl),
+         woda(stan, f), swiatlo({ pora, az, el }), przewyzszenie(x), czesci: { [id]: Object3D }, pick(ndcX, ndcY) → id|null,
+         podswietl(id|null), kotwica(id) → [x, y, z], animuj(t), zwolnij(),
+         (dodatki dla widoku i sondy) wysokosc(x, z), probkaSwiatla(x, z), lad, granice, trafiaSciane(ndc), punktNaMorzu(ndc), stan() }
+   Układ: 1 j. = 1 km, +x wschód, +y góra (km × przewyższenie), +z południe, początek = środek bbox wyspy (Teren.doLokalnych).
+   Poziomy: archipelag (pod spodem, wycięty w prostokącie wyspy), wyspa (krawędź kafla wtopiona w archipelag na 8 km),
+   wstawki 34 m (krawędź wtopiona w wyspę na 300 m; wyspa wycina ich prostokąty). Wtapianie jest geometryczne — wysokości
+   brzegu drobniejszego poziomu przechodzą w powierzchnię grubszego (ta sama trójkątna interpolacja co na GPU), więc nie
+   ma przezroczystej siatki („góry przez góry”) ani szwu. Siatka każdego poziomu ma układ PlaneGeometry (wiersz 0 = północ,
+   trójkąty a-b-d i b-c-d), ale budowana jest od razu w tablicach typowanych — PlaneGeometry 1024 × 952 alokowała ok. 120 MB
+   tablic pośrednich. `lekki` = co druga próbka (geometria); mapa normalnych zawsze z pełnej siatki.
+   Przewyższenie = skala y siatek (normalne z mapy w przestrzeni obiektu przelicza normalMatrix), znaczniki i kotwice
+   liczone z bieżącej powierzchni (G-D). Barwy w shaderze terenu: `teren` (hipsometria), `geologia` (tekstura indeksów
+   jednostek z pointInRing, budowana raz), `krajobraz` (wysokość + nawietrzność na pasat NE z wygładzonej rzeźby + nachylenie).
+   Ocean: dysk 400 km (rośnie z wysokością kamery) pod kamerą, mgła radialna od 60% promienia w barwę horyzontu nieba;
+   woda `realna` (nieprzezroczysta, barwa z głębokości, Fresnel, połysk słońca na animowanej mapie fal, piana przy brzegu)
+   ↔ `szklana` (krycie 0,25, mgła wodna 25 km na dnie) płynnie przez f. Światło (spec R4): klucz kierunkowy z cieniem
+   (mapa cieni odświeżana tylko przy zmianie światła/przewyższenia/przekroju), wypełnienie HemisphereLight(c, c),
+   jedno światło punktowe „lawa” od budowy z mocą 0 (liczba świateł w kluczu programu — docs/material-filmowy.md).
+   Jedna płaszczyzna przycinania zawsze obecna (wyłączony przekrój = płaszczyzna w nieskończoności) — przełączenie
+   przekroju nie przekompilowuje materiałów. */
+(function (root) {
+  var Teren = root.Teren || (typeof require === 'function' ? require('./teren.js') : null);
+  var RAD = Math.PI / 180;
+  var MORZE_POD_KM = 0.012;            // dno o wysokości 0 (półka szwu SRTM/ETOPO) leży 12 m pod taflą — bez z-fightingu
+  var WTOP_WYSPA_KM = 8, WTOP_WSTAWKA_KM = 0.3;
+  var WIATR = [Math.SQRT1_2, -Math.SQRT1_2];   // pasat z NE: kierunek (x, z), Z KTÓREGO wieje
+  var DNO_KM = -12;                     // spód ściany przekroju (skorupa sięga 11,9 km)
+  var GORA_SCIANY_KM = 4;
+  var STROP_CHMUR_KM = 1.5;
+  var SKALA_ETYKIETY = 0.56;          // etykieta rysowana pismem 26 px, na ekranie ok. 15 px
+
+  /* ---------- czysta część (node) ---------- */
+  function gladko(t) { t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); }
+  function prostokat(s) {
+    var nw = Teren.doLokalnych(s, s.bbox.lonMin, s.bbox.latMax), se = Teren.doLokalnych(s, s.bbox.lonMax, s.bbox.latMin);
+    return { x0: nw[0], z0: nw[1], x1: se[0], z1: se[1] };
+  }
+  function wewnatrz(r, x, z) { return x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1; }
+
+  // Odległość od lądu (h > 0) w km — dwuprzebiegowa transformata odległości (fazowanie 8-sąsiedzkie), ląd = 0.
+  function odlegloscOdBrzegu(wys, w, h, dx, dz) {
+    var INF = 1e9, d = new Float32Array(w * h), c = Math.hypot(dx, dz), i, x, y, v;
+    for (i = 0; i < w * h; i++) d[i] = wys[i] > 0 ? 0 : INF;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+      i = y * w + x; v = d[i];
+      if (x > 0 && d[i - 1] + dx < v) v = d[i - 1] + dx;
+      if (y > 0) {
+        if (d[i - w] + dz < v) v = d[i - w] + dz;
+        if (x > 0 && d[i - w - 1] + c < v) v = d[i - w - 1] + c;
+        if (x < w - 1 && d[i - w + 1] + c < v) v = d[i - w + 1] + c;
+      }
+      d[i] = v;
+    }
+    for (y = h - 1; y >= 0; y--) for (x = w - 1; x >= 0; x--) {
+      i = y * w + x; v = d[i];
+      if (x < w - 1 && d[i + 1] + dx < v) v = d[i + 1] + dx;
+      if (y < h - 1) {
+        if (d[i + w] + dz < v) v = d[i + w] + dz;
+        if (x < w - 1 && d[i + w + 1] + c < v) v = d[i + w + 1] + c;
+        if (x > 0 && d[i + w - 1] + c < v) v = d[i + w - 1] + c;
+      }
+      d[i] = v;
+    }
+    return d;
+  }
+
+  // Rozmycie pudełkowe w miejscu (sumy biegnące, brzeg przycięty), poziomo i pionowo.
+  function rozmyj(a, w, h, rx, rz) {
+    var tmp = new Float32Array(Math.max(w, h)), x, y, k, s, n;
+    for (y = 0; y < h; y++) {
+      var o = y * w; s = 0; n = 0;
+      for (k = 0; k <= rx && k < w; k++) { s += a[o + k]; n++; }
+      for (x = 0; x < w; x++) {
+        tmp[x] = s / n;
+        if (x + rx + 1 < w) { s += a[o + x + rx + 1]; n++; }
+        if (x - rx >= 0) { s -= a[o + x - rx]; n--; }
+      }
+      for (x = 0; x < w; x++) a[o + x] = tmp[x];
+    }
+    for (x = 0; x < w; x++) {
+      s = 0; n = 0;
+      for (k = 0; k <= rz && k < h; k++) { s += a[k * w + x]; n++; }
+      for (y = 0; y < h; y++) {
+        tmp[y] = s / n;
+        if (y + rz + 1 < h) { s += a[(y + rz + 1) * w + x]; n++; }
+        if (y - rz >= 0) { s -= a[(y - rz) * w + x]; n--; }
+      }
+      for (y = 0; y < h; y++) a[y * w + x] = tmp[y];
+    }
+  }
+
+  // Nawietrzność −1…1: czy makro-zbocze (rzeźba wygładzona na ok. promienKm, morze = 0) jest zwrócone ku wiatrowi.
+  // Lokalne zbocze doliny po zawietrznej stronie wyspy zostaje zawietrzne — decyduje strona wyspy, nie ekspozycja stoku.
+  function nawietrznosc(wys, w, h, dx, dz, promienKm, wiatr) {
+    wiatr = wiatr || WIATR;
+    var a = new Float32Array(w * h), out = new Float32Array(w * h), i, x, y;
+    for (i = 0; i < w * h; i++) a[i] = wys[i] > 0 ? wys[i] : 0;
+    var rx = Math.max(1, Math.round(promienKm / dx / 2)), rz = Math.max(1, Math.round(promienKm / dz / 2));
+    for (var p = 0; p < 3; p++) rozmyj(a, w, h, rx, rz);
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+      i = y * w + x;
+      var gx = (a[y * w + Math.min(w - 1, x + 1)] - a[y * w + Math.max(0, x - 1)]) / ((Math.min(w - 1, x + 1) - Math.max(0, x - 1)) * dx);
+      var gz = (a[Math.min(h - 1, y + 1) * w + x] - a[Math.max(0, y - 1) * w + x]) / ((Math.min(h - 1, y + 1) - Math.max(0, y - 1)) * dz);
+      var m = Math.hypot(gx, gz);                       // m/km
+      out[i] = m > 1e-6 ? ((-gx * wiatr[0] - gz * wiatr[1]) / m) * gladko((m - 4) / 36) : 0;
+    }
+    return out;
+  }
+
+  // Indeks jednostki geologicznej na komórkę lądu (0 = brak/morze, k+1 = jednostki[k]); pierwsza pasująca wygrywa.
+  function indeksyJednostek(wys, w, h, bbox, jednostki, pip) {
+    var out = new Uint8Array(w * h);
+    var pierscienie = jednostki.map(function (j) {
+      return (j.wielokaty || []).map(function (r) {
+        var b = [Infinity, Infinity, -Infinity, -Infinity];
+        r.forEach(function (p) { b[0] = Math.min(b[0], p[0]); b[1] = Math.min(b[1], p[1]); b[2] = Math.max(b[2], p[0]); b[3] = Math.max(b[3], p[1]); });
+        return { r: r, b: b };
+      });
+    });
+    for (var y = 0; y < h; y++) {
+      var lat = bbox.latMax - (bbox.latMax - bbox.latMin) * y / (h - 1);
+      for (var x = 0; x < w; x++) {
+        var i = y * w + x;
+        if (!(wys[i] > 0)) continue;
+        var lon = bbox.lonMin + (bbox.lonMax - bbox.lonMin) * x / (w - 1);
+        szukaj: for (var k = 0; k < pierscienie.length; k++) {
+          for (var q = 0; q < pierscienie[k].length; q++) {
+            var P = pierscienie[k][q];
+            if (lon < P.b[0] || lon > P.b[2] || lat < P.b[1] || lat > P.b[3]) continue;
+            if (pip(lon, lat, P.r)) { out[i] = k + 1; break szukaj; }
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  // Linia przekroju: azymut katSt (0 = N–S, 90 = W–E), przez punkt `srodek` [x, z] przesunięty o przesKm wzdłuż normalnej
+  // (kat + 90°), przycięta do prostokąta. Normalna wskazuje stronę usuwaną (widz stoi po niej i widzi `a` po lewej).
+  function liniaPrzekroju(prost, srodek, katSt, przesKm) {
+    var a = katSt * RAD, d = [Math.sin(a), -Math.cos(a)], n = [Math.cos(a), Math.sin(a)];
+    var p = [srodek[0] + n[0] * (przesKm || 0), srodek[1] + n[1] * (przesKm || 0)];
+    var t0 = -Infinity, t1 = Infinity, gr = [[prost.x0, prost.x1], [prost.z0, prost.z1]];
+    for (var k = 0; k < 2; k++) {
+      if (Math.abs(d[k]) < 1e-12) { if (p[k] < gr[k][0] || p[k] > gr[k][1]) return null; continue; }
+      var ta = (gr[k][0] - p[k]) / d[k], tb = (gr[k][1] - p[k]) / d[k];
+      if (ta > tb) { var s = ta; ta = tb; tb = s; }
+      if (ta > t0) t0 = ta; if (tb < t1) t1 = tb;
+    }
+    if (!(t1 - t0 > 1e-6)) return null;
+    return { a: [p[0] + d[0] * t0, p[1] + d[1] * t0], b: [p[0] + d[0] * t1, p[1] + d[1] * t1], kier: d, normalna: n, punkt: p, dl: t1 - t0 };
+  }
+
+  // Wysokość wyświetlanej powierzchni poziomu (interpolacja w trójkątach siatki, jak na GPU). null poza poziomem.
+  function wysokoscTrojkatna(P, x, z) {
+    var fx = (x - P.x0) / P.dxv, fy = (z - P.z0) / P.dzv;
+    if (!(fx >= 0 && fy >= 0 && fx <= P.nx - 1 && fy <= P.nz - 1)) return null;
+    var ix = Math.min(Math.floor(fx), P.nx - 2), iy = Math.min(Math.floor(fy), P.nz - 2), u = fx - ix, v = fy - iy, hs = P.hs, nx = P.nx;
+    var a = hs[iy * nx + ix], b = hs[(iy + 1) * nx + ix], c = hs[(iy + 1) * nx + ix + 1], d = hs[iy * nx + ix + 1];
+    return u + v <= 1 ? a + (d - a) * u + (b - a) * v : c + (b - c) * (1 - u) + (d - c) * (1 - v);
+  }
+
+  /* ---------- przeglądarka: pomocnicze ---------- */
+  function hexLin(T, hex) { return new T.Color(hex).convertSRGBToLinear(); }
+  function plotno(w, h) { var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+
+  // Siatka o układzie PlaneGeometry(W, H, segX, segY) w tablicach typowanych: wierzchołek (ix, iy) = iy·(segX+1) + ix,
+  // uv = (ix/segX, 1 − iy/segY), trójkąty (a, b, d) i (b, c, d).
+  function geometriaSiatki(T, P) {
+    var nx = P.nx, nz = P.nz, n = nx * nz, pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2);
+    for (var iy = 0; iy < nz; iy++) for (var ix = 0; ix < nx; ix++) {
+      var i = iy * nx + ix;
+      pos[i * 3] = P.x0 + ix * P.dxv; pos[i * 3 + 1] = P.hs[i]; pos[i * 3 + 2] = P.z0 + iy * P.dzv;
+      uv[i * 2] = ix / (nx - 1); uv[i * 2 + 1] = 1 - iy / (nz - 1);
+      var fx = Math.round(ix / (nx - 1) * (P.w - 1)), fy = Math.round(iy / (nz - 1) * (P.h - 1)), k = (fy * P.w + fx) * 4;
+      nor[i * 3] = P.normalne[k] / 127.5 - 1; nor[i * 3 + 1] = P.normalne[k + 1] / 127.5 - 1; nor[i * 3 + 2] = P.normalne[k + 2] / 127.5 - 1;
+    }
+    var segX = nx - 1, segY = nz - 1, idx = new Uint32Array(segX * segY * 6), q = 0;
+    for (iy = 0; iy < segY; iy++) for (ix = 0; ix < segX; ix++) {
+      var a = iy * nx + ix, b = (iy + 1) * nx + ix, c = b + 1, d = a + 1;
+      idx[q++] = a; idx[q++] = b; idx[q++] = d; idx[q++] = b; idx[q++] = c; idx[q++] = d;
+    }
+    var g = new T.BufferGeometry();
+    g.setAttribute('position', new T.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new T.BufferAttribute(nor, 3));
+    g.setAttribute('uv', new T.BufferAttribute(uv, 2));
+    g.setIndex(new T.BufferAttribute(idx, 1));
+    g.computeBoundingSphere(); g.computeBoundingBox();
+    return g;
+  }
+
+  // Poziom szczegółu: wysokości wyświetlane (km, z wtopieniem brzegu i dnem pod taflą), normalne + nawietrzność (RGBA8),
+  // wysokość i odległość od brzegu (RG32F, dla oceanu i chmur), opcjonalnie indeksy jednostek.
+  // obniz = { prost: [prostokąty drobniejszych poziomów], km }: wierzchołki wewnątrz opuszczone o km (po policzeniu
+  // normalnych) — w zakładce szwu drobniejszy poziom leży wtedy wyżej i wygrywa test głębi bez polygonOffset.
+  function zbudujPoziom(s, krok, wtop, nawietrz, obniz) {
+    var r = prostokat(s), w = s.w, h = s.h, dx = (r.x1 - r.x0) / (w - 1), dz = (r.z1 - r.z0) / (h - 1);
+    var full = new Float32Array(w * h), i, x, y;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+      i = y * w + x;
+      var v = s.wys[i] / 1000;
+      if (!(v > 0)) v = Math.min(v, -MORZE_POD_KM);
+      if (wtop) {
+        var px = r.x0 + x * dx, pz = r.z0 + y * dz, e = Math.min(px - r.x0, r.x1 - px, pz - r.z0, r.z1 - pz);
+        if (e < wtop.km) { var c = wtop.fn(px, pz); if (c != null) v = c + (v - c) * gladko(e / wtop.km); }
+      }
+      full[i] = v;
+    }
+    // normalne w przestrzeni obiektu (bez przewyższenia) z pełnej siatki; A = nawietrzność
+    var naw = nawietrz || null, bajty = new Uint8Array(w * h * 4);
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+      i = y * w + x;
+      var xa = Math.max(0, x - 1), xb = Math.min(w - 1, x + 1), ya = Math.max(0, y - 1), yb = Math.min(h - 1, y + 1);
+      var gx = (full[y * w + xb] - full[y * w + xa]) / ((xb - xa) * dx), gz = (full[yb * w + x] - full[ya * w + x]) / ((yb - ya) * dz);
+      var l = Math.sqrt(gx * gx + 1 + gz * gz);
+      bajty[i * 4] = Math.round((-gx / l * 0.5 + 0.5) * 255); bajty[i * 4 + 1] = Math.round((1 / l * 0.5 + 0.5) * 255);
+      bajty[i * 4 + 2] = Math.round((-gz / l * 0.5 + 0.5) * 255);
+      bajty[i * 4 + 3] = Math.round(((naw ? naw[i] : 0) * 0.5 + 0.5) * 255);
+    }
+    var segX = Math.max(1, Math.round((w - 1) / krok)), segY = Math.max(1, Math.round((h - 1) / krok));
+    var nx = segX + 1, nz = segY + 1, hs;
+    if (krok === 1) hs = full;
+    else {
+      hs = new Float32Array(nx * nz);
+      for (var iy = 0; iy < nz; iy++) for (var ix = 0; ix < nx; ix++) {
+        var fx = ix / segX * (w - 1), fy = iy / segY * (h - 1), x0 = Math.min(Math.floor(fx), w - 2), y0 = Math.min(Math.floor(fy), h - 2), tx = fx - x0, ty = fy - y0;
+        hs[iy * nx + ix] = (full[y0 * w + x0] * (1 - tx) + full[y0 * w + x0 + 1] * tx) * (1 - ty) + (full[(y0 + 1) * w + x0] * (1 - tx) + full[(y0 + 1) * w + x0 + 1] * tx) * ty;
+      }
+    }
+    var hsPrzed = hs;
+    if (obniz && obniz.prost.length) {
+      hsPrzed = new Float32Array(hs);                 // powierzchnia przed obniżeniem — cel wtapiania drobniejszego poziomu
+      for (var jy = 0; jy < nz; jy++) for (var jx = 0; jx < nx; jx++) {
+        var vx = r.x0 + jx * (r.x1 - r.x0) / segX, vz = r.z0 + jy * (r.z1 - r.z0) / segY;
+        for (var q = 0; q < obniz.prost.length; q++) {
+          var o = obniz.prost[q];
+          if (vx > o.x0 && vx < o.x1 && vz > o.z0 && vz < o.z1) { hs[jy * nx + jx] -= obniz.km; break; }
+        }
+      }
+    }
+    return { s: s, w: w, h: h, x0: r.x0, z0: r.z0, x1: r.x1, z1: r.z1, prost: r, dx: dx, dz: dz, nx: nx, nz: nz,
+      dxv: (r.x1 - r.x0) / segX, dzv: (r.z1 - r.z0) / segY, hs: hs, hsPrzed: hsPrzed, normalne: bajty };
+  }
+
+  // Tekstura z bajtów poziomu w układzie wiersz 0 = północ; uv siatki (v = 1 na północy) odwracane transformacją tekstury
+  // z korektą pół teksela (węzły siatki leżą na brzegach bbox, środki tekseli — pół teksela do środka).
+  function teksturaPoziomu(T, dane, P, format, typ, liniowa) {
+    var t = new T.DataTexture(dane, P.w, P.h, format, typ);
+    t.wrapS = t.wrapT = T.ClampToEdgeWrapping;
+    t.magFilter = liniowa ? T.LinearFilter : T.NearestFilter;
+    t.minFilter = liniowa === 'mip' ? T.LinearMipmapLinearFilter : liniowa ? T.LinearFilter : T.NearestFilter;
+    t.generateMipmaps = liniowa === 'mip';
+    t.repeat.set((P.w - 1) / P.w, -(P.h - 1) / P.h);
+    t.offset.set(0.5 / P.w, (P.h - 0.5) / P.h);
+    t.unpackAlignment = 1;
+    t.needsUpdate = true;
+    return t;
+  }
+
+  /* ---------- shadery ---------- */
+  var GLSL_WSPOLNE = [
+    'vec3 geS2L(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)); }',
+    'vec3 geHex(float r, float g, float b) { return geS2L(vec3(r, g, b) / 255.0); }',
+    'float geHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
+    'float geSzum(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);',
+    '  return mix(mix(geHash(i), geHash(i + vec2(1.0, 0.0)), f.x), mix(geHash(i + vec2(0.0, 1.0)), geHash(i + vec2(1.0, 1.0)), f.x), f.y); }',
+    'float geFbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * geSzum(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return s; }',
+  ].join('\n');
+
+  var GLSL_TEREN_PARS = [
+    'uniform float uTryb;', 'uniform float uPrzew;', 'uniform float uSzklo;', 'uniform float uMaIndeksy;', 'uniform float uMloda;',
+    'uniform sampler2D uIndeksy;', 'uniform sampler2D uPaleta;', 'uniform vec4 uWyc[3];', 'uniform float uLWyc;', 'uniform vec3 uKolorWody;',
+    'varying float vWys;', 'varying vec3 vSwiat;',
+    GLSL_WSPOLNE,
+    // hipsometria atlasowa (makieta „Teren”): dno w błękitach, ląd zieleń → beż → brąz → szarość → biel
+    'vec3 geHipsometria(float h) {',
+    '  vec3 c;',
+    '  if (h < 0.0) {',
+    '    c = mix(geHex(28.0, 55.0, 84.0), geHex(42.0, 86.0, 122.0), smoothstep(-3500.0, -1500.0, h));',
+    '    c = mix(c, geHex(78.0, 128.0, 160.0), smoothstep(-1500.0, -200.0, h));',
+    '    c = mix(c, geHex(120.0, 168.0, 184.0), smoothstep(-200.0, -10.0, h));',
+    '  } else {',
+    '    c = mix(geHex(86.0, 124.0, 70.0), geHex(122.0, 148.0, 86.0), smoothstep(0.0, 300.0, h));',
+    '    c = mix(c, geHex(166.0, 158.0, 106.0), smoothstep(300.0, 800.0, h));',
+    '    c = mix(c, geHex(154.0, 120.0, 82.0), smoothstep(800.0, 1500.0, h));',
+    '    c = mix(c, geHex(132.0, 100.0, 76.0), smoothstep(1500.0, 2200.0, h));',
+    '    c = mix(c, geHex(124.0, 110.0, 100.0), smoothstep(2200.0, 3000.0, h));',
+    '    c = mix(c, geHex(214.0, 208.0, 200.0), smoothstep(3000.0, 3650.0, h));',
+    '  }',
+    '  return c;',
+    '}',
+    // model krajobrazu (spec R4): nawietrzny skłon NE wilgotny i zielony pod warstwą chmur, pas sosen, nad inwersją ochry
+    // i czernie młodych law, południe i zachód poniżej 600 m płowe; strome ściany = skała
+    'vec3 geKrajobraz(float h, float naw, vec3 n, float jedn) {',
+    '  float wilg = smoothstep(-0.25, 0.45, naw);',
+    '  float stromo = 1.0 - n.y;',
+    '  float plam = geFbm(vSwiat.xz * 0.9) - 0.5;',
+    '  vec3 niz = mix(geHex(170.0, 146.0, 104.0), geHex(84.0, 112.0, 56.0), wilg);',
+    '  vec3 las = mix(geHex(132.0, 118.0, 86.0), geHex(48.0, 78.0, 40.0), wilg);',
+    '  vec3 sosny = mix(geHex(80.0, 88.0, 56.0), geHex(58.0, 76.0, 46.0), wilg);',
+    '  vec3 gora = geHex(156.0, 124.0, 88.0);',
+    '  vec3 c = niz;',
+    '  c = mix(c, las, smoothstep(350.0, 800.0, h + plam * 200.0));',
+    '  c = mix(c, sosny, smoothstep(1100.0, 1500.0, h + plam * 200.0));',
+    '  c = mix(c, gora, smoothstep(1900.0, 2200.0, h + plam * 150.0));',
+    '  float mloda = (uMloda > 0.5 && abs(jedn - uMloda) < 0.5) ? 1.0 : 0.0;',
+    '  c = mix(c, geHex(56.0, 50.0, 48.0), smoothstep(2000.0, 2300.0, h) * mloda * (0.75 + 0.5 * plam));',
+    '  c = mix(c, geHex(190.0, 178.0, 156.0), smoothstep(3350.0, 3650.0, h));',
+    '  c = mix(c, geHex(96.0, 84.0, 74.0), smoothstep(0.30, 0.55, stromo));',
+    '  c = mix(geHex(66.0, 60.0, 56.0), c, smoothstep(0.0, 25.0, h));',
+    '  if (h < 0.0) c = mix(geHex(104.0, 98.0, 88.0), geHex(58.0, 64.0, 70.0), smoothstep(50.0, 900.0, -h));',
+    '  return c;',
+    '}'
+  ].join('\n');
+
+  var GLSL_TEREN_KOLOR = [
+    'for (int i = 0; i < 3; i++) {',
+    '  if (float(i) < uLWyc) { vec4 r = uWyc[i]; if (vSwiat.x > r.x && vSwiat.x < r.z && vSwiat.z > r.y && vSwiat.z < r.w) discard; }',
+    '}',
+    'vec4 geN = texture2D(normalMap, vUv);',
+    'vec3 geNo = geN.xyz * 2.0 - 1.0;',
+    'vec3 geNw = normalize(vec3(geNo.x, geNo.y / max(uPrzew, 0.01), geNo.z));',
+    'float geH = vWys * 1000.0;',
+    'float geJ = uMaIndeksy > 0.5 ? floor(texture2D(uIndeksy, vUv).r * 255.0 + 0.5) : 0.0;',
+    'vec3 geKol;',
+    'if (uTryb < 0.5) geKol = geHipsometria(geH);',
+    'else if (uTryb < 1.5) {',
+    '  if (geH < 0.0) geKol = mix(geHex(38.0, 54.0, 70.0), geHex(66.0, 86.0, 102.0), smoothstep(-3000.0, -100.0, geH));',
+    '  else if (geJ > 0.5) geKol = geS2L(texture2D(uPaleta, vec2((geJ + 0.5) / 256.0, 0.5)).rgb);',
+    '  else geKol = geHex(146.0, 142.0, 132.0);',
+    '} else if (uTryb < 2.5) geKol = geKrajobraz(geH, geN.a * 2.0 - 1.0, geNw, geJ);',
+    'else geKol = vec3(0.2);',                                     // „kalibracja”: jednolite albedo 0,2 do pomiaru światła
+    'diffuseColor.rgb *= geKol;'
+  ].join('\n');
+
+  // Mgła wodna pod taflą w stanie „szklana”: droga promienia pod wodą, widzialność 25 km.
+  var GLSL_TEREN_WODA = [
+    'if (uSzklo > 0.001 && vSwiat.y < 0.0) {',
+    '  float geDl = length(vSwiat - cameraPosition);',
+    '  float gePod = geDl * clamp(-vSwiat.y / max(max(cameraPosition.y, 0.0) - vSwiat.y, 1e-3), 0.0, 1.0);',
+    '  gl_FragColor.rgb = mix(gl_FragColor.rgb, uKolorWody, (1.0 - exp(-gePod / 25.0)) * uSzklo);',
+    '}'
+  ].join('\n');
+
+  var FOG_RADIALNA = '#ifdef USE_FOG\n\tfogDepth = length(mvPosition.xyz);\n#endif';
+
+  var WODA_VERT = [
+    '#include <common>', '#include <fog_pars_vertex>', '#include <clipping_planes_pars_vertex>',
+    'varying vec3 vSwiat;',
+    'void main() {',
+    '  vec4 swiat = modelMatrix * vec4(position, 1.0);',
+    '  vSwiat = swiat.xyz;',
+    '  vec4 mvPosition = viewMatrix * swiat;',
+    '  gl_Position = projectionMatrix * mvPosition;',
+    '  #include <clipping_planes_vertex>',
+    '  #ifdef USE_FOG', '  fogDepth = length(mvPosition.xyz);', '  #endif',
+    '}'
+  ].join('\n');
+
+  var WODA_FRAG = [
+    '#include <common>', '#include <fog_pars_fragment>', '#include <clipping_planes_pars_fragment>',
+    'uniform sampler2D uWysW; uniform sampler2D uWysA; uniform sampler2D uFale;',
+    'uniform vec4 uProstW; uniform vec4 uProstA; uniform vec2 uRozmW; uniform vec2 uRozmA;',
+    'uniform float uCzas; uniform float uSzklo; uniform float uTylkoKafel;',
+    'uniform vec3 uSlonce; uniform vec3 uKolorSlonca; uniform vec3 uAmb; uniform vec3 uZenitL; uniform vec3 uHoryzontL;',
+    'varying vec3 vSwiat;',
+    GLSL_WSPOLNE,
+    'vec2 geUv(vec2 xz, vec4 r, vec2 n) { vec2 f = (xz - r.xy) / (r.zw - r.xy); return (f * (n - 1.0) + 0.5) / n; }',
+    'bool geW(vec2 xz, vec4 r) { return xz.x >= r.x && xz.x <= r.z && xz.y >= r.y && xz.y <= r.w; }',
+    'void main() {',
+    '  #include <clipping_planes_fragment>',
+    '  vec2 xz = vSwiat.xz;',
+    '  if (uTylkoKafel > 0.5 && !geW(xz, uProstW)) discard;',
+    '  float h = -4000.0, dist = 60.0;',
+    '  if (geW(xz, uProstW)) { vec2 t = texture2D(uWysW, geUv(xz, uProstW, uRozmW)).rg; h = t.r; dist = t.g; }',
+    '  else if (geW(xz, uProstA)) { vec2 t = texture2D(uWysA, geUv(xz, uProstA, uRozmA)).rg; h = t.r; dist = t.g; }',
+    // półka 0 m ze szwu SRTM/ETOPO zasłonięta: głębokość efektywna rośnie co najmniej 120 m na km od brzegu
+    '  float dEff = max(-h, 120.0 * dist);',
+    '  vec3 woda = mix(geHex(38.0, 128.0, 128.0), geHex(18.0, 62.0, 96.0), smoothstep(4.0, 60.0, dEff));',
+    '  woda = mix(woda, geHex(10.0, 30.0, 58.0), smoothstep(60.0, 1500.0, dEff));',
+    '  vec3 n1 = texture2D(uFale, xz / 0.42 + uCzas * vec2(0.010, 0.006)).rgb * 2.0 - 1.0;',
+    '  vec3 n2 = texture2D(uFale, xz / 1.30 - uCzas * vec2(0.004, -0.007)).rgb * 2.0 - 1.0;',
+    '  vec3 n = normalize(vec3(n1.x + n2.x, 2.6, n1.y + n2.y));',
+    '  vec3 V = normalize(cameraPosition - vSwiat);',
+    '  float fres = 0.02 + 0.98 * pow(1.0 - max(dot(n, V), 0.0), 5.0);',
+    '  vec3 R = reflect(-V, n);',
+    '  vec3 niebo = mix(uHoryzontL, uZenitL, pow(clamp(R.y, 0.0, 1.0), 0.45));',
+    '  float rs = max(dot(R, uSlonce), 0.0);',
+    '  float blysk = (pow(rs, 900.0) * 30.0 + pow(rs, 80.0) * 0.35) * smoothstep(0.0, 0.06, uSlonce.y);',
+    '  vec3 kol = woda * (uAmb + uKolorSlonca * max(uSlonce.y, 0.0) * 0.45);',
+    '  kol = mix(kol, niebo, fres) + uKolorSlonca * blysk;',
+    '  float piana = (1.0 - smoothstep(0.015, 0.11, dist)) * step(h, 2.0) * (0.55 + 0.45 * geSzum(xz * 22.0 + uCzas * 0.3));',
+    '  kol = mix(kol, vec3(0.78, 0.80, 0.80) * (uAmb + uKolorSlonca * max(uSlonce.y, 0.0)), piana * 0.65);',
+    '  float daleko = smoothstep(25.0, 110.0, length(cameraPosition - vSwiat));',
+    '  gl_FragColor = vec4(kol, mix(1.0, mix(0.25, 1.0, daleko), uSzklo));',
+    '  #include <tonemapping_fragment>',
+    '  #include <encodings_fragment>',
+    '  #include <fog_fragment>',
+    '}'
+  ].join('\n');
+
+  // Kopuła nieba: gradient zenit → mgiełka przy horyzoncie, tarcza i poświata słońca; wynik od razu w sRGB ekranu
+  // (bez mapowania tonów), żeby barwa horyzontu = barwa mgły terenu i oceanu (mgła r128 miesza po kodowaniu wyjścia).
+  var NIEBO_VERT = 'varying vec3 vKier; void main() { vKier = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+  var NIEBO_FRAG = [
+    'uniform vec3 uZenit; uniform vec3 uHoryzont; uniform vec3 uSlonce; uniform vec3 uKolorTarczy; uniform float uTarcza;',
+    'varying vec3 vKier;',
+    'void main() {',
+    '  vec3 d = normalize(vKier);',
+    '  vec3 c = mix(uHoryzont, uZenit, pow(clamp(d.y, 0.0, 1.0), 0.42));',
+    '  float s = max(dot(d, uSlonce), 0.0);',
+    '  c += uKolorTarczy * (smoothstep(0.99985, 0.99993, s) + pow(s, 600.0) * 0.3 + pow(s, 12.0) * 0.1) * uTarcza;',
+    '  gl_FragColor = vec4(min(c, vec3(1.0)), 1.0);',
+    '}'
+  ].join('\n');
+
+  var CHMURY_FRAG = [
+    '#include <common>', '#include <fog_pars_fragment>', '#include <clipping_planes_pars_fragment>',
+    'uniform sampler2D uWysW; uniform vec4 uProstW; uniform vec2 uRozmW; uniform vec4 uProstCh;',
+    'uniform float uCzas; uniform float uStrop; uniform vec3 uSlonce; uniform vec3 uKolorSlonca; uniform vec3 uAmb;',
+    'varying vec3 vSwiat;',
+    GLSL_WSPOLNE,
+    'vec2 geUv(vec2 xz, vec4 r, vec2 n) { vec2 f = (xz - r.xy) / (r.zw - r.xy); return (f * (n - 1.0) + 0.5) / n; }',
+    'void main() {',
+    '  #include <clipping_planes_fragment>',
+    '  vec2 xz = vSwiat.xz;',
+    '  vec2 dryf = uCzas * vec2(-0.05, 0.05);',                      // pasat z NE: chmury płyną na SW
+    '  float d = geFbm((xz - dryf) * 0.085) * 0.75 + geFbm((xz - dryf * 1.6) * 0.31) * 0.25;',
+    '  float maska = 0.2 + 0.8 * smoothstep(-6.0, 26.0, -xz.y + 0.35 * xz.x);',
+    '  float pokrycie = smoothstep(0.40, 0.62, d * (0.62 + 0.55 * maska));',
+    '  float hT = -1.0;',
+    '  if (xz.x >= uProstW.x && xz.x <= uProstW.z && xz.y >= uProstW.y && xz.y <= uProstW.w) hT = texture2D(uWysW, geUv(xz, uProstW, uRozmW)).r / 1000.0;',
+    // miękki styk z terenem (spec R4): krycie smoothstep(0; 150 m; strop − teren)
+    '  float styk = smoothstep(0.0, 0.15, uStrop - hT);',
+    '  vec2 e = min(xz - uProstCh.xy, uProstCh.zw - xz);',
+    '  float a = pokrycie * styk * smoothstep(0.0, 14.0, min(e.x, e.y)) * 0.94;',
+    '  if (a < 0.004) discard;',
+    '  vec3 c = vec3(0.92) * (uAmb * 1.15 + uKolorSlonca * max(uSlonce.y, 0.05) * 0.7) * (0.82 + 0.18 * d);',
+    '  gl_FragColor = vec4(c, a);',
+    '  #include <tonemapping_fragment>',
+    '  #include <encodings_fragment>',
+    '  #include <fog_fragment>',
+    '}'
+  ].join('\n');
+
+  // Pory dnia: barwy klucza i wypełnienia, nieba (sRGB ekranu). Klucz : wypełnienie = 3 : 1 (spec R4). Moce dobrane pomiarem
+  // (sonda, krajobraz w nadirze, słońce az 250° el 30°, mapowanie tonów liniowe): cień 60, światło 121 sRGB.
+  var PORY = {
+    dzien:    { klucz: 0xfff1df, k: 0.9, wyp: 0xdfe6ee, f: 0.3, zenit: '#4c79ad', horyzont: '#c9d5de', tarcza: '#fff4dc', moc: 1 },
+    zlota:    { klucz: 0xffcf9a, k: 0.86, wyp: 0xe4d6c8, f: 0.28, zenit: '#5a79a0', horyzont: '#e2c6a2', tarcza: '#ffd9a0', moc: 1 },
+    zmierzch: { klucz: 0xff9a62, k: 0.5, wyp: 0x9ba5c2, f: 0.16, zenit: '#26385a', horyzont: '#c98d6e', tarcza: '#ffb080', moc: 0.8 },
+    noc:      { klucz: 0x9fb4ff, k: 0.06, wyp: 0x5a6a90, f: 0.02, zenit: '#04070d', horyzont: '#111a28', tarcza: '#000000', moc: 0 },
+  };
+  var NIEBO_PRZEKROJU = { zenit: '#07090c', horyzont: '#1a2028' };
+
+  function kierunekSlonca(az, el) {
+    return [Math.sin(az * RAD) * Math.cos(el * RAD), Math.sin(el * RAD), -Math.cos(az * RAD) * Math.cos(el * RAD)];
+  }
+
+  function teksturaFal(T) {
+    var N = 256, hg = new Float32Array(N * N), fale = [], ziarno = 7;
+    var los = function () { ziarno = (ziarno * 1103515245 + 12345) & 0x7fffffff; return ziarno / 0x7fffffff; };
+    for (var k = 0; k < 24; k++) {
+      var kx = Math.round((los() * 2 - 1) * 11), kz = Math.round((los() * 2 - 1) * 11);
+      if (!kx && !kz) kz = 1;
+      fale.push([kx, kz, 1 / Math.hypot(kx, kz), los() * Math.PI * 2]);
+    }
+    for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
+      var s = 0;
+      for (k = 0; k < fale.length; k++) s += fale[k][2] * Math.sin(2 * Math.PI * (fale[k][0] * x + fale[k][1] * y) / N + fale[k][3]);
+      hg[y * N + x] = s;
+    }
+    var b = new Uint8Array(N * N * 4);
+    for (y = 0; y < N; y++) for (x = 0; x < N; x++) {
+      var gx = hg[y * N + (x + 1) % N] - hg[y * N + (x + N - 1) % N], gz = hg[((y + 1) % N) * N + x] - hg[((y + N - 1) % N) * N + x];
+      var l = Math.hypot(gx, 1, gz), i = (y * N + x) * 4;
+      b[i] = Math.round((-gx / l * 0.5 + 0.5) * 255); b[i + 1] = Math.round((-gz / l * 0.5 + 0.5) * 255); b[i + 2] = 255; b[i + 3] = 255;
+    }
+    var t = new T.DataTexture(b, N, N, T.RGBAFormat, T.UnsignedByteType);
+    t.wrapS = t.wrapT = T.RepeatWrapping; t.magFilter = T.LinearFilter; t.minFilter = T.LinearMipmapLinearFilter;
+    t.generateMipmaps = true; t.needsUpdate = true;
+    return t;
+  }
+
+  /* ---------- budowa sceny ---------- */
+  function zbuduj(T, renderer, o) {
+    o = o || {};
+    var dane = o.dane || {}, siatka = o.siatka, poz = o.poziomy || {}, krok = o.lod === 'lekki' ? 2 : 1;
+    var pip = (root.CountryPick && root.CountryPick.pointInRing) || null;
+    if (!pip) throw new Error('brak CountryPick.pointInRing');
+    var zasoby = [];                                    // geometrie, materiały, tekstury do zwolnienia
+    function z(x) { zasoby.push(x); return x; }
+    var scena = new T.Scene();
+    var kamera = new T.PerspectiveCamera(40, 16 / 9, 0.05, 800);
+    var e = o.przewyzszenie || 1.5;
+    var flt = renderer.extensions && renderer.extensions.has && renderer.extensions.has('OES_texture_float_linear');
+    var jednostki = dane.jednostki || [];
+    var iMloda = 0;
+    jednostki.forEach(function (j, k) { if (j.id === 'teide-pico-viejo') iMloda = k + 1; });
+
+    // --- wspólne uniformy terenu ---
+    // paleta 256 × 1: indeks jednostki w R8 sięga 255 — więcej jednostek niż tekseli to błąd danych, nie cichy brak barwy
+    if (jednostki.length > 255) console.error('Geologia: ' + jednostki.length + ' jednostek — paleta mieści 255, nadmiar bez barwy');
+    var paleta = new Uint8Array(256 * 4);
+    jednostki.slice(0, 255).forEach(function (j, k) {
+      var c = new T.Color(j.kolor);
+      paleta[(k + 1) * 4] = Math.round(c.r * 255); paleta[(k + 1) * 4 + 1] = Math.round(c.g * 255); paleta[(k + 1) * 4 + 2] = Math.round(c.b * 255); paleta[(k + 1) * 4 + 3] = 255;
+    });
+    var tPaleta = z(new T.DataTexture(paleta, 256, 1, T.RGBAFormat, T.UnsignedByteType));
+    tPaleta.magFilter = tPaleta.minFilter = T.NearestFilter; tPaleta.generateMipmaps = false; tPaleta.needsUpdate = true;
+    var U = { uTryb: { value: 0 }, uPrzew: { value: e }, uSzklo: { value: 0 }, uPaleta: { value: tPaleta }, uKolorWody: { value: hexLin(T, '#123a52') } };
+    var plaszczyzna = new T.Plane(new T.Vector3(0, 1, 0), 1e7), plaszczyzny = [plaszczyzna];
+
+    function materialTerenu(P, tNorm, tInd, wyciecia) {
+      var m = z(new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.94, metalness: 0, normalMap: tNorm,
+        normalMapType: T.ObjectSpaceNormalMap, clippingPlanes: plaszczyzny, clipShadows: true }));
+      var wyc = [0, 1, 2].map(function (k) { var r = wyciecia[k]; return r ? new T.Vector4(r.x0, r.z0, r.x1, r.z1) : new T.Vector4(); });
+      var u = { uIndeksy: { value: tInd || tPaleta }, uMaIndeksy: { value: tInd ? 1 : 0 }, uMloda: { value: tInd ? iMloda : 0 },
+        uWyc: { value: wyc }, uLWyc: { value: wyciecia.length } };
+      m.onBeforeCompile = function (sh) {
+        Object.keys(U).forEach(function (k) { sh.uniforms[k] = U[k]; });
+        Object.keys(u).forEach(function (k) { sh.uniforms[k] = u[k]; });
+        sh.vertexShader = sh.vertexShader
+          .replace('#include <common>', '#include <common>\nvarying float vWys;\nvarying vec3 vSwiat;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvWys = position.y;\n\tvSwiat = (modelMatrix * vec4(position, 1.0)).xyz;')
+          .replace('#include <fog_vertex>', FOG_RADIALNA);
+        sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>', '#include <common>\n' + GLSL_TEREN_PARS)
+          .replace('#include <color_fragment>', '#include <color_fragment>\n' + GLSL_TEREN_KOLOR)
+          .replace('#include <tonemapping_fragment>', GLSL_TEREN_WODA + '\n#include <tonemapping_fragment>');
+      };
+      m.userData.u = u;
+      return m;
+    }
+
+    // --- poziomy ---
+    var arch = null, wyspa, wstawki = [];
+    if (poz.archipelag) {
+      var sa = poz.archipelag, ra = prostokat(sa);
+      var dxa = (ra.x1 - ra.x0) / (sa.w - 1), dza = (ra.z1 - ra.z0) / (sa.h - 1);
+      // archipelag (ok. 540 m/komórkę) zawsze co drugą próbkę: z bliska i tak przykrywa go wyspa, z daleka 1,1 km wystarcza
+      arch = zbudujPoziom(sa, 2, { km: 8, fn: function () { return -3; } }, nawietrznosc(sa.wys, sa.w, sa.h, dxa, dza, 9),
+        { prost: [prostokat(siatka)], km: 0.02 });
+      arch.odl = odlegloscOdBrzegu(sa.wys, sa.w, sa.h, dxa, dza);
+    }
+    var rw = prostokat(siatka), dxw = (rw.x1 - rw.x0) / (siatka.w - 1), dzw = (rw.z1 - rw.z0) / (siatka.h - 1);
+    var nawW = nawietrznosc(siatka.wys, siatka.w, siatka.h, dxw, dzw, 9);
+    // cel wtapiania = powierzchnia grubszego poziomu PRZED obniżeniem w zakładce (drobniejszy ma tam leżeć wyżej)
+    function przed(P) { return { x0: P.x0, z0: P.z0, dxv: P.dxv, dzv: P.dzv, nx: P.nx, nz: P.nz, hs: P.hsPrzed }; }
+    var archPrzed = arch ? przed(arch) : null;
+    wyspa = zbudujPoziom(siatka, krok, arch ? { km: WTOP_WYSPA_KM, fn: function (x, zz) { return wysokoscTrojkatna(archPrzed, x, zz); } } : null, nawW,
+      { prost: (poz.wstawki || []).map(prostokat), km: 0.006 });
+    wyspa.odl = odlegloscOdBrzegu(siatka.wys, siatka.w, siatka.h, dxw, dzw);
+    // odległość od brzegu liczy też sąsiednie wyspy spoza kafla (La Gomera leży 5 km za jego zachodnią krawędzią) —
+    // bez tego głębokość efektywna oceanu skacze na krawędzi kafla
+    // (z ich lądu w archipelagu — ląd Teneryfy w grubej siatce 540 m wystaje 1–2 km za brzeg i dawał pianę na morzu)
+    var oa = null;
+    if (arch) {
+      var wysInne = new Float32Array(arch.w * arch.h);
+      for (var ia = 0; ia < wysInne.length; ia++) {
+        var xa = arch.x0 + (ia % arch.w) * arch.dx, za = arch.z0 + Math.floor(ia / arch.w) * arch.dz;
+        wysInne[ia] = wewnatrz(rw, xa, za) ? -1 : arch.s.wys[ia];
+      }
+      oa = odlegloscOdBrzegu(wysInne, arch.w, arch.h, arch.dx, arch.dz);
+    }
+    if (oa) for (var yo = 0; yo < siatka.h; yo++) for (var xo = 0; xo < siatka.w; xo++) {
+      var fxa = Math.max(0, Math.min(arch.w - 1.001, (rw.x0 + xo * dxw - arch.x0) / arch.dx)), fya = Math.max(0, Math.min(arch.h - 1.001, (rw.z0 + yo * dzw - arch.z0) / arch.dz));
+      var xa0 = Math.floor(fxa), ya0 = Math.floor(fya), txa = fxa - xa0, tya = fya - ya0, Wa = arch.w;
+      var da = (oa[ya0 * Wa + xa0] * (1 - txa) + oa[ya0 * Wa + xa0 + 1] * txa) * (1 - tya) + (oa[(ya0 + 1) * Wa + xa0] * (1 - txa) + oa[(ya0 + 1) * Wa + xa0 + 1] * txa) * tya;
+      var io = yo * siatka.w + xo;
+      if (da < wyspa.odl[io]) wyspa.odl[io] = da;
+    }
+    wyspa.indeksy = indeksyJednostek(siatka.wys, siatka.w, siatka.h, siatka.bbox, jednostki, pip);
+    var wyspaPrzed = przed(wyspa);
+    (poz.wstawki || []).forEach(function (sw) {
+      var rr = prostokat(sw), dxi = (rr.x1 - rr.x0) / (sw.w - 1), dzi = (rr.z1 - rr.z0) / (sw.h - 1);
+      // nawietrzność wstawki = nawietrzność wyspy w tym miejscu (makro-zbocze nie zależy od rozdzielczości)
+      var nw = new Float32Array(sw.w * sw.h);
+      for (var y = 0; y < sw.h; y++) for (var x = 0; x < sw.w; x++) {
+        var fx = Math.max(0, Math.min(siatka.w - 1.001, (rr.x0 + x * dxi - rw.x0) / dxw)), fy = Math.max(0, Math.min(siatka.h - 1.001, (rr.z0 + y * dzi - rw.z0) / dzw));
+        var x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0, W = siatka.w;
+        nw[y * sw.w + x] = (nawW[y0 * W + x0] * (1 - tx) + nawW[y0 * W + x0 + 1] * tx) * (1 - ty) + (nawW[(y0 + 1) * W + x0] * (1 - tx) + nawW[(y0 + 1) * W + x0 + 1] * tx) * ty;
+      }
+      var P = zbudujPoziom(sw, krok, { km: WTOP_WSTAWKA_KM, fn: function (x, zz) { return wysokoscTrojkatna(wyspaPrzed, x, zz); } }, nw);
+      P.id = sw.id;
+      P.indeksy = indeksyJednostek(sw.wys, sw.w, sw.h, sw.bbox, jednostki, pip);
+      wstawki.push(P);
+    });
+
+    [arch, wyspa].forEach(function (P) { if (P) P.hsPrzed = null; });
+    archPrzed = wyspaPrzed = null;
+    function teksturaWysokosci(P) {
+      var d = new Float32Array(P.w * P.h * 2);
+      for (var i = 0; i < P.w * P.h; i++) { d[i * 2] = P.s.wys[i]; d[i * 2 + 1] = Math.min(P.odl[i], 500); }
+      var t = z(new T.DataTexture(d, P.w, P.h, T.RGFormat, T.FloatType));
+      t.internalFormat = 'RG32F';
+      t.magFilter = t.minFilter = flt ? T.LinearFilter : T.NearestFilter;
+      t.generateMipmaps = false; t.needsUpdate = true;
+      return t;
+    }
+    // Szew między poziomami: grubszy poziom wycina prostokąt drobniejszego pomniejszony o zakładkę, w której oba się
+    // pokrywają (brzeg drobniejszego jest tam już wtopiony w grubszy, a grubszy leży wewnątrz prostokąta 6 m / 20 m niżej,
+    // więc zakładkę rozstrzyga test głębi) — bez zakładki na krawędzi wycięcia prześwitywały szpary (rasteryzacja krawędzi
+    // siatki i granicy `discard` nie pokrywa się co do piksela). polygonOffset odpadł: przy patrzeniu stycznym jego człon
+    // nachylenia to setki metrów i płytkie dno wstawki wychodziło nad taflę.
+    function zakladka(r, m) { return { x0: r.x0 + m, z0: r.z0 + m, x1: r.x1 - m, z1: r.z1 - m }; }
+    function siatkaPoziomu(P, wyciecia, cien) {
+      P.tNorm = z(teksturaPoziomu(T, P.normalne, P, T.RGBAFormat, T.UnsignedByteType, 'mip'));
+      P.tInd = P.indeksy ? z(teksturaPoziomu(T, P.indeksy, P, T.RedFormat, T.UnsignedByteType, false)) : null;
+      P.mat = materialTerenu(P, P.tNorm, P.tInd, wyciecia);
+      P.geo = z(geometriaSiatki(T, P));
+      P.mesh = new T.Mesh(P.geo, P.mat);
+      P.mesh.scale.y = e;
+      P.mesh.castShadow = !!cien; P.mesh.receiveShadow = true;
+      scena.add(P.mesh);
+      return P.mesh;
+    }
+    if (arch) {
+      siatkaPoziomu(arch, [zakladka(wyspa.prost, 1.5)], false); arch.tWys = teksturaWysokosci(arch); arch.mesh.name = 'archipelag';
+    }
+    siatkaPoziomu(wyspa, wstawki.map(function (P) { return zakladka(P.prost, 0.12); }), true);
+    wyspa.mesh.name = 'teren';
+    wyspa.tWys = teksturaWysokosci(wyspa);
+    wstawki.forEach(function (P) {
+      siatkaPoziomu(P, [], false); P.mesh.name = 'wstawka-' + P.id;
+    });
+
+    var wierzcholki = { archipelag: arch ? arch.nx * arch.nz : 0, wyspa: wyspa.nx * wyspa.nz,
+      wstawki: wstawki.reduce(function (n, P) { return n + P.nx * P.nz; }, 0) };
+    wierzcholki.razem = wierzcholki.archipelag + wierzcholki.wyspa + wierzcholki.wstawki;
+    // Wysokość wyświetlanej powierzchni w świecie (km × przewyższenie): wstawka > wyspa > archipelag; null = poza danymi.
+    function wysokoscKm(x, zz) {
+      for (var k = 0; k < wstawki.length; k++) if (wewnatrz(wstawki[k].prost, x, zz)) return wysokoscTrojkatna(wstawki[k], x, zz);
+      if (wewnatrz(wyspa.prost, x, zz)) return wysokoscTrojkatna(wyspa, x, zz);
+      if (arch && wewnatrz(arch.prost, x, zz)) return wysokoscTrojkatna(arch, x, zz);
+      return null;
+    }
+    function wysokosc(x, zz) { var h = wysokoscKm(x, zz); return h == null ? null : h * e; }
+
+    // zasięg lądu wyspy (kadr startowy)
+    var lad = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity };
+    for (var yy = 0; yy < siatka.h; yy += 2) for (var xx = 0; xx < siatka.w; xx += 2) {
+      if (siatka.wys[yy * siatka.w + xx] > 0) {
+        var lx = rw.x0 + xx * dxw, lz = rw.z0 + yy * dzw;
+        if (lx < lad.x0) lad.x0 = lx; if (lx > lad.x1) lad.x1 = lx; if (lz < lad.z0) lad.z0 = lz; if (lz > lad.z1) lad.z1 = lz;
+      }
+    }
+
+    // --- światło ---
+    var klucz = new T.DirectionalLight(0xffffff, 2.5);
+    klucz.castShadow = true;
+    klucz.shadow.mapSize.set(krok === 1 ? 2048 : 1024, krok === 1 ? 2048 : 1024);
+    klucz.shadow.bias = -0.00008; klucz.shadow.normalBias = 0.06;
+    var skam = klucz.shadow.camera; skam.left = skam.bottom = -80; skam.right = skam.top = 80; skam.near = 180; skam.far = 420;
+    scena.add(klucz); scena.add(klucz.target);
+    var wypelnienie = new T.HemisphereLight(0xffffff, 0xffffff, 0.5);
+    scena.add(wypelnienie);
+    // „lawa”: jedno światło zbiorcze od budowy sceny z mocą 0 — zapalenie nie zmienia liczby świateł w kluczu programu
+    var lawa = new T.PointLight(0xff7a30, 0, 12, 2);
+    lawa.name = 'lawa'; lawa.position.set(0, 1, 0);
+    scena.add(lawa);
+
+    // --- niebo, mgła ---
+    var uNiebo = { uZenit: { value: new T.Vector3() }, uHoryzont: { value: new T.Vector3() }, uSlonce: { value: new T.Vector3(0, 1, 0) },
+      uKolorTarczy: { value: new T.Vector3(1, 1, 1) }, uTarcza: { value: 1 } };
+    var kopula = new T.Mesh(z(new T.SphereGeometry(1, 48, 24)), z(new T.ShaderMaterial({ uniforms: uNiebo, vertexShader: NIEBO_VERT,
+      fragmentShader: NIEBO_FRAG, side: T.BackSide, depthWrite: false, fog: false, toneMapped: false })));
+    kopula.renderOrder = -1000; kopula.frustumCulled = false; kopula.name = 'niebo';
+    scena.add(kopula);
+    scena.fog = new T.Fog(0xc9d5de, 240, 400);
+
+    // --- ocean ---
+    var tFale = z(teksturaFal(T));
+    var uWoda = T.UniformsUtils.merge([T.UniformsLib.fog, {
+      uWysW: { value: wyspa.tWys }, uWysA: { value: arch ? arch.tWys : wyspa.tWys }, uFale: { value: tFale },
+      uProstW: { value: new T.Vector4(rw.x0, rw.z0, rw.x1, rw.z1) },
+      uProstA: { value: arch ? new T.Vector4(arch.x0, arch.z0, arch.x1, arch.z1) : new T.Vector4(0, 0, -1, -1) },
+      uRozmW: { value: new T.Vector2(siatka.w, siatka.h) }, uRozmA: { value: arch ? new T.Vector2(arch.w, arch.h) : new T.Vector2(1, 1) },
+      uCzas: { value: 0 }, uSzklo: { value: 0 }, uTylkoKafel: { value: 0 },
+      uSlonce: { value: new T.Vector3(0, 1, 0) }, uKolorSlonca: { value: new T.Vector3(1, 1, 1) }, uAmb: { value: new T.Vector3(0.5, 0.5, 0.5) },
+      uZenitL: { value: new T.Vector3() }, uHoryzontL: { value: new T.Vector3() } }]);
+    // UniformsUtils.merge klonuje tekstury — podmieniamy z powrotem na te same obiekty (jedno wgranie na GPU)
+    uWoda.uWysW.value = wyspa.tWys; uWoda.uWysA.value = arch ? arch.tWys : wyspa.tWys; uWoda.uFale.value = tFale;
+    var matWody = z(new T.ShaderMaterial({ uniforms: uWoda, vertexShader: WODA_VERT, fragmentShader: WODA_FRAG, transparent: true,
+      fog: true, clipping: true, clippingPlanes: plaszczyzny, depthWrite: true }));
+    var ocean = new T.Mesh(z(new T.CircleGeometry(1, 128)), matWody);
+    ocean.rotation.x = -Math.PI / 2; ocean.renderOrder = 1; ocean.frustumCulled = false; ocean.name = 'ocean';
+    scena.add(ocean);
+
+    // --- morze chmur ---
+    var prostCh = { x0: rw.x0 - 30, z0: rw.z0 - 50, x1: rw.x1 + 30, z1: rw.z1 + 10 };
+    var uChmury = T.UniformsUtils.merge([T.UniformsLib.fog, {
+      uWysW: { value: wyspa.tWys }, uProstW: { value: uWoda.uProstW.value }, uRozmW: { value: uWoda.uRozmW.value },
+      uProstCh: { value: new T.Vector4(prostCh.x0, prostCh.z0, prostCh.x1, prostCh.z1) },
+      uCzas: { value: 0 }, uStrop: { value: STROP_CHMUR_KM }, uSlonce: { value: uWoda.uSlonce.value }, uKolorSlonca: { value: uWoda.uKolorSlonca.value },
+      uAmb: { value: uWoda.uAmb.value } }]);
+    uChmury.uWysW.value = wyspa.tWys;
+    var matChmur = z(new T.ShaderMaterial({ uniforms: uChmury, vertexShader: WODA_VERT, fragmentShader: CHMURY_FRAG, transparent: true,
+      depthWrite: false, side: T.DoubleSide, fog: true, clipping: true, clippingPlanes: plaszczyzny }));
+    var chmuryMesh = new T.Mesh(z(new T.PlaneGeometry(prostCh.x1 - prostCh.x0, prostCh.z1 - prostCh.z0, 1, 1)), matChmur);
+    chmuryMesh.rotation.x = -Math.PI / 2;
+    chmuryMesh.position.set((prostCh.x0 + prostCh.x1) / 2, STROP_CHMUR_KM * e, (prostCh.z0 + prostCh.z1) / 2);
+    chmuryMesh.renderOrder = 2; chmuryMesh.visible = false; chmuryMesh.name = 'chmury';
+    scena.add(chmuryMesh);
+
+    // --- znaczniki części: pinezka (kropka + szpilka) i etykieta sprite ---
+    var grupaCzesci = new T.Group(); grupaCzesci.name = 'czesci';
+    scena.add(grupaCzesci);
+    var kropka = (function () {
+      var c = plotno(64, 64), x = c.getContext('2d');
+      x.beginPath(); x.arc(32, 32, 26, 0, Math.PI * 2); x.fillStyle = '#ffffff'; x.fill();
+      x.lineWidth = 7; x.strokeStyle = 'rgba(8,11,15,0.85)'; x.stroke();
+      var t = z(new T.CanvasTexture(c)); t.encoding = T.sRGBEncoding; return t;
+    })();
+    var czesci = {}, piny = [];
+    (dane.czesci || []).forEach(function (cz) {
+      var p = Teren.doLokalnych(siatka, cz.lonLat[0], cz.lonLat[1]);
+      if (wysokoscKm(p[0], p[1]) == null) return;
+      var g = new T.Group(); g.name = 'czesc-' + cz.id; g.userData.id = cz.id;
+      var glowa = new T.Sprite(z(new T.SpriteMaterial({ map: kropka, color: 0xffb36b, sizeAttenuation: false, depthTest: false, fog: false, toneMapped: false })));
+      glowa.renderOrder = 11; glowa.userData.id = cz.id;
+      var c = plotno(8, 8), x = c.getContext('2d'), F = 26, pad = 10, font = '600 ' + F + 'px system-ui, "Segoe UI", sans-serif';
+      x.font = font;
+      var szer = Math.ceil(x.measureText(cz.nazwa).width) + pad * 2, wys = F + 16;
+      c.width = szer; c.height = wys; x = c.getContext('2d'); x.font = font;
+      x.fillStyle = 'rgba(8,11,15,0.62)'; x.fillRect(0, 0, szer, wys);
+      x.fillStyle = '#e9eef3'; x.textBaseline = 'middle'; x.fillText(cz.nazwa, pad, wys / 2 + 1);
+      var tEt = z(new T.CanvasTexture(c)); tEt.encoding = T.sRGBEncoding; tEt.minFilter = T.LinearFilter; tEt.generateMipmaps = false;
+      var etykieta = new T.Sprite(z(new T.SpriteMaterial({ map: tEt, sizeAttenuation: false, depthTest: false, fog: false, toneMapped: false })));
+      etykieta.center.set(0.5, -0.55); etykieta.renderOrder = 12; etykieta.userData.id = cz.id;
+      var gLin = z(new T.BufferGeometry());
+      gLin.setAttribute('position', new T.BufferAttribute(new Float32Array(6), 3));
+      var szpilka = new T.Line(gLin, z(new T.LineBasicMaterial({ color: 0xe9eef3, transparent: true, opacity: 0.75, fog: false, toneMapped: false })));
+      szpilka.frustumCulled = false; szpilka.renderOrder = 10;
+      g.add(szpilka); g.add(glowa); g.add(etykieta);
+      // priorytet etykiety: stratowulkany przed resztą, wśród nich wyższy pierwszy (Teide przed Pico Viejo), dalej zasięg
+      var waga = (cz.rodzaj === 'stratowulkan' ? 1000 + (cz.wys_m || 0) / 10 : 0) + (cz.promien_km || 0);
+      g.userData.pin = { x: p[0], z: p[1], glowa: glowa, etykieta: etykieta, szpilka: szpilka, px: [szer, wys], waga: waga, dl: 1,
+        swiat: new T.Vector3(), q: { x: 0, y: 0, z: 0 }, widoczna: false };
+      grupaCzesci.add(g);
+      czesci[cz.id] = g; piny.push(g);
+    });
+    piny.sort(function (a, b) { return b.userData.pin.waga - a.userData.pin.waga; });
+    var podswietlona = null, najechana = null, zajete = new Float64Array(piny.length * 8), rozm = new T.Vector2();
+
+    function ustawPin(g) {
+      var P = g.userData.pin, y0 = (wysokoscKm(P.x, P.z) || 0) * e;
+      g.position.set(P.x, y0, P.z);
+      P.glowa.position.set(0, P.dl, 0); P.etykieta.position.set(0, P.dl, 0);
+      var a = P.szpilka.geometry.attributes.position;
+      a.array[4] = P.dl; a.needsUpdate = true;
+    }
+    function ustawPiny() { piny.forEach(ustawPin); }
+    ustawPiny();
+
+    // --- przekrój: płaszczyzna, ściana-zaślepka ---
+    var tz = dane.czesci && dane.czesci.filter(function (c) { return c.id === 'teide'; })[0];
+    var srodekPrzekroju = tz ? Teren.doLokalnych(siatka, tz.lonLat[0], tz.lonLat[1]) : [0, 0];
+    var przek = null, sciana = null;
+    function zwolnijSciane() {
+      if (!sciana) return;
+      scena.remove(sciana);
+      sciana.geometry.dispose(); sciana.material.map.dispose(); sciana.material.dispose();
+      sciana = null;
+    }
+    function rysujSciane(L, probki, profil) {
+      var W = 2048, H = 1024, c = plotno(W, H), x = c.getContext('2d');
+      var yNaPx = function (yKm) { return (GORA_SCIANY_KM - yKm) / (GORA_SCIANY_KM - DNO_KM) * H; };
+      var warstwy = (dane.warstwy || []).slice();
+      var kolory = { skorupa: '#4a4f5c', osad: '#8c8374', gmach: '#9a5b34', tarcza: '#5a72b8', stratowulkan: '#b8322a', komora: '#e0662e' };
+      var kolWarstwy = function (w) {
+        if (w.id === 'w-kompleks-podmorski') return '#5e6f74';
+        if (w.id === 'w-gmach-canadas') return '#a8744c';
+        return kolory[w.skala] || '#777777';
+      };
+      var tePos = srodekPrzekroju;
+      // pozioma odległość punktu przekroju od Teide (stożek i zbiornik tylko przy nim — schemat)
+      var dT = probki.map(function (p) { return Math.hypot(p.x - tePos[0], p.z - tePos[1]); });
+      x.clearRect(0, 0, W, H);
+      for (var px = 0; px < W; px++) {
+        var k = Math.min(probki.length - 1, Math.round(px / (W - 1) * (probki.length - 1))), p = probki[k], pow = p.h;
+        var yPow = yNaPx(pow);
+        // słup wody nad dnem (przekrój przez morze)
+        if (pow < 0) { x.fillStyle = '#16405e'; x.fillRect(px, yNaPx(0), 1, yPow - yNaPx(0) + 1); }
+        for (var q = 0; q < warstwy.length; q++) {
+          var w = warstwy[q], gor = -w.doGlebokosci_m / 1000, dol = -w.odGlebokosci_m / 1000;
+          if (w.skala === 'stratowulkan') { if (dT[k] > 6.5) continue; }
+          if (w.skala === 'komora') {
+            var r = 5, t = dT[k] / r; if (t >= 1) continue;
+            var sr = (gor + dol) / 2, pol = (gor - dol) / 2 * Math.sqrt(1 - t * t); gor = sr + pol; dol = sr - pol;
+          }
+          var g2 = Math.min(gor, pow);
+          if (g2 <= dol) continue;
+          x.fillStyle = kolWarstwy(w);
+          x.fillRect(px, yNaPx(g2), 1, yNaPx(dol) - yNaPx(g2) + 1);
+          // granice schematu: przerywane (niska pewność — kreska rzadsza)
+          var kres = w.pewnosc === 'niska' ? (px % 30) < 12 : (px % 20) < 13;
+          x.fillStyle = 'rgba(240,236,226,0.85)';
+          if (kres && gor < pow - 0.05) x.fillRect(px, yNaPx(gor) - 1, 1, 3);
+          if (kres) x.fillRect(px, yNaPx(dol) - 1, 1, 3);
+        }
+        // profil powierzchni z danych: linia ciągła
+        x.fillStyle = '#fff6e0'; x.fillRect(px, yPow - 2, 1, 5);
+      }
+      // podpisy (kompensacja rozciągnięcia przez przewyższenie i proporcje ściany)
+      var kmPxX = L / W, kmPxY = (GORA_SCIANY_KM - DNO_KM) * e / H, sy = kmPxX / kmPxY;
+      function napis(tekst, xPx, yPx, rozmKm, kolor, wyr) {
+        var f = Math.max(10, Math.round(rozmKm / kmPxX));
+        x.save(); x.translate(xPx, yPx); x.scale(1, sy);
+        x.font = '700 ' + f + 'px system-ui, "Segoe UI", sans-serif'; x.textAlign = wyr || 'left'; x.textBaseline = 'middle';
+        x.lineWidth = Math.max(2, f / 6); x.strokeStyle = 'rgba(8,11,15,0.75)'; x.strokeText(tekst, 0, 0);
+        x.fillStyle = kolor || '#f4efe6'; x.fillText(tekst, 0, 0);
+        x.restore();
+      }
+      var rozm = Math.max(0.8, L / 95), wysNapisu = rozm / kmPxX * sy;   // wysokość napisu w px płótna
+      napis('SCHEMAT — wnętrze z danych warstw', 18, H - wysNapisu * 0.9, rozm * 1.1, '#ffd9a8');
+      var kMax = 0; probki.forEach(function (p, i) { if (p.h > probki[kMax].h) kMax = i; });
+      // „profil: dane” w słupie wody nad najgłębszym dnem przy końcu linii (nad profilem ściany już nie ma)
+      var kDno = -1;
+      probki.forEach(function (p, i) { var f = i / (probki.length - 1); if ((f < 0.3 || f > 0.7) && p.h < 0 && (kDno < 0 || p.h < probki[kDno].h)) kDno = i; });
+      if (kDno >= 0 && -probki[kDno].h / kmPxY * e > 2.2 * wysNapisu) {
+        var fx = Math.max(0.08, Math.min(0.92, kDno / (probki.length - 1)));
+        napis('profil: dane', fx * W, yNaPx(probki[kDno].h / 2), rozm, '#fff6e0', 'center');
+      } else napis('profil: dane', kMax / (probki.length - 1) * W, yNaPx(probki[kMax].h) + wysNapisu * 1.6, rozm, '#fff6e0', 'center');
+      warstwy.forEach(function (w) {
+        if (w.skala === 'stratowulkan' || w.skala === 'komora') return;
+        // miejsce podpisu: najgrubsze pasmo, z lekką preferencją środka ściany (podpis nie ucieka na brzeg kadru)
+        var gor = -w.doGlebokosci_m / 1000, dol = -w.odGlebokosci_m / 1000, best = -1, bi = 0, ocena = -Infinity;
+        for (var i = 0; i < probki.length; i += 4) {
+          if (dT[i] < 7.5) continue;                                         // nie pod stożkiem Teide (nakładka schematu)
+          var gr = Math.min(gor, probki[i].h) - dol, o = gr - 0.6 * (gor - dol) * Math.abs(i / (probki.length - 1) - 0.5);
+          if (o > ocena) { ocena = o; best = gr; bi = i; }
+        }
+        if (best / kmPxY * e < 1.8 * wysNapisu) return;                    // pasmo za cienkie na podpis
+        var tekst = w.nazwa.replace(/\s*\(.*\)$/, '') + (w.pewnosc === 'niska' ? ' · głębokość szacowana' : '');
+        napis(tekst, bi / (probki.length - 1) * W, yNaPx(dol + Math.min(best, gor - dol) / 2), rozm * 0.8, '#f4efe6', 'center');
+      });
+      var t = new T.CanvasTexture(c); t.encoding = T.sRGBEncoding; t.anisotropy = 4;
+      return t;
+    }
+    function zbudujSciane(L) {
+      zwolnijSciane();
+      var n = Math.max(2, Math.min(3000, Math.round(L.dl / 0.05) + 1)), probki = [];
+      for (var i = 0; i < n; i++) {
+        var t = i / (n - 1), x = L.a[0] + (L.b[0] - L.a[0]) * t, zz = L.a[1] + (L.b[1] - L.a[1]) * t, h = wysokoscKm(x, zz);
+        probki.push({ x: x, z: zz, h: h == null ? -4 : h });
+      }
+      var pos = new Float32Array(n * 6), uv = new Float32Array(n * 4), idx = [];
+      for (i = 0; i < n; i++) {
+        var p = probki[i], gora = Math.max(p.h, 0), u = i / (n - 1);
+        pos.set([p.x, gora, p.z, p.x, DNO_KM, p.z], i * 6);
+        uv.set([u, (gora - DNO_KM) / (GORA_SCIANY_KM - DNO_KM), u, 0], i * 4);
+        if (i < n - 1) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+      }
+      var g = new T.BufferGeometry();
+      g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setAttribute('uv', new T.BufferAttribute(uv, 2)); g.setIndex(idx);
+      g.computeBoundingSphere();
+      sciana = new T.Mesh(g, new T.MeshBasicMaterial({ map: rysujSciane(L.dl, probki), side: T.DoubleSide, fog: false, toneMapped: false }));
+      sciana.scale.y = e; sciana.name = 'przekroj'; sciana.userData.probki = probki;
+      scena.add(sciana);
+    }
+    function przekroj(arg) {
+      if (!arg) {
+        przek = null; zwolnijSciane();
+        plaszczyzna.set(new T.Vector3(0, 1, 0), 1e7);
+        if (arch) arch.mesh.visible = true;
+        uWoda.uTylkoKafel.value = 0;
+        niebo();
+        renderer.shadowMap.needsUpdate = true;
+        widocznoscPinow();
+        return null;
+      }
+      var kat = ((+arg.kat_st || 0) % 180 + 180) % 180, prz = +arg.przesuniecie_km || 0;
+      var L = liniaPrzekroju(wyspa.prost, srodekPrzekroju, kat, prz);
+      if (!L) return null;
+      przek = { kat_st: kat, przesuniecie_km: prz, linia: L };
+      // zachowana strona: n·(p − punkt) ≤ 0 (usuwana jest strona normalnej — tam stoi widz)
+      plaszczyzna.set(new T.Vector3(-L.normalna[0], 0, -L.normalna[1]), L.normalna[0] * L.punkt[0] + L.normalna[1] * L.punkt[1]);
+      if (arch) arch.mesh.visible = false;
+      uWoda.uTylkoKafel.value = 1;
+      zbudujSciane(L);
+      niebo();
+      renderer.shadowMap.needsUpdate = true;
+      widocznoscPinow();
+      var aLL = Teren.zLokalnych(siatka, L.a[0], L.a[1]), bLL = Teren.zLokalnych(siatka, L.b[0], L.b[1]);
+      var profil = Teren.profil(siatka, aLL, bLL, Math.max(2, Math.round(L.dl / 0.05) + 1));
+      var maks = -Infinity; profil.forEach(function (p) { if (p.h != null && p.h > maks) maks = p.h; });
+      profil.kat_st = kat; profil.przesuniecie_km = prz; profil.maks_m = maks; profil.dl_km = L.dl;
+      profil.a = aLL; profil.b = bLL;
+      przek.profil = profil;
+      return profil;
+    }
+    function widocznoscPinow() {
+      piny.forEach(function (g) {
+        var P = g.userData.pin;
+        g.visible = !przek || (P.x - przek.linia.punkt[0]) * przek.linia.normalna[0] + (P.z - przek.linia.punkt[1]) * przek.linia.normalna[1] <= 0;
+      });
+    }
+
+    // --- światło i niebo ---
+    var sw = { pora: 'dzien', az: 250, el: 30 }, kier = new T.Vector3();
+    function niebo() {
+      var p = PORY[sw.pora] || PORY.dzien, nz = przek ? NIEBO_PRZEKROJU : p;
+      var cz = new T.Color(nz.zenit), ch = new T.Color(nz.horyzont), ct = new T.Color(p.tarcza);
+      uNiebo.uZenit.value.set(cz.r, cz.g, cz.b); uNiebo.uHoryzont.value.set(ch.r, ch.g, ch.b);
+      uNiebo.uKolorTarczy.value.set(ct.r, ct.g, ct.b); uNiebo.uTarcza.value = przek ? 0 : p.moc;
+      scena.fog.color.copy(ch);
+      renderer.setClearColor(ch, 1);
+      var zl = new T.Color(nz.zenit).convertSRGBToLinear(), hl = new T.Color(nz.horyzont).convertSRGBToLinear();
+      uWoda.uZenitL.value.set(zl.r, zl.g, zl.b); uWoda.uHoryzontL.value.set(hl.r, hl.g, hl.b);
+    }
+    function swiatlo(a) {
+      a = a || {};
+      if (a.pora && PORY[a.pora]) sw.pora = a.pora;
+      if (a.az != null) sw.az = +a.az;
+      if (a.el != null) sw.el = +a.el;
+      var p = PORY[sw.pora], d = kierunekSlonca(sw.az, sw.el);
+      kier.set(d[0], d[1], d[2]);
+      klucz.position.set(d[0] * 300, d[1] * 300, d[2] * 300); klucz.target.position.set(0, 0, 0);
+      klucz.target.updateMatrixWorld();
+      klucz.color.set(p.klucz); klucz.intensity = p.k;
+      wypelnienie.color.set(p.wyp); wypelnienie.groundColor.set(p.wyp); wypelnienie.intensity = p.f;
+      uNiebo.uSlonce.value.copy(kier); uWoda.uSlonce.value.copy(kier);
+      var kl = new T.Color(p.klucz), kw = new T.Color(p.wyp);
+      // te same jednostki co w MeshStandardMaterial bez fizycznych świateł: blask = barwa · moc (π się skraca)
+      uWoda.uKolorSlonca.value.set(kl.r * p.k, kl.g * p.k, kl.b * p.k);
+      uWoda.uAmb.value.set(kw.r * p.f, kw.g * p.f, kw.b * p.f);
+      U.uKolorWody.value.copy(new T.Color('#123a52').convertSRGBToLinear()).multiplyScalar(p.f * 1.4 + p.k * Math.max(d[1], 0) * 0.3);
+      niebo();
+      renderer.shadowMap.needsUpdate = true;
+      return { pora: sw.pora, az: sw.az, el: sw.el };
+    }
+    swiatlo({});
+
+    // przewyzszenie(x, wTrakcie): w trakcie animowanej zmiany ściana przekroju tylko się skaluje (napisy przelicza
+    // przebudowa po ostatnim kroku — wTrakcie = false/undefined)
+    function przewyzszenie(x, wTrakcie) {
+      if (x == null) return e;
+      e = Math.max(0.5, Math.min(5, +x || 1));
+      U.uPrzew.value = e;
+      [arch, wyspa].concat(wstawki).forEach(function (P) { if (P) P.mesh.scale.y = e; });
+      chmuryMesh.position.y = STROP_CHMUR_KM * e;
+      ustawPiny();
+      if (sciana && przek) { if (wTrakcie) sciana.scale.y = e; else zbudujSciane(przek.linia); }
+      renderer.shadowMap.needsUpdate = true;
+      return e;
+    }
+
+    // --- wskazywanie ---
+    var rc = new T.Raycaster(), ndc = new T.Vector2(), wek = new T.Vector3();
+    // rzut na ekran do q (px kanwy) — bez alokacji; rozm = rozmiar kanwy odczytany raz na klatkę/zdarzenie
+    function rzutPx(v, q) {
+      wek.copy(v).project(kamera);
+      q.x = (wek.x + 1) / 2 * rozm.x; q.y = (1 - wek.y) / 2 * rozm.y; q.z = wek.z;
+      return q;
+    }
+    function glowaSwiat(g) { return g.userData.pin.swiat.copy(g.position).add(g.userData.pin.glowa.position); }
+    function pick(nx, ny) {
+      ndc.set(nx, ny);
+      kamera.updateMatrixWorld();
+      rc.setFromCamera(ndc, kamera);
+      var cele = [];
+      piny.forEach(function (g) {
+        if (!g.visible) return;
+        cele.push(g.userData.pin.glowa);
+        if (g.userData.pin.widoczna) cele.push(g.userData.pin.etykieta);
+      });
+      renderer.getSize(rozm);
+      var hity = rc.intersectObjects(cele, false), kx = (nx + 1) / 2 * rozm.x, ky = (1 - ny) / 2 * rozm.y, najl = null, dMin = Infinity;
+      function kandydat(id) {
+        var P = czesci[id].userData.pin, q = rzutPx(glowaSwiat(czesci[id]), P.q), d = Math.hypot(q.x - kx, q.y - ky);
+        if (q.z < 1 && d < dMin) { dMin = d; najl = id; }
+      }
+      hity.forEach(function (h) { kandydat(h.object.userData.id); });
+      if (najl) return najl;
+      // tolerancja: kropka w promieniu 12 px (palec, mała kropka)
+      piny.forEach(function (g) { if (g.visible) kandydat(g.userData.id); });
+      return dMin <= 12 ? najl : null;
+    }
+    // Dwa style: wybrana część (karta otwarta) — biała, większa kropka i ciepła etykieta; najechana kursorem — jaśniejsza
+    // kropka. Najechanie nie zabiera wyróżnienia wybranej.
+    function styl() {
+      piny.forEach(function (g) {
+        var id = g.userData.id, wyb = id === podswietlona, naj = id === najechana && !wyb;
+        g.userData.pin.glowa.material.color.set(wyb ? 0xffffff : naj ? 0xffe3c2 : 0xffb36b);
+        g.userData.pin.etykieta.material.color.set(wyb ? 0xffd9a8 : naj ? 0xfff3e4 : 0xffffff);
+      });
+    }
+    function podswietl(id) { podswietlona = id && czesci[id] ? id : null; styl(); }
+    function najedz(id) { var n = id && czesci[id] ? id : null; if (n !== najechana) { najechana = n; styl(); } }
+    function kotwica(id) {
+      var g = czesci[id];
+      if (!g) return null;
+      ustawPin(g);
+      return glowaSwiat(g).toArray();      // toArray alokuje — kotwica to API zdarzeń/sondy, nie klatki
+    }
+    function trafiaSciane(nx, ny) {
+      if (!sciana) return false;
+      ndc.set(nx, ny); rc.setFromCamera(ndc, kamera);
+      return rc.intersectObject(sciana, false).length > 0;
+    }
+    function punktNaMorzu(nx, ny) {
+      ndc.set(nx, ny); rc.setFromCamera(ndc, kamera);
+      var pt = new T.Vector3();
+      return rc.ray.intersectPlane(new T.Plane(new T.Vector3(0, 1, 0), 0), pt) ? [pt.x, pt.z] : null;
+    }
+
+    // Próbka światła w punkcie (pomiar sondy): normalna wyświetlanej powierzchni (z przewyższeniem), N·L i cień rzucany
+    // (marsz promienia ku słońcu po wysokościach).
+    function probkaSwiatla(x, zz) {
+      var h = wysokosc(x, zz);
+      if (h == null) return null;
+      var d = 0.06, hx = (wysokosc(x + d, zz) - wysokosc(x - d, zz)) / (2 * d), hz = (wysokosc(x, zz + d) - wysokosc(x, zz - d)) / (2 * d);
+      var n = new T.Vector3(-hx, 1, -hz).normalize(), nl = n.dot(kier), cien = nl <= 0;
+      for (var t = 0.2; !cien && t < 90; t *= 1.08) {
+        var px = x + kier.x * t, pz = zz + kier.z * t, py = h + kier.y * t, hh = wysokosc(px, pz);
+        if (hh == null) break;
+        if (hh > py + 0.01) cien = true;
+        if (py > 4 * e + 0.5) break;
+      }
+      return { y: h, n: n.toArray(), nl: nl, cien: cien };
+    }
+
+    // --- klatka ---
+    var czas = 0, Rdysku = 400;
+    function animuj(t) {
+      czas = t || 0;
+      uWoda.uCzas.value = czas; uChmury.uCzas.value = czas;
+      kamera.updateMatrixWorld();
+      var cp = kamera.position, hTer = wysokosc(cp.x, cp.z), nad = cp.y - Math.max(0, hTer == null ? 0 : hTer);
+      // dysk oceanu i mgła rosną z wysokością kamery: 400 km do 16 km wysokości, wyżej 25 × wysokość
+      Rdysku = Math.max(400, 25 * Math.max(cp.y, 0));
+      ocean.position.set(cp.x, 0, cp.z); ocean.scale.set(Rdysku * 1.02, Rdysku * 1.02, 1);
+      scena.fog.near = Rdysku * 0.6; scena.fog.far = Rdysku;
+      kopula.position.copy(cp); kopula.scale.setScalar(Rdysku * 1.2);
+      var near = Math.max(0.01, Math.min(5, Math.max(nad, 0.04) * 0.25)), far = Rdysku * 1.3;
+      if (Math.abs(kamera.near - near) > 1e-4 || Math.abs(kamera.far - far) > 1e-3) { kamera.near = near; kamera.far = far; kamera.updateProjectionMatrix(); }
+      // piny: długość szpilki z odległości kamery, stała wielkość na ekranie, rozrzedzanie etykiet
+      renderer.getSize(rozm);
+      var k = 2 * Math.tan(kamera.fov * RAD / 2) / Math.max(1, rozm.y);
+      for (var a = 0; a < piny.length; a++) {
+        var g = piny[a], P = g.userData.pin, d = Math.hypot(cp.x - P.x, cp.y - g.position.y, cp.z - P.z), dl = Math.max(0.05, Math.min(4, d * 0.012));
+        if (Math.abs(dl - P.dl) > 1e-3 * dl) { P.dl = dl; ustawPin(g); }
+        var s = (g.userData.id === podswietlona ? 20 : g.userData.id === najechana ? 17 : 14) * k;
+        P.glowa.scale.set(s, s, 1);
+        P.etykieta.scale.set(P.px[0] * SKALA_ETYKIETY * k, P.px[1] * SKALA_ETYKIETY * k, 1);
+      }
+      // rozrzedzanie etykiet w kolejności priorytetu (wybrana część pierwsza); zajęte są etykiety I kropki pinów
+      // o wyższym priorytecie — etykieta Pico Viejo nie przykryje kropki Teide
+      var nz = 0, wyb = podswietlona ? czesci[podswietlona] : null;
+      for (a = -1; a < piny.length; a++) {
+        g = a < 0 ? wyb : piny[a];
+        if (!g || (a >= 0 && g === wyb)) continue;
+        P = g.userData.pin;
+        if (!g.visible) { P.etykieta.visible = P.widoczna = false; continue; }
+        var q = rzutPx(glowaSwiat(g), P.q), w = P.px[0] * SKALA_ETYKIETY, h = P.px[1] * SKALA_ETYKIETY, r0 = (g.userData.id === podswietlona ? 20 : g.userData.id === najechana ? 17 : 14) / 2 + 2;
+        var x0 = q.x - w / 2, y1 = q.y - 0.55 * h - 6, y0 = y1 - h, ok = q.z < 1 && q.x > -w && q.x < rozm.x + w && q.y > 0 && q.y < rozm.y + h;
+        for (var i = 0; ok && i < nz; i++) {
+          var b = i * 4;
+          if (x0 < zajete[b + 2] && x0 + w > zajete[b] && y0 < zajete[b + 3] && y1 > zajete[b + 1]) ok = false;
+        }
+        P.etykieta.visible = P.widoczna = ok;
+        if (q.z < 1) { zajete[nz * 4] = q.x - r0; zajete[nz * 4 + 1] = q.y - r0; zajete[nz * 4 + 2] = q.x + r0; zajete[nz * 4 + 3] = q.y + r0; nz++; }
+        if (ok) { zajete[nz * 4] = x0 - 4; zajete[nz * 4 + 1] = y0 - 2; zajete[nz * 4 + 2] = x0 + w + 4; zajete[nz * 4 + 3] = y1 + 2; nz++; }
+      }
+    }
+
+    function zwolnij() {
+      zwolnijSciane();
+      scena.traverse(function (ob) { if (ob.isLight && ob.shadow && ob.shadow.map) { ob.shadow.map.dispose(); ob.shadow.map = null; } });
+      zasoby.forEach(function (x) { if (x && x.dispose) x.dispose(); });
+      zasoby.length = 0;
+      while (scena.children.length) scena.remove(scena.children[0]);
+    }
+
+    przewyzszenie(e);
+    renderer.shadowMap.needsUpdate = true;
+
+    return {
+      scena: scena, kamera: kamera, teren: wyspa.mesh, ocean: ocean, czesci: czesci,
+      kolorowanie: function (tryb) { U.uTryb.value = { geologia: 1, krajobraz: 2, kalibracja: 3 }[tryb] || 0; return tryb; },
+      przekroj: przekroj,
+      chmury: function (wl) { chmuryMesh.visible = !!wl; return chmuryMesh.visible; },
+      woda: function (stan, f) { f = f == null ? 1 : Math.max(0, Math.min(1, +f)); U.uSzklo.value = uWoda.uSzklo.value = stan === 'szklana' ? f : 1 - f; return U.uSzklo.value; },
+      swiatlo: swiatlo, przewyzszenie: przewyzszenie, pick: pick, podswietl: podswietl, najedz: najedz, kotwica: kotwica, animuj: animuj, zwolnij: zwolnij,
+      szklo: function () { return U.uSzklo.value; },
+      wysokosc: wysokosc, probkaSwiatla: probkaSwiatla, trafiaSciane: trafiaSciane, punktNaMorzu: punktNaMorzu,
+      lad: lad, granice: { wyspa: wyspa.prost, archipelag: arch ? arch.prost : wyspa.prost }, srodekPrzekroju: srodekPrzekroju,
+      dekoracje: { sciana: function () { return sciana; }, chmury: chmuryMesh, kopula: kopula, lawa: lawa, klucz: klucz, wypelnienie: wypelnienie },
+      stan: function () {
+        return { przewyzszenie: e, kolorowanie: ['teren', 'geologia', 'krajobraz', 'kalibracja'][U.uTryb.value], szklo: U.uSzklo.value, chmury: chmuryMesh.visible,
+          swiatlo: { pora: sw.pora, az: sw.az, el: sw.el }, przekroj: przek ? { kat_st: przek.kat_st, przesuniecie_km: przek.przesuniecie_km, maks_m: przek.profil ? przek.profil.maks_m : null } : null,
+          podswietlona: podswietlona, najechana: najechana, etykiety: piny.filter(function (g) { return g.userData.pin.widoczna; }).length,
+          wierzcholki: wierzcholki, dysk_km: Rdysku, lod: krok === 1 ? 'pelny' : 'lekki' };
+      }
+    };
+  }
+
+  var api = { zbuduj: zbuduj, odlegloscOdBrzegu: odlegloscOdBrzegu, nawietrznosc: nawietrznosc, indeksyJednostek: indeksyJednostek,
+    liniaPrzekroju: liniaPrzekroju, wysokoscTrojkatna: wysokoscTrojkatna, zbudujPoziom: zbudujPoziom, prostokat: prostokat,
+    kierunekSlonca: kierunekSlonca, PORY: PORY };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GeologiaScena = api;
+})(typeof window !== 'undefined' ? window : globalThis);

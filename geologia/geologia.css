@@ -29,3 +29,64 @@
 
 .ge-ladowanie { position: absolute; z-index: 6; inset: 0; display: grid; place-items: center; pointer-events: none;
   color: var(--ge-atrament-2); letter-spacing: .08em; }
+
+/* ---------- makieta (Task 6): narzędzia w pasku, podpis przewyższenia, legenda, karty ---------- */
+.ge-pasek { flex-wrap: wrap; row-gap: 6px; }
+.ge-narzedzia { display: flex; flex-wrap: wrap; gap: 6px 12px; min-width: 0; align-items: center; }
+.ge-grupa { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.ge-narzedzia .ge-guzik { padding: 7px 9px; font-size: 11.5px; letter-spacing: .07em; }
+.ge-zamknij { font-size: 13px; }
+.ge-kat { display: flex; align-items: center; gap: 6px; color: var(--ge-atrament-2); font-size: 12px; }
+.ge-suwak { width: 90px; accent-color: var(--ge-akcent); }
+.ge-kat-wart { min-width: 3.2em; color: var(--ge-atrament); font-variant-numeric: tabular-nums; }
+
+.ge-makieta { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.ge-makieta > * { pointer-events: auto; }
+/* winieta nad kanwą (G-J: bez przebiegu postu) */
+.ge-makieta::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, .28) 100%); }
+.ge-podpis-przew { position: absolute; left: 14px; bottom: 12px; margin: 0; padding: 4px 9px; font: 600 12px/1.3 var(--ge-kroj);
+  letter-spacing: .08em; color: var(--ge-atrament); background: var(--ge-szklo); border: 1px solid var(--ge-linia); pointer-events: none; }
+.ge-panel { background: var(--ge-szklo); border: 1px solid var(--ge-linia); color: var(--ge-atrament); padding: 12px 14px;
+  backdrop-filter: blur(6px); box-sizing: border-box; }
+.ge-legenda { position: absolute; left: 14px; bottom: 46px; width: min(330px, calc(100vw - 28px)); max-height: calc(100% - 140px); overflow: auto; }
+.ge-legenda-lista { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 4px; font-size: 12.5px; line-height: 1.3; }
+.ge-legenda-lista li { display: flex; gap: 8px; align-items: flex-start; }
+.ge-probka { flex: none; width: 14px; height: 14px; margin-top: 1px; border: 1px solid rgba(255, 255, 255, .35); }
+.ge-plakietka { display: inline-block; padding: 2px 7px; font: 700 10.5px/1.4 var(--ge-kroj); letter-spacing: .14em; color: #0b0e12; background: var(--ge-akcent); }
+.ge-h3 { margin: 8px 0 2px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--ge-atrament-2); }
+.ge-karty { position: absolute; right: 14px; top: 64px; bottom: 14px; width: min(380px, calc(100vw - 28px)); display: flex;
+  flex-direction: column; gap: 10px; pointer-events: none; }
+.ge-karty > * { pointer-events: auto; }
+.ge-karta { position: relative; overflow: auto; max-height: 100%; flex: 0 1 auto; }
+.ge-karta-tresc { padding-right: 18px; }
+.ge-panel-x { position: absolute; top: 6px; right: 6px; padding: 4px 8px; font-size: 12px; }
+.ge-karta-rodzaj { margin: 0; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ge-atrament-2); }
+.ge-karta-nazwa { margin: 4px 0 6px; font-size: 18px; line-height: 1.25; }
+.ge-karta-wys { margin: 0 0 6px; font-size: 13px; color: var(--ge-akcent); font-variant-numeric: tabular-nums; }
+.ge-akapit { margin: 6px 0; font-size: 13px; line-height: 1.5; }
+.ge-zrodlo { margin: 6px 0 0; font-size: 11px; line-height: 1.4; color: var(--ge-atrament-2); overflow-wrap: anywhere; }
+.ge-pewnosc { display: inline-block; margin: 2px 0; padding: 1px 6px; font-size: 11px; border: 1px solid var(--ge-linia); color: var(--ge-atrament-2); }
+.ge-pewnosc[data-poziom="wysoka"] { color: #9fd3a0; border-color: rgba(159, 211, 160, .45); }
+.ge-pewnosc[data-poziom="niska"], .ge-pewnosc[data-poziom="bardzo-niska"] { color: #f0b27a; border-color: rgba(240, 178, 122, .45); }
+.ge-mit { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--ge-linia); }
+.ge-werdykt { display: inline-block; padding: 1px 7px; font: 700 10.5px/1.5 var(--ge-kroj); letter-spacing: .14em; border: 1px solid currentColor; }
+.ge-mit[data-werdykt="fakt"] .ge-werdykt { color: #9fd3a0; }
+.ge-mit[data-werdykt="mit"] .ge-werdykt { color: #f08a7a; }
+.ge-mit[data-werdykt="czesciowo"] .ge-werdykt { color: #f0c47a; }
+.ge-mit[data-werdykt="legenda"] .ge-werdykt { color: #b8a6f0; }
+.ge-teza { margin: 6px 0 2px; font-weight: 600; font-size: 13.5px; }
+.ge-profil { display: block; width: 100%; height: auto; margin: 6px 0; background: rgba(0, 0, 0, .25); }
+.ge-legenda-linii { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0; font-size: 11.5px; color: var(--ge-atrament-2); }
+.ge-linia-ciagla::before, .ge-linia-przerywana::before { content: ""; display: inline-block; width: 22px; margin: 0 6px 3px 0; vertical-align: middle; }
+.ge-linia-ciagla::before { border-top: 2px solid #fff6e0; }
+.ge-linia-przerywana::before { border-top: 2px dashed rgba(240, 236, 226, .85); }
+.ge-warstwy { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 3px; font-size: 12px; }
+.ge-warstwy li { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.ge-komunikat { position: absolute; z-index: 6; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 10px 16px;
+  background: var(--ge-szklo); border: 1px solid var(--ge-linia); color: var(--ge-atrament-2); letter-spacing: .06em; pointer-events: none; }
+@media (max-width: 700px) {
+  .ge-karty { top: auto; height: 46%; }
+  .ge-legenda { bottom: 40px; max-height: 40%; }
+  .ge-suwak { width: 80px; }
+}

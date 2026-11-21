@@ -18,6 +18,9 @@
    - `zapadniecie` = { Ma, wypelnienie_m, zakresMa, zrodlo }: przed `Ma` komórka stoi `wypelnienie_m` wyżej niż dziś
      (spec „Wnętrze i czas”); `odMa…doMa` to wzrost gmachu sprzed osuwiska (dzisiejsze wypełnienie doliny młodszymi
      lawami nie jest animowane osobno).
+   - Kolory jednostek wg konwencji map geologicznych: tarcze błękity/fiolet (ciemniej = starsze), ryfty zielenie/żółć,
+     wypełnienia dolin osuwiskowych turkusy, gmach i dolina Icod brązy/ochra, Teide–Pico Viejo czerwień; każda para
+     jednostek różni się o ΔE00 ≥ 12 (test/geologia-paleta.test.js) — legenda makiety musi dać się czytać.
    - Warstwy: głębokość w m względem poziomu morza, dodatnia w dół (ujemna = nad morzem); odGlebokosci_m = spąg
      (głębiej), doGlebokosci_m = strop. Wszystkie `schemat: true`.
    - Pora doby w przebiegu erupcji: tylko to, co mówi źródło; brak pory → 'nieznana'. */
@@ -341,7 +344,7 @@
     // Ferrer 2020: „En el valle de Icod no afloran los escarpes laterales del [deslizamiento]” … „sí está expuesto el escarpe de cabecera del deslizamiento, formando una parte de la gran [caldera]”
     // IGN: „It is an incomplete boiler since the northern wall collapsed and slid into the sea in the Icod de los Vinos landslide.”
     { id: 'dolina-icod', nazwa: 'Dolina Icod — północne zbocze gmachu Las Cañadas (osunięte)', skala: 'gmach', odMa: 4.0, doMa: 0.2,
-      skaly: ['bazalty', 'fonolity', 'dziś: lawy Teide–Pico Viejo wypełniające dolinę'], kolor: '#c98b5a',
+      skaly: ['bazalty', 'fonolity', 'dziś: lawy Teide–Pico Viejo wypełniające dolinę'], kolor: '#d9a066',
       wielokaty: [[[-16.757, 28.355], [-16.755, 28.40], [-16.665, 28.40], [-16.662, 28.381], [-16.633, 28.345], [-16.611, 28.326], [-16.610, 28.307], [-16.626, 28.291], [-16.655, 28.282], [-16.692, 28.291], [-16.757, 28.355]]],
       // Wysokość ubytku dla doliny Icod nie jest w źródłach (boczne skarpy nie odsłaniają się) — zastępczo ściany kaldery,
       // czyli skarpa czołowa tego osuwiska: IGN „It has walls that reach 500 m in height (Guajara's base).”
@@ -350,7 +353,7 @@
       pewnosc: 'niska', zrodlo: Z.ferrer2020 + ' — fig. 1 (obrys); ' + Z.ign + '; wiek gmachu: ' + Z.wGeol },
     // Ferrer 2011: „more than 500 m in some areas”; Ferrer 2020: „the Tigaiga escarpment, up to 600 m high.”
     { id: 'dolina-orotava', nazwa: 'Dolina La Orotava — zbocze ryftu NE sprzed osuwiska', skala: 'ryft', odMa: 1.0, doMa: 0.56,
-      skaly: ['bazalty', 'hialoklastyty w podłożu', 'dziś: lawy wypełnienia doliny'], kolor: '#7fae4a',
+      skaly: ['bazalty', 'hialoklastyty w podłożu', 'dziś: lawy wypełnienia doliny'], kolor: '#2f8f83',
       // Podłoże jak dla ryft-ne-dorsal (ten sam szacunek).
       podloze: { jednostka: 'tarcza-anaga', wys_m: 400, pewnosc: 'bardzo-niska', zrodlo: Z.wTenerife + ' (Dorsal wyrósł „amidst the remains of the older Ancient Basaltic Series (Series I)” — Seria I to wszystkie trzy stare masywy); wybór tarczy Anaga jako podłoża to założenie (Dorsal łączy się z Anagą, IGN); wys_m = mediana rzeźby tarczy Anaga (obliczenie własne, przybliżenie)' },
       wielokaty: [[[-16.608, 28.374], [-16.612, 28.43], [-16.505, 28.43], [-16.513, 28.400], [-16.480, 28.329], [-16.510, 28.313], [-16.546, 28.301], [-16.586, 28.294], [-16.608, 28.374]]],
@@ -359,7 +362,7 @@
       pewnosc: 'niska', zrodlo: Z.ferrer2020 + ' — fig. 1 (obrys); wiek ryftu NE: ' + Z.ign + ' (1,0–0,5 Ma); doMa = najstarsze z osuwisk wg Ferrer 2020 (~560 ka)' },
     // Ferrer 2020: „In the Güímar valley the upper flows of the southern scarpment have provided an age of 830-840 ka”
     { id: 'dolina-guimar', nazwa: 'Dolina Güímar — stratowulkan Arafo na ryfcie NE (osunięty)', skala: 'ryft', odMa: 1.0, doMa: 0.84,
-      skaly: ['bazalty', 'hialoklastyty w podłożu', 'dziś: lawy wypełnienia doliny (m.in. Arafo 1705)'], kolor: '#5f9a3c',
+      skaly: ['bazalty', 'hialoklastyty w podłożu', 'dziś: lawy wypełnienia doliny (m.in. Arafo 1705)'], kolor: '#7cc7b8',
       podloze: { jednostka: 'tarcza-anaga', wys_m: 400, pewnosc: 'bardzo-niska', zrodlo: Z.wTenerife + ' (Dorsal wyrósł „amidst the remains of the older Ancient Basaltic Series (Series I)” — Seria I to wszystkie trzy stare masywy); wybór tarczy Anaga jako podłoża to założenie (Dorsal łączy się z Anagą, IGN); wys_m = mediana rzeźby tarczy Anaga (obliczenie własne, przybliżenie)' },
       wielokaty: [[[-16.469, 28.371], [-16.444, 28.381], [-16.415, 28.371], [-16.375, 28.348], [-16.35, 28.35], [-16.36, 28.265], [-16.386, 28.269], [-16.484, 28.284], [-16.488, 28.300], [-16.480, 28.339], [-16.469, 28.371]]],
       zapadniecie: { Ma: 0.83, wypelnienie_m: 500, zakresMa: [1.0, 0.57],
@@ -368,7 +371,7 @@
     // IGN mapa (legenda odczytana z obrazu, nie tekst): Edificio Teide (czerwienie) + Edificio Pico Viejo (ciemna czerwień) + Domos sálicos postcaldera.
     // ficha 28 (współrzędne szczytu): „Lat. 28,272189°; Long. -16,641039°”
     { id: 'teide-pico-viejo', nazwa: 'Kompleks Teide–Pico Viejo', skala: 'stratowulkan', odMa: 0.17, doMa: 0,
-      skaly: ['bazanity', 'fonolity maficzne', 'fonolity', 'obsydian'], kolor: '#b8322a', centrum: [-16.6425, 28.2724],
+      skaly: ['bazanity', 'fonolity maficzne', 'fonolity', 'obsydian'], kolor: '#c62828', centrum: [-16.6425, 28.2724],
       // Podłoże: IGN „The Cañadas buildings collapsed giving rise to a large elliptical structure … and whose current bottom is at an altitude of 2,100 m.” … „Its place was taken by the post-boiler eruptions that occupied the great depression ( Pico Viejo, El Teide, Salt Domes)”
       // wys_m = dzisiejsze dno kaldery (2100 m) jako strop gmachu pod stożkiem; przed zapadnięciem gmach był wyższy (IGN: do ok. 4000 m).
       podloze: { jednostka: 'gmach-las-canadas', wys_m: 2100, pewnosc: 'niska', zrodlo: Z.ign + ' (dno kaldery 2100 m) — przybliżenie: wypełnienie kaldery pod stożkiem pominięte' },
@@ -376,23 +379,23 @@
       pewnosc: 'niska', zrodlo: Z.ignMapa + '; wiek: ' + Z.wGeol + ' (ok. 170 tys. lat), ' + Z.wTenerife + ' (ok. 200 tys. lat)' },
     // IGN mapa (legenda z obrazu): Macizos antiguos / Macizo de Teno / Basaltos tabulares; IGN: „a basaltic lava pile 6.5 Ma slightly inclined towards the west”
     { id: 'tarcza-teno', nazwa: 'Tarcza Teno', skala: 'tarcza', odMa: 6.4, doMa: 5.1,
-      skaly: ['bazalty tabularne', 'trachybazalty', 'brekcja', 'dajki'], kolor: '#3f6fb0',
+      skaly: ['bazalty tabularne', 'trachybazalty', 'brekcja', 'dajki'], kolor: '#5f9ad6',
       wielokaty: [[[-16.96, 28.42], [-16.86, 28.42], [-16.84, 28.385], [-16.815, 28.37], [-16.80, 28.335], [-16.805, 28.30], [-16.82, 28.265], [-16.83, 28.235], [-16.87, 28.21], [-16.96, 28.27], [-16.96, 28.42]]],
       pewnosc: 'niska', zrodlo: Z.ignMapa + '; wiek: ' + Z.wGeol + ' (6,4–5,1 Ma, za Guillou 2004); inne: IGN 6,5 Ma, ' + Z.wTenerife + ' ok. 7,4 Ma' },
     // IGN: „Anaga represents only the southern half of an island that extended northward, but that marine erosion and successive landslides have made it disappear.”
     { id: 'tarcza-anaga', nazwa: 'Tarcza Anaga', skala: 'tarcza', odMa: 4.9, doMa: 3.9,
-      skaly: ['bazalty', 'fonolity maficzne', 'brekcje polimiktyczne (łuk Taganana)', 'dajki'], kolor: '#2f5f9e',
+      skaly: ['bazalty', 'fonolity maficzne', 'brekcje polimiktyczne (łuk Taganana)', 'dajki'], kolor: '#8a6cc0',
       wielokaty: [[[-16.40, 28.62], [-16.395, 28.555], [-16.375, 28.52], [-16.355, 28.495], [-16.30, 28.478], [-16.26, 28.465], [-16.24, 28.43], [-16.08, 28.50], [-16.08, 28.62], [-16.40, 28.62]]],
       pewnosc: 'niska', zrodlo: Z.ignMapa + '; wiek: ' + Z.wGeol + ' (4,9–3,9 Ma, za Guillou 2004); ' + ficha(3, 'Playa de Benijo') + ' (łuk Taganana ok. 16 mln lat, wiek sporny); inna wartość: ' + Z.wTenerife + ' (ok. 5,7 Ma)' },
     // IGN: „Roque del Conde represents the isolated remains of a building whose dimensions and relationship with the outcrops of the Teno Peninsula are unknown.”
     { id: 'tarcza-roque-del-conde', nazwa: 'Tarcza centralna (Roque del Conde)', skala: 'tarcza', odMa: 11.9, doMa: 8.9,
-      skaly: ['bazalty'], kolor: '#4f8fc4',
+      skaly: ['bazalty'], kolor: '#2c4b94',
       wielokaty: [[[-16.775, 28.165], [-16.735, 28.178], [-16.70, 28.165], [-16.685, 28.13], [-16.695, 28.10], [-16.735, 28.09], [-16.765, 28.105], [-16.785, 28.135], [-16.775, 28.165]]],
       pewnosc: 'niska', zrodlo: Z.ignMapa + '; wiek: ' + Z.wGeol + ' (11,9–8,9 Ma, za Guillou 2004)' },
     // IGN: „In the NW axis of Teno, today active” ; Amado 2007: „The Santiago rift is the most recent and active volcanic zone in the Tenerife island”
     // Wiek 0,2 Ma: Carracedo i in. 2007, GSA Bulletin (rifty NW i NE jako produkt ostatniej fazy od ok. 200 ka) — (streszczenie/pośrednio — nie pobrano)
     { id: 'ryft-nw', nazwa: 'Ryft NW (Santiago del Teide / Abeque)', skala: 'ryft', odMa: 0.2, doMa: 0,
-      skaly: ['bazalty', 'trachybazalty', 'piroklasty (stożki strombolijskie)'], kolor: '#8cc152', centrum: [-16.7569, 28.2946],
+      skaly: ['bazalty', 'trachybazalty', 'piroklasty (stożki strombolijskie)'], kolor: '#d4d64a', centrum: [-16.7569, 28.2946],
       // Podłoże: IGN „Many strombolian eruptions emitted a large amount of basaltic flows on both sides of the slope covering part of the old Teno Massif and previous emissions from Cañadas.”
       // wys_m = dzisiejsza mediana wysokości lądu jednostki tarcza-teno z rzeźby (559 m) — szacunek; miąższości law ryftu źródła nie podają.
       podloze: { jednostka: 'tarcza-teno', wys_m: 560, pewnosc: 'bardzo-niska', zrodlo: Z.ign + ' — podłoże jest dwuczęściowe: część starego masywu Teno i wcześniejsze wylewy Cañadas; tarcza-teno i 560 m (mediana rzeźby tarczy Teno, obliczenie własne) to przybliżenie tylko części podłoża (gmach-las-canadas pominięty)' },
@@ -401,7 +404,7 @@
     // IGN: „In the period between 1.0 Ma and 0.5 Ma, and the more recent non-historical ones, several strombolian volcanoes emitted basaltic flows on the NE-SW axis”
     // wDorsalEs: „Esta estructura se originó hace, aproximadamente, un millón de años por un [[vulcanismo]] fisural de tipo [[Basalto|basáltico]]”
     { id: 'ryft-ne-dorsal', nazwa: 'Ryft NE — grzbiet Dorsal (Pedro Gil)', skala: 'ryft', odMa: 1.0, doMa: 0,
-      skaly: ['bazalty', 'aglomeraty bazaltowe', 'trachybazalty'], kolor: '#6fa83f', centrum: [-16.5097, 28.30],
+      skaly: ['bazalty', 'aglomeraty bazaltowe', 'trachybazalty'], kolor: '#7cb342', centrum: [-16.5097, 28.30],
       // Podłoże: wTenerife „the Dorsal Range (''Cordillera Dorsal'') emerged by means of fissural volcanic activity occurring amidst the remains of the older Ancient Basaltic Series (Series I)”.
       // wys_m = dzisiejsza mediana wysokości lądu jednostki tarcza-anaga z rzeźby (399 m) — szacunek stropu Serii I; miąższości law Dorsalu źródła nie podają.
       podloze: { jednostka: 'tarcza-anaga', wys_m: 400, pewnosc: 'bardzo-niska', zrodlo: Z.wTenerife + ' (Dorsal wyrósł „amidst the remains of the older Ancient Basaltic Series (Series I)” — Seria I to wszystkie trzy stare masywy); wybór tarczy Anaga jako podłoża to założenie (Dorsal łączy się z Anagą, IGN); wys_m = mediana rzeźby tarczy Anaga (obliczenie własne, przybliżenie)' },
@@ -409,13 +412,13 @@
       pewnosc: 'niska', zrodlo: Z.ignMapa + ' („Eje de rift NE o Dorsal”, „Edificio Dorsal”); wiek: ' + Z.ign + ', ' + Z.wDorsalEs + '; erupcje 1704–1705 na osi: ' + Z.ign },
     // ficha 30 (centrum = punkt fichy w kalderze): „Lat. 28,212419°; Long. -16,638697°”
     { id: 'gmach-las-canadas', nazwa: 'Gmach Las Cañadas (ściana kaldery i stoki południowe)', skala: 'gmach', odMa: 4.0, doMa: 0.2,
-      skaly: ['fonolity', 'trachybazalty', 'ignimbryty i pumeksy', 'bazalty'], kolor: '#9a5b34', centrum: [-16.638697, 28.212419],
+      skaly: ['fonolity', 'trachybazalty', 'ignimbryty i pumeksy', 'bazalty'], kolor: '#8d5a3b', centrum: [-16.638697, 28.212419],
       wielokaty: [[[-16.665, 28.42], [-16.60, 28.42], [-16.575, 28.30], [-16.50, 28.28], [-16.38, 28.26], [-16.33, 28.15], [-16.42, 28.05], [-16.55, 28.12], [-16.65, 28.13], [-16.72, 28.17], [-16.76, 28.20], [-16.74, 28.25], [-16.70, 28.27], [-16.665, 28.42]]],
       pewnosc: 'niska', zrodlo: Z.ignMapa + ' („Edificios Cañadas”, „Laderas de Cañadas”, „Tigaiga”); wiek: ' + Z.wGeol + ' (4,0–0,2 Ma), ' + Z.ign + ' (4 Ma – 170 tys. lat)' },
     // Zbiorcza: reszta lądu. wGeol: „The rejuvenation stage of Tenerife … started at about 4&nbsp;Ma and continues to the present day.”
     // IGN: „Finally, in the third NS axis, two large strombolian cone fields covered part of the slopes of Cañadas and the old Roque del Conde massif.”
     { id: 'reszta-mlodsze-pokrywy', nazwa: 'Młodsze pokrywy law i piroklastów (zbiorczo: m.in. pola stożków osi N–S na południu)', skala: 'gmach', odMa: 4.0, doMa: 0,
-      skaly: ['bazalty', 'piroklasty', 'pumeksy', 'osady'], kolor: '#b9b07a',
+      skaly: ['bazalty', 'piroklasty', 'pumeksy', 'osady'], kolor: '#c9bf94',
       wielokaty: [[[-16.3454, 28.3], [-16.3429, 28.3149], [-16.3446, 28.3298], [-16.3483, 28.3444], [-16.3462, 28.3603], [-16.329, 28.3815], [-16.2692, 28.4215], [-16.2216, 28.4654], [-16.0995, 28.5562], [-16.1186, 28.5851], [-16.1447, 28.6097], [-16.2276, 28.5895], [-16.266, 28.5961], [-16.3111, 28.592], [-16.3708, 28.5648], [-16.4206, 28.538], [-16.5117, 28.4355], [-16.5251, 28.4346], [-16.5373, 28.4341], [-16.5488, 28.4336], [-16.5616, 28.4271], [-16.5719, 28.4251], [-16.582, 28.4211], [-16.5915, 28.4155], [-16.6, 28.4149], [-16.6082, 28.411], [-16.6165, 28.4112], [-16.6255, 28.4135], [-16.6341, 28.4127], [-16.6436, 28.4139], [-16.6523, 28.412], [-16.6641, 28.4152], [-16.6747, 28.4147], [-16.6836, 28.4109], [-16.6938, 28.4083], [-16.7049, 28.4061], [-16.7118, 28.3991], [-16.7281, 28.3996], [-16.736, 28.3925], [-16.7527, 28.3904], [-16.7683, 28.3861], [-16.8457, 28.4074], [-16.8649, 28.3973], [-16.8826, 28.385], [-16.9213, 28.3763], [-16.9362, 28.3593], [-16.9399, 28.3397], [-16.9151, 28.3183], [-16.8994, 28.3], [-16.8851, 28.2834], [-16.8746, 28.2679], [-16.8602, 28.2541], [-16.8612, 28.238], [-16.858, 28.2224], [-16.8521, 28.2074], [-16.8448, 28.193], [-16.8355, 28.1795], [-16.8261, 28.1661], [-16.8185, 28.1513], [-16.8113, 28.1357], [-16.8006, 28.1222], [-16.7904, 28.1076], [-16.777, 28.0955], [-16.7624, 28.0846], [-16.7513, 28.0678], [-16.7435, 28.0421], [-16.7283, 28.0255], [-16.7172, 27.9938], [-16.6949, 27.9859], [-16.6711, 27.9833], [-16.6465, 27.9871], [-16.6226, 27.9941], [-16.6, 28.007], [-16.5789, 28.0148], [-16.5566, 28.0077], [-16.5351, 28.0108], [-16.5195, 28.0336], [-16.5033, 28.0474], [-16.4897, 28.064], [-16.4752, 28.0757], [-16.4641, 28.0913], [-16.4521, 28.1037], [-16.4413, 28.1167], [-16.4278, 28.1259], [-16.4153, 28.1363], [-16.4144, 28.1557], [-16.4114, 28.1717], [-16.4083, 28.1864], [-16.4043, 28.1998], [-16.3987, 28.212], [-16.3922, 28.2237], [-16.3865, 28.2358], [-16.3788, 28.2474], [-16.3699, 28.2594], [-16.3658, 28.2727], [-16.3602, 28.2861], [-16.3454, 28.3]]],
       pewnosc: 'bardzo-niska', zrodlo: 'obrys lądu wyliczony z rzeźby geologia/teneryfa/rzezba.png (AWS Terrain Tiles / SRTM) — jednostka zbiorcza, bez granic z mapy; wiek: ' + Z.wGeol + ' (faza odmłodzenia od ok. 4 Ma do dziś); ' + Z.ign + ' (pola stożków osi N–S)' }
   ];
