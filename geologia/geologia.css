@@ -85,6 +85,24 @@
 .ge-warstwy li { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .ge-komunikat { position: absolute; z-index: 6; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 10px 16px;
   background: var(--ge-szklo); border: 1px solid var(--ge-linia); color: var(--ge-atrament-2); letter-spacing: .06em; pointer-events: none; }
+/* czas geologiczny (Task 7): suwak 12 mln lat → dziś z kreskami zdarzeń */
+.ge-czas { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); width: min(600px, calc(100vw - 760px));
+  min-width: 300px; padding: 8px 14px 6px; }
+.ge-czas-gora { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.ge-czas-tytul { letter-spacing: .1em; text-transform: uppercase; color: var(--ge-atrament-2); font-weight: 600; }
+.ge-czas-wart { flex: 1; color: var(--ge-akcent); font-variant-numeric: tabular-nums; font-weight: 600; }
+.ge-czas-suwak { display: block; width: 100%; margin: 4px 0 0; accent-color: var(--ge-akcent); }
+.ge-czas-os { position: relative; height: 26px; margin: 0 8px; }
+.ge-czas-kreska { position: absolute; top: 0; width: 9px; height: 22px; margin-left: -4px; padding: 0; border: 0; background: none;
+  cursor: pointer; }
+.ge-czas-kreska::before { content: ""; position: absolute; left: 4px; top: 0; width: 1px; height: 7px; background: var(--ge-atrament-2); }
+.ge-czas-kreska:hover::before, .ge-czas-kreska:focus-visible::before { background: var(--ge-akcent); height: 10px; }
+.ge-czas-kreska:focus-visible { outline: none; }
+.ge-czas-etykieta { position: absolute; top: 9px; left: 4px; transform: translateX(-50%); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; color: var(--ge-atrament-2); pointer-events: none; max-width: 88px; }
+@media (max-width: 1100px) {
+  .ge-czas { left: 14px; right: 14px; transform: none; width: auto; min-width: 0; bottom: 46px; }
+}
 @media (max-width: 700px) {
   .ge-karty { top: auto; height: 46%; }
   .ge-legenda { bottom: 40px; max-height: 40%; }

@@ -13,8 +13,12 @@
    pod celem, maxDistance = archipelag w kadrze, dystans startowy z proporcji ekranu), przełączniki Teren/Geologia,
    Przekrój (+ kąt i przeciąganie ściany), Morze chmur, przewyższenie ×1/×1,5/×3 (animowane, podpisane w kadrze),
    legenda jednostek, karta części (klik w znacznik), karta „Fakty i mity”, karta przekroju, pełny ekran (F).
+   Czas geologiczny (Task 7): suwak 12 mln lat → dziś (oś logarytmiczna Animacje.osMa, kreski zdarzeń z osCzasu pod suwakiem,
+   klik w kreskę = skok do zdarzenia), plakietka REKONSTRUKCJA, gdy obraz nie jest dzisiejszą rzeźbą (R7).
+   Rzeźbę chwili liczy GPU (scena.czas) — suwak nie przelicza siatki na CPU.
    Esc (G-E): pokaz → makieta tego miejsca; makieta → zamyka kartę części/mitów → wychodzi z pełnego ekranu → Układ.
    Hak testowy: ?smoke&geologia=<miejsce>[&rozdzial=<id>|&makieta][&przekroj=<°>[&przesuniecie=<km>]][&geologiczna][&kontrola=biel|czern][&krzywe]
+   [&czas=<Ma>][&anim=a1..a5&f=0..1] (animacja w stałym kadrze ujęcia z KADRY_ANIM, światło i woda ujęcia, bez znaczników)
    → stały kadr, marker `GEOLOGIA_READY <miejsce> <rozdzial|makieta>`; w smoke lektor i podkład nie startują (stan().lektor
    === 'cisza'), zmiany stanu są natychmiastowe. `&jakosc=pelna` = bez przejścia na lżejszą jakość (G-L); `&lod=lekki` =
    siatka terenu co drugą próbkę (jak na telefonie).
@@ -35,6 +39,18 @@
     szczelina: 'szczelina erupcyjna', 'tunel-lawowy': 'tunel lawowy', 'pole-lawy': 'pole lawy', odsloniecie: 'odsłonięcie',
     plaza: 'plaża', 'skala-morska': 'skała morska' };
   var PRZEWYZSZENIA = [1, 1.5, 3];
+  var M0_CZASU = 12;                    // suwak czasu: 12 mln lat temu → dziś (spec „Wnętrze i czas”)
+  var FUNKCJE_ANIM = { a1: 'a1Powstanie', a2: 'a2Lawa1706', a3: 'a3Osuwisko', a4: 'a4MorzeChmur', a5: 'a5Noc' };
+  // Kadry haka animacji (makieta, zrzuty): cel = część z danych, az [°] (skąd patrzy kamera), d [km] od celu, h [km n.p.m.
+  // kamery], yc [km n.p.m. celu], fov; światło i woda jak w ujęciu filmu (R9.4, R9.5, R9.2, R9.9).
+  var KADRY_ANIM = {
+    a1: { cel: 'teide', az: 200, d: 90, h: 35, yc: 0, fov: 28, swiatlo: { pora: 'dzien', az: 220, el: 35 }, woda: 'realna', rekonstrukcja: true },
+    // a2: kadr H9 „lot za czołem” — kamera 2,6 km za czołem lawy (w górę toru) i 0,8 km nad nim, cel = czoło (licz. w uruchomAnimacje)
+    a2: { czolo: true, za: 2.6, nad: 0.8, fov: 32, swiatlo: { pora: 'noc', az: 65, el: -12 }, woda: 'realna', rekonstrukcja: true },
+    a3: { cel: 'icod', az: 345, d: 34, h: 10, yc: 0, fov: 30, swiatlo: { pora: 'dzien', az: 220, el: 35 }, woda: 'szklana', rekonstrukcja: true },
+    a4: { cel: 'teide', az: 15, d: 30, h: 2.7, yc: 1.6, fov: 34, swiatlo: { pora: 'dzien', az: 160, el: 30 }, woda: 'realna' },
+    a5: { cel: 'teide', az: 0, d: 9, h: 2.3, yc: 4.4, fov: 50, swiatlo: { pora: 'noc', az: 295, el: -18 }, woda: 'realna' }
+  };
 
   function el(tag, klasa, tekst, rodzic) {
     var e = doc.createElement(tag);
@@ -57,7 +73,7 @@
   var jakosc = 'pelna', wymusPelna = smoke || zap.jakosc === 'pelna', slabe = 0, fpsOkno = { n: 0, t0: 0 };
   // makieta: scena, sterowanie, stan przełączników
   var mk = null, budowa = 0, rzezby = {};
-  var mks = { kolorowanie: 'teren', przekroj: null, chmury: false, przew: 1.5, przewCel: 1.5, czesc: null, mity: false, hover: null };
+  var mks = { kolorowanie: 'teren', przekroj: null, chmury: false, przew: 1.5, przewCel: 1.5, czesc: null, mity: false, hover: null, czas: 0, anim: null };
   var nacisk = null, ciag = null, wskaznik = null;
 
   /* ---------- DOM ---------- */
@@ -111,6 +127,19 @@
     // nakładki makiety nad canvasem
     ui.makieta = el('div', 'ge-makieta', null, korzen); ui.makieta.hidden = true;
     ui.podpisPrzew = el('p', 'ge-podpis-przew', null, ui.makieta);
+    // czas geologiczny: suwak 12 mln lat → dziś, kreski zdarzeń z osCzasu
+    ui.czas = el('div', 'ge-panel ge-czas', null, ui.makieta);
+    ui.czas.setAttribute('role', 'group'); ui.czas.setAttribute('aria-label', 'Czas geologiczny');
+    var gc = el('div', 'ge-czas-gora', null, ui.czas);
+    el('span', 'ge-czas-tytul', 'Czas geologiczny', gc);
+    ui.czasWart = el('output', 'ge-czas-wart', 'dziś', gc);
+    ui.czasPlak = el('span', 'ge-plakietka', 'REKONSTRUKCJA', gc); ui.czasPlak.hidden = true;
+    ui.czasPlak.title = 'Rzeźba z wieku jednostek geologicznych — model, nie zapis';
+    ui.czasSuwak = el('input', 'ge-czas-suwak', null, ui.czas);
+    ui.czasSuwak.type = 'range'; ui.czasSuwak.min = '0'; ui.czasSuwak.max = '1000'; ui.czasSuwak.step = '1'; ui.czasSuwak.value = '1000';
+    ui.czasSuwak.setAttribute('aria-label', 'Czas geologiczny: od 12 milionów lat temu do dziś');
+    ui.czasOs = el('div', 'ge-czas-os', null, ui.czas);
+    ui.czasSuwak.addEventListener('input', function () { ustawCzas(window.Animacje.osMa(+ui.czasSuwak.value / 1000, M0_CZASU), true); });
     ui.legenda = el('aside', 'ge-panel ge-legenda', null, ui.makieta); ui.legenda.hidden = true;
     ui.legenda.setAttribute('aria-label', 'Legenda jednostek geologicznych');
     ui.karty = el('div', 'ge-karty', null, ui.makieta);
@@ -135,6 +164,7 @@
     ui.kCzescX.addEventListener('click', zamknijCzesc);
     ui.kMityX.addEventListener('click', zamknijMity);
     zbudujLegende();
+    zbudujOsCzasu();
     podpinanieWskaznika();
     return ui;
   }
@@ -329,9 +359,12 @@
     if (mks.przekroj) ustawPrzekroj(mks.przekroj, true);
     komunikat('');
     // stany haka smoke: natychmiast, przed markerem
+    if (mks.czas > 0) sc.czas(mks.czas);
     if (smoke) {
       if (zap.geologiczna) ustawKolorowanie('geologia');
       if (zap.przekroj != null) ustawPrzekroj({ kat_st: zap.przekroj, przesuniecie_km: zap.przesuniecie || 0 }, true);
+      if (zap.czas != null) ustawCzas(zap.czas);
+      if (zap.anim) uruchomAnimacje(zap.anim, zap.f);
     }
     odswiezNarzedzia();
     if (smoke) gotowosc = st.miejsce + ' makieta';
@@ -340,6 +373,7 @@
     budowa++;
     if (!mk) return;
     if (mk.ster) mk.ster.dispose();
+    if (mk.anim) mk.anim.zwolnij();
     mk.sc.zwolnij();
     mk = null;
     gl.renderer.renderLists.dispose();
@@ -413,7 +447,7 @@
     if (s) {
       var g = sc.granice.archipelag;
       s.target.x = Math.max(g.x0, Math.min(g.x1, s.target.x)); s.target.z = Math.max(g.z0, Math.min(g.z1, s.target.z));
-      s.target.y = mks.przekroj ? Math.max(-12 * sc.przewyzszenie(), Math.min(0, s.target.y)) : 0;
+      s.target.y = mks.przekroj ? Math.max(-12 * sc.przewyzszenie(), Math.min(0, s.target.y)) : mks.anim ? s.target.y : 0;
       var hc = sc.wysokosc(s.target.x, s.target.z);
       s.minDistance = Math.max(0, hc == null ? 0 : hc) + 0.3;
       s.maxDistance = mk.maxDyst;
@@ -445,6 +479,11 @@
     if (mk.ster) mk.ster.update();
     ograniczKamere();
     sc.animuj(t);
+    // animacja haka (G-F: wołana co klatkę po animuj; w smoke czas ruchu stały — kadr powtarzalny)
+    if (mks.anim && mk.anim) {
+      var wyn = mk.anim[FUNKCJE_ANIM[mks.anim.nazwa]](mks.anim.f, smoke ? 12 : undefined);
+      pokazCzas(wyn && wyn.Ma != null ? wyn.Ma : sc.czas(), KADRY_ANIM[mks.anim.nazwa].rekonstrukcja);
+    }
     // zmiana pozy kamery przy nieruchomym kursorze też unieważnia wskazanie (obiekt pod kursorem się przesunął)
     var kp = sc.kamera.position, ct = mk.ster ? mk.ster.target : null;
     var poza = kp.x + ',' + kp.y + ',' + kp.z + (ct ? ',' + ct.x + ',' + ct.y + ',' + ct.z : '');
@@ -464,6 +503,68 @@
     mks.kolorowanie = tryb === 'geologia' ? 'geologia' : 'teren';
     if (mk) mk.sc.kolorowanie(mks.kolorowanie);
     odswiezNarzedzia();
+  }
+  /* ---------- czas geologiczny ---------- */
+  function tekstCzasu(Ma) {
+    if (!(Ma > 0)) return 'dziś';
+    if (Ma >= 1) return liczba(Ma, 1) + ' mln lat temu';
+    if (Ma >= 0.001) return liczba(Math.round(Ma * 1000)) + ' tys. lat temu';
+    return liczba(Math.round(Ma * 1e6)) + ' lat temu';
+  }
+  function pokazCzas(Ma, rekonstrukcja) {
+    if (!ui) return;
+    var t = tekstCzasu(Ma);
+    if (ui.czasWart.textContent !== t) ui.czasWart.textContent = t;
+    var r = !!(Ma > 0 || rekonstrukcja);
+    if (ui.czasPlak.hidden === r) ui.czasPlak.hidden = !r;
+  }
+  function ustawCzas(Ma, zSuwaka) {
+    mks.czas = Math.max(0, Math.min(M0_CZASU, +Ma || 0));
+    if (mk) mk.sc.czas(mks.czas);
+    if (!zSuwaka && ui) ui.czasSuwak.value = String(Math.round(window.Animacje.osV(mks.czas, M0_CZASU) * 1000));
+    pokazCzas(mks.czas, false);
+    if (ui) ui.czasSuwak.setAttribute('aria-valuetext', tekstCzasu(mks.czas));
+  }
+  // Kreski zdarzeń pod suwakiem: wiek z osCzasu (erupcje historyczne — jedna kreska tuż przed „dziś”); etykiety tylko,
+  // gdy się mieszczą (najstarsze najpierw); klik w kreskę = skok do zdarzenia.
+  function zbudujOsCzasu() {
+    var D = window.GeologiaTeneryfa, os = ui.czasOs;
+    os.replaceChildren();
+    var rok = new Date().getUTCFullYear(), zd = [], hist = null;
+    ((D && D.osCzasu) || []).forEach(function (o) {
+      var Ma = o.Ma != null ? o.Ma : o.rok != null ? (rok - o.rok) / 1e6 : null;
+      if (Ma == null || Ma > M0_CZASU) return;
+      if (o.Ma == null) { if (!hist || Ma > hist.Ma) hist = { Ma: Ma, nazwa: 'Erupcje historyczne (od ' + o.rok + ')', krotko: 'erupcje' }; return; }
+      zd.push({ Ma: Ma, nazwa: o.nazwa, krotko: o.nazwa });
+    });
+    if (hist) zd.push(hist);
+    var ostatnia = -1;
+    zd.sort(function (a, b) { return b.Ma - a.Ma; }).forEach(function (z) {
+      var v = window.Animacje.osV(z.Ma, M0_CZASU), b = el('button', 'ge-czas-kreska', null, os);
+      b.type = 'button'; b.style.left = (v * 100).toFixed(2) + '%';
+      b.title = z.nazwa + ' — ' + tekstCzasu(z.Ma);
+      b.setAttribute('aria-label', b.title);
+      if (v - ostatnia >= 0.17) { el('span', 'ge-czas-etykieta', z.krotko, b); ostatnia = v; }
+      b.addEventListener('click', function () { ustawCzas(z.Ma); });
+    });
+  }
+  function uruchomAnimacje(nazwa, f) {
+    if (!mk || !FUNKCJE_ANIM[nazwa] || !window.GeologiaAnimacje) return false;
+    if (!mk.anim) mk.anim = window.GeologiaAnimacje.utworz(T, mk.sc, window.GeologiaTeneryfa || {});
+    mks.anim = { nazwa: nazwa, f: Math.max(0, Math.min(1, +f || 0)) };
+    var K = KADRY_ANIM[nazwa], sc = mk.sc, e = sc.przewyzszenie(), D = window.GeologiaTeneryfa || {};
+    var c = (D.czesci || []).filter(function (x) { return x.id === K.cel; })[0], p = c ? Teren.doLokalnych(null, c.lonLat[0], c.lonLat[1]) : [0, 0];
+    sc.swiatlo(K.swiatlo); sc.woda(K.woda, 1); sc.kolorowanie('krajobraz');      // ujęcia filmu: barwy modelu krajobrazu (R4)
+    sc.kamera.fov = K.fov; sc.kamera.updateProjectionMatrix();
+    var czesci = sc.scena.getObjectByName('czesci'); if (czesci) czesci.visible = false;
+    // kadr ujęcia może patrzeć w górę (A5: niebo nad Teide z podnóża) — limit makiety „nie spod poziomu celu” nie obowiązuje
+    if (mk.ster) mk.ster.maxPolarAngle = Math.PI * 0.9;
+    if (K.czolo) {
+      var w = mk.anim[FUNKCJE_ANIM[nazwa]](mks.anim.f, smoke ? 12 : undefined), cz = w.czoloXZ, k = w.kier, yc = sc.wysokosc(cz[0], cz[1]) || 0;
+      ustawKadr([cz[0] - k[0] * K.za, yc + K.nad * e, cz[1] - k[1] * K.za], [cz[0], yc, cz[1]]);
+    } else ustawKadr([p[0] + Math.sin(K.az * RAD) * K.d, K.h * e, p[1] - Math.cos(K.az * RAD) * K.d], [p[0], K.yc * e, p[1]]);
+    mk.kadrAuto = null;
+    return true;
   }
   function ustawChmury(wl) { mks.chmury = !!wl; if (mk) mk.sc.chmury(mks.chmury); odswiezNarzedzia(); }
   function ustawPrzewyzszenie(x) { mks.przewCel = x; if (smoke || !mk) { mks.przew = x; if (mk) mk.sc.przewyzszenie(x); } odswiezNarzedzia(); }
@@ -731,7 +832,8 @@
     if (ui) { zamknijCzesc(); zamknijMity(true); ui.canvas.style.cursor = ''; }
     wskaznik = null; nacisk = null; ciag = null;
     if (gl) zwolnijMakiete();
-    mks.przekroj = null; mks.chmury = false; mks.kolorowanie = 'teren'; mks.przew = mks.przewCel = 1.5;
+    mks.przekroj = null; mks.chmury = false; mks.kolorowanie = 'teren'; mks.przew = mks.przewCel = 1.5; mks.czas = 0; mks.anim = null;
+    if (ui) { ui.czasSuwak.value = '1000'; pokazCzas(0, false); }
   }
   // G-C: po wczytaniu mysliwce/kino.js (które podmienia globalny obiekt krzywych) zapamiętane krzywe mają dalej swoje funkcje.
   function sprawdzKrzywe() {
@@ -762,6 +864,8 @@
           maks_m: mks.przekroj.profil ? mks.przekroj.profil.maks_m : null } : null,
         chmury: mks.chmury, przewyzszenie: mks.przew, przewyzszenieCel: mks.przewCel, czesc: mks.czesc, mity: mks.mity,
         przelot: !!(mk && mk.lot), pelnyEkran: doc.fullscreenElement === korzen, scena: mk ? mk.sc.stan() : null,
+        czas: mks.czas, anim: mks.anim ? { nazwa: mks.anim.nazwa, f: mks.anim.f } : null,
+        czasTekst: ui ? ui.czasWart.textContent : null, rekonstrukcja: ui ? !ui.czasPlak.hidden : false,
         kamera: mk ? { poz: mk.sc.kamera.position.toArray(), cel: mk.ster ? mk.ster.target.toArray() : null,
           min: mk.ster ? mk.ster.minDistance : null, max: mk.ster ? mk.ster.maxDistance : null } : null };
     },
@@ -785,5 +889,9 @@
     przewyzszenie: function (x) { ustawPrzewyzszenie(x); return mks.przewCel; },
     // hak sondy: przekrój jak z suwaka i przeciągania (karta przekroju odświeżona), bez przelotu kamery
     przekroj: function (p) { ustawPrzekroj(p, false); return mks.przekroj ? { kat_st: mks.przekroj.kat_st, przesuniecie_km: mks.przekroj.przesuniecie_km } : null; },
+    // hak sondy: czas geologiczny jak z suwaka (G-D: znaczniki i kotwice z rzeźby chwili)
+    czas: function (Ma) { ustawCzas(Ma); return mks.czas; },
+    // hak sondy: animacja w kadrze ujęcia (jak &anim=…&f=…)
+    animacja: function (nazwa, f) { return uruchomAnimacje(nazwa, f); },
   };
 })();

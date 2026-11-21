@@ -3,7 +3,8 @@
    GeologiaScena.zbuduj(T, renderer, { siatka, poziomy: { archipelag, wstawki }, dane, lod: 'pelny'|'lekki', przewyzszenie = 1.5 })
      → { scena, kamera, teren, ocean, kolorowanie(tryb), przekroj(null | { kat_st, przesuniecie_km }) → profil, chmury(wl),
          woda(stan, f), swiatlo({ pora, az, el }), przewyzszenie(x), czesci: { [id]: Object3D }, pick(ndcX, ndcY) → id|null,
-         podswietl(id|null), kotwica(id) → [x, y, z], animuj(t), zwolnij(),
+         podswietl(id|null), kotwica(id) → [x, y, z], animuj(t), czas(Ma), zwolnij(),
+         efekty: { luna, zar, cienChmur, wypelnienie } (haki animacji A1–A4, geologia/animacje.js),
          (dodatki dla widoku i sondy) wysokosc(x, z), probkaSwiatla(x, z), lad, granice, trafiaSciane(ndc), punktNaMorzu(ndc), stan() }
    Układ: 1 j. = 1 km, +x wschód, +y góra (km × przewyższenie), +z południe, początek = środek bbox wyspy (Teren.doLokalnych).
    Poziomy: archipelag (pod spodem, wycięty w prostokącie wyspy), wyspa (krawędź kafla wtopiona w archipelag na 8 km),
@@ -21,9 +22,17 @@
    (mapa cieni odświeżana tylko przy zmianie światła/przewyższenia/przekroju), wypełnienie HemisphereLight(c, c),
    jedno światło punktowe „lawa” od budowy z mocą 0 (liczba świateł w kluczu programu — docs/material-filmowy.md).
    Jedna płaszczyzna przycinania zawsze obecna (wyłączony przekrój = płaszczyzna w nieskończoności) — przełączenie
-   przekroju nie przekompilowuje materiałów. */
+   przekroju nie przekompilowuje materiałów.
+   Czas geologiczny (czas(Ma), Task 7): rzeźbę chwili Ma liczy SHADER WIERZCHOŁKÓW terenu (GLSL_EWOLUCJA = rachunek
+   geologia/ewolucja.js na GPU: dzisiejsza wysokość wierzchołka + tekstura przynależności RGBA8 (jednostka, druga jednostka
+   stoku, waga mieszania) + parametry jednostek
+   w uniformach), także w materiale głębi cienia (customDepthMaterial) i w shaderze wody (głębokość, piana przy brzegu
+   chwili). Animacja A1 zmienia tylko uniform uEwoMa — żadnego przeliczania 1 mln komórek na CPU w klatce. CPU liczy
+   ten sam rachunek punktowo (wysokosc(x, z): znaczniki, kotwice, kamera — G-D). Przynależność i tekstury powstają
+   leniwie przy pierwszym czas(Ma > 0); program cieniowania jest ten sam od budowy (gałąź za uniformem). */
 (function (root) {
   var Teren = root.Teren || (typeof require === 'function' ? require('./teren.js') : null);
+  var Ew = root.Ewolucja || (typeof require === 'function' ? require('./ewolucja.js') : null);
   var RAD = Math.PI / 180;
   var MORZE_POD_KM = 0.012;            // dno o wysokości 0 (półka szwu SRTM/ETOPO) leży 12 m pod taflą — bez z-fightingu
   var WTOP_WYSPA_KM = 8, WTOP_WSTAWKA_KM = 0.3;
@@ -271,11 +280,88 @@
     'float geFbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * geSzum(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return s; }',
   ].join('\n');
 
+  // Czas geologiczny na GPU — ten sam rachunek co Ewolucja.wysokoscKomorki (geologia/ewolucja.js; zmiana tu = zmiana tam).
+  // uEwoO[k] = (odMa, doMa, zapadniecie.Ma | −1, wypelnienie_m), uEwoP[k] = (podłoże k+1 | 0, podloze.wys_m, R_km, ma centrum),
+  // uEwoC[k] = centrum w układzie lokalnym [km]. Podłoże rozwinięte o jeden poziom (test danych pilnuje, że więcej nie ma).
+  var MAX_JEDN_GPU = 16;
+  var GLSL_EWOLUCJA = [
+    'uniform float uEwoMa; uniform float uEwoDno; uniform vec4 uEwoO[' + MAX_JEDN_GPU + ']; uniform vec4 uEwoP[' + MAX_JEDN_GPU + ']; uniform vec2 uEwoC[' + MAX_JEDN_GPU + '];',
+    'float geEwoPostep(int k, float t, vec2 xz) {',
+    '  vec4 o = uEwoO[k]; vec4 p = uEwoP[k];',
+    '  float q = clamp((o.x - t) / max(o.x - o.y, 1e-6), 0.0, 1.0);',
+    '  if (p.w > 0.5) q = clamp((q - OPOZ_EWO * clamp(length(xz - uEwoC[k]) / max(p.z, 1e-3), 0.0, 1.0)) / (1.0 - OPOZ_EWO), 0.0, 1.0);',
+    '  return q * q * (3.0 - 2.0 * q);',
+    '}',
+    'float geEwoWzrost(int k, float h, vec2 xz, out float podst) {',
+    '  vec4 o = uEwoO[k]; vec4 p = uEwoP[k];',
+    '  float X = h + ((o.z >= 0.0 && uEwoMa > o.z) ? o.w * clamp(1.0 + h / WYP_ZANIK, 0.0, 1.0) : 0.0);',
+    '  float b = min(uEwoDno, X);',
+    '  podst = -1e9;',
+    '  if (p.x > 0.5) { int j = int(p.x + 0.5) - 1; float Y = min(X, p.y); float bj = min(uEwoDno, Y); b = bj + geEwoPostep(j, uEwoMa, xz) * (Y - bj); podst = b; }',
+    '  return b + geEwoPostep(k, uEwoMa, xz) * (X - b);',
+    '}',
+    // lab = (jednostka, druga jednostka — stok albo pas granicy na lądzie, waga pierwszej 0…1, oddalenie stoku od brzegu 0…1)
+    // — tekstura przynależności RGBA8
+    'float geEwo(float h, vec4 lab, vec2 xz) {',
+    '  if (lab.x < 0.5 || uEwoMa <= 0.0) return h;',
+    '  float pd, pd2;',
+    // bajt brzegu stoku: 0…128 oddalenie od brzegu (tB), 128…255 zanik stoku 30–40 km od lądu (dal)
+    '  float b = lab.w * 255.0, tB = min(1.0, b / 128.0), dal = 1.0 - max(0.0, b - 128.0) / 127.0;',
+    '  float e1 = geEwoWzrost(int(lab.x + 0.5) - 1, h, xz, pd), e = e1;',
+    '  if (lab.y > 0.5 && lab.z < 0.999) {',
+    '    e = mix(geEwoWzrost(int(lab.y + 0.5) - 1, h, xz, pd2), e1, lab.z);',
+    // jednostka z podłożem (pd > −1e8): sąsiad nie podnosi ponad własny wzrost (duch Teide), próg min(podłoże, ±12 m)
+    '    if (pd > -1e8) { e = min(e, e1); e += (1.0 - tB) * max(0.0, min(pd, h > 0.0 ? MORZE_POD : -MORZE_POD) - e); }',
+    '  }',
+    '  float r = h + clamp((h - uEwoDno) / STOK_EWO, 0.0, 1.0) * dal * (e - h);',   // ląd: (h − dno)/1000 > 1 → waga 1
+    '  return r <= 0.0 ? min(r, -MORZE_POD) : r;',                          // nic w (−12 m; 0] — z-fighting z taflą
+    '}',
+    'vec4 geEwoLab(vec4 t) { return vec4(floor(t.r * 255.0 + 0.5), floor(t.g * 255.0 + 0.5), t.b, t.a); }'
+  ].join('\n').replace(/OPOZ_EWO/g, (Ew ? Ew.OPOZNIENIE : 0.5).toFixed(4)).replace(/STOK_EWO/g, (Ew ? Ew.STOK_M : 1000).toFixed(1))
+    .replace(/WYP_ZANIK/g, (Ew ? Ew.WYP_ZANIK_M : 500).toFixed(1)).replace(/MORZE_POD/g, (Ew ? Ew.MORZE_POD_M : 12).toFixed(1));
+  // Wierzchołek terenu w chwili uEwoMa (wstawiany po begin_vertex): wysokość, współczynnik nachylenia dla mapy normalnych
+  // (dzisiejsze normalne z gradientem × dH/dh — dno chwili jest płaskie) i „żar” komórki w trakcie wzrostu (A1).
+  // Krawędź kafla wyspy (8 km) wraca do dzisiejszej wysokości — styk z archipelagiem bez uskoku.
+  var GLSL_EWO_WIERZCHOLEK = [
+    'vEwoK = 1.0; vEwoZar = 0.0;',
+    'if (uEwoAkt > 0.5 && uEwoMa > 0.0) {',
+    '  vec4 geLab = geEwoLab(texture2D(uPrzyn, uv * uEwoUv.xy + uEwoUv.zw));',
+    '  if (geLab.x > 0.5) {',
+    '    float geH0 = position.y * 1000.0;',
+    '    vec4 geR = uEwoBrzeg;',
+    '    float geF = smoothstep(0.0, ' + WTOP_WYSPA_KM.toFixed(1) + ', min(min(position.x - geR.x, geR.z - position.x), min(position.z - geR.y, geR.w - position.z)));',
+    '    float geH = geH0 + geF * (geEwo(geH0, geLab, position.xz) - geH0);',
+    '    float geH2 = geH0 + 25.0 + geF * (geEwo(geH0 + 25.0, geLab, position.xz) - geH0 - 25.0);',
+    '    transformed.y = geH / 1000.0;',
+    '    vEwoK = clamp((geH2 - geH) / 25.0, 0.0, 1.5);',
+    '    float geS = geEwoPostep(int(geLab.x + 0.5) - 1, uEwoMa, position.xz);',
+    '    vEwoZar = 4.0 * geS * (1.0 - geS) * geF;',
+    '  }',
+    '}'
+  ].join('\n');
+  var GLSL_EWO_PARS_VERT = 'uniform sampler2D uPrzyn; uniform float uEwoAkt; uniform vec4 uEwoUv; uniform vec4 uEwoBrzeg;\n';
+
+  // Pokrycie morza chmur A4 (spec R4): wspólne dla warstw chmur (geologia/animacje.js) i cienia chmur na terenie.
+  // Pasat z NE — chmury płyną na SW; wyższa warstwa płynie szybciej (paralaksa); gęściej po nawietrznej (N) stronie.
+  var GLSL_CHMURY_A4 = [
+    'float geChmuryA4(vec2 xz, float czas, float warstwa) {',
+    '  vec2 p = xz - czas * vec2(-0.05, 0.05) * (1.0 + 0.45 * warstwa) + warstwa * vec2(17.3, -9.1);',
+    '  float d = geFbm(p * 0.085) * 0.72 + geFbm(p * 0.33) * 0.28;',
+    '  float maska = 0.25 + 0.75 * smoothstep(-6.0, 26.0, -xz.y + 0.35 * xz.x);',
+    '  return smoothstep(0.40, 0.60, d * (0.62 + 0.55 * maska) + 0.04 * (1.0 - warstwa));',
+    '}'
+  ].join('\n');
+
   var GLSL_TEREN_PARS = [
     'uniform float uTryb;', 'uniform float uPrzew;', 'uniform float uSzklo;', 'uniform float uMaIndeksy;', 'uniform float uMloda;',
     'uniform sampler2D uIndeksy;', 'uniform sampler2D uPaleta;', 'uniform vec4 uWyc[3];', 'uniform float uLWyc;', 'uniform vec3 uKolorWody;',
-    'varying float vWys;', 'varying vec3 vSwiat;',
+    'varying float vWys;', 'varying vec3 vSwiat;', 'varying float vEwoK;', 'varying float vEwoZar;',
+    // efekty animacji: łuna lawy (odległość od toru), żar rosnących komórek (A1), cień chmur A4 na świetle klucza
+    'uniform vec2 uLunaP[24]; uniform float uLunaN; uniform vec3 uLunaKolor; uniform float uLunaZasieg; uniform float uZar;',
+    'uniform float uCienChmur; uniform float uStropA4; uniform float uCzasA4; uniform vec3 uSlonceKier;',
+    'float geCien = 1.0;',
     GLSL_WSPOLNE,
+    GLSL_CHMURY_A4,
     // hipsometria atlasowa (makieta „Teren”): dno w błękitach, ląd zieleń → beż → brąz → szarość → biel
     'vec3 geHipsometria(float h) {',
     '  vec3 c;',
@@ -323,7 +409,14 @@
     '}',
     'vec4 geN = texture2D(normalMap, vUv);',
     'vec3 geNo = geN.xyz * 2.0 - 1.0;',
+    'geNo.xz *= vEwoK;',
     'vec3 geNw = normalize(vec3(geNo.x, geNo.y / max(uPrzew, 0.01), geNo.z));',
+    // cień chmur słabnie w ostatnich 150 m pod stropem (bez poziomej kreski cienia na zboczu)
+    'if (uCienChmur > 0.001) {',
+    '  float geNiz = 1.0 - smoothstep(uStropA4 - 0.15 * uPrzew, uStropA4, vSwiat.y);',
+    '  vec2 geP = vSwiat.xz + uSlonceKier.xz / max(uSlonceKier.y, 0.08) * max(uStropA4 - vSwiat.y, 0.0);',
+    '  geCien = 1.0 - uCienChmur * geNiz * geChmuryA4(geP, uCzasA4, 0.0);',
+    '}',
     'float geH = vWys * 1000.0;',
     'float geJ = uMaIndeksy > 0.5 ? floor(texture2D(uIndeksy, vUv).r * 255.0 + 0.5) : 0.0;',
     'vec3 geKol;',
@@ -335,6 +428,26 @@
     '} else if (uTryb < 2.5) geKol = geKrajobraz(geH, geN.a * 2.0 - 1.0, geNw, geJ);',
     'else geKol = vec3(0.2);',                                     // „kalibracja”: jednolite albedo 0,2 do pomiaru światła
     'diffuseColor.rgb *= geKol;'
+  ].join('\n');
+
+  // Łuna lawy (spec R4: w shaderze terenu z odległości od toru, bez bloomu) i żar komórek w trakcie wzrostu (A1) — światło
+  // dodane po oświetleniu, przed mapowaniem tonów; łuna = albedo × barwa łuny × zanik z odległości od płonącej części toru.
+  var GLSL_TEREN_EMISJA = [
+    'if (uLunaN > 1.5) {',
+    '  float geD = 1e3;',
+    '  for (int i = 0; i < 23; i++) {',
+    '    if (float(i) + 1.5 < uLunaN) {',
+    '      vec2 geA = uLunaP[i], geAB = uLunaP[i + 1] - uLunaP[i];',
+    '      float geT = clamp(dot(vSwiat.xz - geA, geAB) / max(dot(geAB, geAB), 1e-9), 0.0, 1.0);',
+    '      geD = min(geD, length(vSwiat.xz - geA - geAB * geT));',
+    '    }',
+    '  }',
+    '  gl_FragColor.rgb += diffuseColor.rgb * uLunaKolor * (exp(-geD / uLunaZasieg) + 0.3 * exp(-geD / (4.0 * uLunaZasieg)));',
+    '}',
+    'if (uZar > 0.001 && vEwoZar > 0.001) {',
+    '  float geZ = geFbm(vSwiat.xz * 1.7);',
+    '  gl_FragColor.rgb += vec3(1.0, 0.3, 0.05) * uZar * vEwoZar * (0.12 + 1.5 * smoothstep(0.5, 0.72, geZ));',
+    '}'
   ].join('\n');
 
   // Mgła wodna pod taflą w stanie „szklana”: droga promienia pod wodą, widzialność 25 km.
@@ -367,8 +480,10 @@
     'uniform vec4 uProstW; uniform vec4 uProstA; uniform vec2 uRozmW; uniform vec2 uRozmA;',
     'uniform float uCzas; uniform float uSzklo; uniform float uTylkoKafel;',
     'uniform vec3 uSlonce; uniform vec3 uKolorSlonca; uniform vec3 uAmb; uniform vec3 uZenitL; uniform vec3 uHoryzontL;',
+    'uniform sampler2D uPrzynW; uniform float uEwoWoda;',
     'varying vec3 vSwiat;',
     GLSL_WSPOLNE,
+    GLSL_EWOLUCJA,
     'vec2 geUv(vec2 xz, vec4 r, vec2 n) { vec2 f = (xz - r.xy) / (r.zw - r.xy); return (f * (n - 1.0) + 0.5) / n; }',
     'bool geW(vec2 xz, vec4 r) { return xz.x >= r.x && xz.x <= r.z && xz.y >= r.y && xz.y <= r.w; }',
     'void main() {',
@@ -376,7 +491,17 @@
     '  vec2 xz = vSwiat.xz;',
     '  if (uTylkoKafel > 0.5 && !geW(xz, uProstW)) discard;',
     '  float h = -4000.0, dist = 60.0;',
-    '  if (geW(xz, uProstW)) { vec2 t = texture2D(uWysW, geUv(xz, uProstW, uRozmW)).rg; h = t.r; dist = t.g; }',
+    '  if (geW(xz, uProstW)) {',
+    '    vec2 t = texture2D(uWysW, geUv(xz, uProstW, uRozmW)).rg; h = t.r; dist = t.g;',
+    // dno chwili geologicznej: głębokość i brzeg (piana) z rzeźby chwili, nie z dzisiejszej
+    '    if (uEwoWoda > 0.5 && uEwoMa > 0.0) {',
+    '      vec4 lab = geEwoLab(texture2D(uPrzynW, geUv(xz, uProstW, uRozmW)));',
+    '      vec4 r = uProstW; float fb = smoothstep(0.0, ' + WTOP_WYSPA_KM.toFixed(1) + ', min(min(xz.x - r.x, r.z - xz.x), min(xz.y - r.y, r.w - xz.y)));',
+    '      float hE = h + fb * (geEwo(h, lab, xz) - h);',
+    // odległość od brzegu chwili: nie mniejsza niż dzisiejsza (szelf daleko od brzegu nie robi się turkusowy)
+    '      if (abs(hE - h) > 0.5) { h = hE; dist = max(dist, max(-h, 0.0) / 120.0); }',
+    '    }',
+    '  }',
     '  else if (geW(xz, uProstA)) { vec2 t = texture2D(uWysA, geUv(xz, uProstA, uRozmA)).rg; h = t.r; dist = t.g; }',
     // półka 0 m ze szwu SRTM/ETOPO zasłonięta: głębokość efektywna rośnie co najmniej 120 m na km od brzegu
     '  float dEff = max(-h, 120.0 * dist);',
@@ -492,6 +617,7 @@
     var dane = o.dane || {}, siatka = o.siatka, poz = o.poziomy || {}, krok = o.lod === 'lekki' ? 2 : 1;
     var pip = (root.CountryPick && root.CountryPick.pointInRing) || null;
     if (!pip) throw new Error('brak CountryPick.pointInRing');
+    if (!Ew) throw new Error('brak Ewolucja (geologia/ewolucja.js)');
     var zasoby = [];                                    // geometrie, materiały, tekstury do zwolnienia
     function z(x) { zasoby.push(x); return x; }
     var scena = new T.Scene();
@@ -513,25 +639,64 @@
     var tPaleta = z(new T.DataTexture(paleta, 256, 1, T.RGBAFormat, T.UnsignedByteType));
     tPaleta.magFilter = tPaleta.minFilter = T.NearestFilter; tPaleta.generateMipmaps = false; tPaleta.needsUpdate = true;
     var U = { uTryb: { value: 0 }, uPrzew: { value: e }, uSzklo: { value: 0 }, uPaleta: { value: tPaleta }, uKolorWody: { value: hexLin(T, '#123a52') } };
+    // czas geologiczny (wspólne dla terenu, głębi cienia i wody) i efekty animacji (łuna, żar, cień chmur)
+    var tab = function (n, f) { var a = []; for (var i = 0; i < n; i++) a.push(f()); return a; };
+    var UE = { uEwoMa: { value: 0 }, uEwoDno: { value: Ew.DNO },
+      uEwoO: { value: tab(MAX_JEDN_GPU, function () { return new T.Vector4(0, 0, -1, 0); }) },
+      uEwoP: { value: tab(MAX_JEDN_GPU, function () { return new T.Vector4(); }) },
+      uEwoC: { value: tab(MAX_JEDN_GPU, function () { return new T.Vector2(); }) } };
+    var UF = { uLunaP: { value: tab(24, function () { return new T.Vector2(); }) }, uLunaN: { value: 0 }, uLunaKolor: { value: new T.Vector3() },
+      uLunaZasieg: { value: 0.3 }, uZar: { value: 0 }, uCienChmur: { value: 0 }, uStropA4: { value: 1.3 * e }, uCzasA4: { value: 0 },
+      uSlonceKier: { value: new T.Vector3(0, 1, 0) } };
+    Object.keys(UE).forEach(function (k) { U[k] = UE[k]; });
+    Object.keys(UF).forEach(function (k) { U[k] = UF[k]; });
     var plaszczyzna = new T.Plane(new T.Vector3(0, 1, 0), 1e7), plaszczyzny = [plaszczyzna];
+    var KOTWICA_SWIATLA = 'getDirectionalDirectLightIrradiance( directionalLight, geometry, directLight );';
+    var KOTWICA_NORMALNEJ = 'normal = texture2D( normalMap, vUv ).xyz * 2.0 - 1.0;';
+    if (T.ShaderChunk.lights_fragment_begin.indexOf(KOTWICA_SWIATLA) < 0 || T.ShaderChunk.normal_fragment_maps.indexOf(KOTWICA_NORMALNEJ) < 0) {
+      console.error('Geologia: fragmenty shaderów THREE inne niż w r128 — cień chmur i nachylenie rzeźby chwili nie zadziałają');
+    }
+    var LUZ_SWIATLA = T.ShaderChunk.lights_fragment_begin.replace(KOTWICA_SWIATLA, KOTWICA_SWIATLA + '\n\t\tdirectLight.color *= geCien;');
+    var NORMALNA_EWO = T.ShaderChunk.normal_fragment_maps.replace(KOTWICA_NORMALNEJ, KOTWICA_NORMALNEJ + '\n\tnormal.xz *= vEwoK;');
+    function wierzcholekEwolucji(sh, u, glebia) {
+      Object.keys(UE).forEach(function (k) { sh.uniforms[k] = UE[k]; });
+      ['uPrzyn', 'uEwoAkt', 'uEwoUv', 'uEwoBrzeg'].forEach(function (k) { sh.uniforms[k] = u[k]; });
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\n' + (glebia ? 'float vEwoK; float vEwoZar;\n' : 'varying float vWys;\nvarying vec3 vSwiat;\nvarying float vEwoK;\nvarying float vEwoZar;\n') +
+          GLSL_EWO_PARS_VERT + GLSL_EWOLUCJA)
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + GLSL_EWO_WIERZCHOLEK +
+          (glebia ? '' : '\n\tvWys = transformed.y;\n\tvSwiat = (modelMatrix * vec4(transformed, 1.0)).xyz;'));
+    }
+    // Głębia cienia z rzeźbą chwili. clipShadows klonuje materiał głębi w WebGLShadowMap, a Material.copy w r128 nie
+    // przenosi onBeforeCompile — klon dostaje ten sam hak (inaczej cień rzucałaby dzisiejsza rzeźba).
+    function materialGlebi(u) {
+      var m = z(new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking }));
+      m.onBeforeCompile = function (sh) { wierzcholekEwolucji(sh, u, true); };
+      m.clone = function () { var c = T.MeshDepthMaterial.prototype.clone.call(this); c.onBeforeCompile = this.onBeforeCompile; c.clone = this.clone; return c; };
+      return m;
+    }
 
     function materialTerenu(P, tNorm, tInd, wyciecia) {
       var m = z(new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.94, metalness: 0, normalMap: tNorm,
         normalMapType: T.ObjectSpaceNormalMap, clippingPlanes: plaszczyzny, clipShadows: true }));
       var wyc = [0, 1, 2].map(function (k) { var r = wyciecia[k]; return r ? new T.Vector4(r.x0, r.z0, r.x1, r.z1) : new T.Vector4(); });
       var u = { uIndeksy: { value: tInd || tPaleta }, uMaIndeksy: { value: tInd ? 1 : 0 }, uMloda: { value: tInd ? iMloda : 0 },
-        uWyc: { value: wyc }, uLWyc: { value: wyciecia.length } };
+        uWyc: { value: wyc }, uLWyc: { value: wyciecia.length },
+        // przynależność do czasu geologicznego: tekstura R8 bez transformacji uv; texel wierzchołka = uv·(xy) + (zw)
+        uPrzyn: { value: tPaleta }, uEwoAkt: { value: 0 },
+        uEwoUv: { value: new T.Vector4((P.w - 1) / P.w, -(P.h - 1) / P.h, 0.5 / P.w, (P.h - 0.5) / P.h) },
+        uEwoBrzeg: { value: new T.Vector4(-1e6, -1e6, 1e6, 1e6) } };
       m.onBeforeCompile = function (sh) {
         Object.keys(U).forEach(function (k) { sh.uniforms[k] = U[k]; });
         Object.keys(u).forEach(function (k) { sh.uniforms[k] = u[k]; });
-        sh.vertexShader = sh.vertexShader
-          .replace('#include <common>', '#include <common>\nvarying float vWys;\nvarying vec3 vSwiat;')
-          .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvWys = position.y;\n\tvSwiat = (modelMatrix * vec4(position, 1.0)).xyz;')
-          .replace('#include <fog_vertex>', FOG_RADIALNA);
+        wierzcholekEwolucji(sh, u, false);
+        sh.vertexShader = sh.vertexShader.replace('#include <fog_vertex>', FOG_RADIALNA);
         sh.fragmentShader = sh.fragmentShader
           .replace('#include <common>', '#include <common>\n' + GLSL_TEREN_PARS)
           .replace('#include <color_fragment>', '#include <color_fragment>\n' + GLSL_TEREN_KOLOR)
-          .replace('#include <tonemapping_fragment>', GLSL_TEREN_WODA + '\n#include <tonemapping_fragment>');
+          .replace('#include <normal_fragment_maps>', NORMALNA_EWO)
+          .replace('#include <lights_fragment_begin>', LUZ_SWIATLA)
+          .replace('#include <tonemapping_fragment>', GLSL_TEREN_EMISJA + '\n' + GLSL_TEREN_WODA + '\n#include <tonemapping_fragment>');
       };
       m.userData.u = u;
       return m;
@@ -616,6 +781,7 @@
       P.mesh = new T.Mesh(P.geo, P.mat);
       P.mesh.scale.y = e;
       P.mesh.castShadow = !!cien; P.mesh.receiveShadow = true;
+      if (cien) P.mesh.customDepthMaterial = materialGlebi(P.mat.userData.u);
       scena.add(P.mesh);
       return P.mesh;
     }
@@ -624,6 +790,7 @@
     }
     siatkaPoziomu(wyspa, wstawki.map(function (P) { return zakladka(P.prost, 0.12); }), true);
     wyspa.mesh.name = 'teren';
+    wyspa.mat.userData.u.uEwoBrzeg.value.set(wyspa.x0, wyspa.z0, wyspa.x1, wyspa.z1);
     wyspa.tWys = teksturaWysokosci(wyspa);
     wstawki.forEach(function (P) {
       siatkaPoziomu(P, [], false); P.mesh.name = 'wstawka-' + P.id;
@@ -632,10 +799,24 @@
     var wierzcholki = { archipelag: arch ? arch.nx * arch.nz : 0, wyspa: wyspa.nx * wyspa.nz,
       wstawki: wstawki.reduce(function (n, P) { return n + P.nx * P.nz; }, 0) };
     wierzcholki.razem = wierzcholki.archipelag + wierzcholki.wyspa + wierzcholki.wstawki;
+    // Czas geologiczny na CPU (G-D): ten sam rachunek co shader wierzchołków, punktowo — etykieta z najbliższej komórki
+    // poziomu, krawędź kafla wyspy wraca do dzisiejszej wysokości jak w shaderze.
+    var ewo = { Ma: 0, P: null, gotowa: false };
+    function wChwili(P, hKm, x, zz, brzeg) {
+      if (!(ewo.Ma > 0) || !P.przyn || hKm == null) return hKm;
+      var ix = Math.round((x - P.x0) / P.dx), iy = Math.round((zz - P.z0) / P.dz);
+      if (ix < 0 || iy < 0 || ix >= P.w || iy >= P.h) return hKm;
+      var ic = iy * P.w + ix, lab = P.przyn[ic];
+      if (!lab) return hKm;
+      var ll = Teren.zLokalnych(null, x, zz), h0 = hKm * 1000;
+      var hE = Ew.wysokoscKomorki(ewo.P, lab, h0, ewo.Ma, ll[0], ll[1], Ew.DNO, P.przyn.drugi[ic], P.przyn.waga[ic], P.przyn.brzeg[ic]);
+      if (brzeg) hE = h0 + gladko(Math.min(x - P.x0, P.x1 - x, zz - P.z0, P.z1 - zz) / WTOP_WYSPA_KM) * (hE - h0);
+      return hE / 1000;
+    }
     // Wysokość wyświetlanej powierzchni w świecie (km × przewyższenie): wstawka > wyspa > archipelag; null = poza danymi.
     function wysokoscKm(x, zz) {
-      for (var k = 0; k < wstawki.length; k++) if (wewnatrz(wstawki[k].prost, x, zz)) return wysokoscTrojkatna(wstawki[k], x, zz);
-      if (wewnatrz(wyspa.prost, x, zz)) return wysokoscTrojkatna(wyspa, x, zz);
+      for (var k = 0; k < wstawki.length; k++) if (wewnatrz(wstawki[k].prost, x, zz)) return wChwili(wstawki[k], wysokoscTrojkatna(wstawki[k], x, zz), x, zz, false);
+      if (wewnatrz(wyspa.prost, x, zz)) return wChwili(wyspa, wysokoscTrojkatna(wyspa, x, zz), x, zz, true);
       if (arch && wewnatrz(arch.prost, x, zz)) return wysokoscTrojkatna(arch, x, zz);
       return null;
     }
@@ -682,9 +863,10 @@
       uRozmW: { value: new T.Vector2(siatka.w, siatka.h) }, uRozmA: { value: arch ? new T.Vector2(arch.w, arch.h) : new T.Vector2(1, 1) },
       uCzas: { value: 0 }, uSzklo: { value: 0 }, uTylkoKafel: { value: 0 },
       uSlonce: { value: new T.Vector3(0, 1, 0) }, uKolorSlonca: { value: new T.Vector3(1, 1, 1) }, uAmb: { value: new T.Vector3(0.5, 0.5, 0.5) },
-      uZenitL: { value: new T.Vector3() }, uHoryzontL: { value: new T.Vector3() } }]);
+      uZenitL: { value: new T.Vector3() }, uHoryzontL: { value: new T.Vector3() }, uPrzynW: { value: null }, uEwoWoda: { value: 0 } }]);
     // UniformsUtils.merge klonuje tekstury — podmieniamy z powrotem na te same obiekty (jedno wgranie na GPU)
-    uWoda.uWysW.value = wyspa.tWys; uWoda.uWysA.value = arch ? arch.tWys : wyspa.tWys; uWoda.uFale.value = tFale;
+    uWoda.uWysW.value = wyspa.tWys; uWoda.uWysA.value = arch ? arch.tWys : wyspa.tWys; uWoda.uFale.value = tFale; uWoda.uPrzynW.value = tPaleta;
+    Object.keys(UE).forEach(function (k) { uWoda[k] = UE[k]; });          // czas geologiczny: te same obiekty co w terenie
     var matWody = z(new T.ShaderMaterial({ uniforms: uWoda, vertexShader: WODA_VERT, fragmentShader: WODA_FRAG, transparent: true,
       fog: true, clipping: true, clippingPlanes: plaszczyzny, depthWrite: true }));
     var ocean = new T.Mesh(z(new T.CircleGeometry(1, 128)), matWody);
@@ -924,7 +1106,7 @@
       klucz.target.updateMatrixWorld();
       klucz.color.set(p.klucz); klucz.intensity = p.k;
       wypelnienie.color.set(p.wyp); wypelnienie.groundColor.set(p.wyp); wypelnienie.intensity = p.f;
-      uNiebo.uSlonce.value.copy(kier); uWoda.uSlonce.value.copy(kier);
+      uNiebo.uSlonce.value.copy(kier); uWoda.uSlonce.value.copy(kier); UF.uSlonceKier.value.copy(kier);
       var kl = new T.Color(p.klucz), kw = new T.Color(p.wyp);
       // te same jednostki co w MeshStandardMaterial bez fizycznych świateł: blask = barwa · moc (π się skraca)
       uWoda.uKolorSlonca.value.set(kl.r * p.k, kl.g * p.k, kl.b * p.k);
@@ -944,6 +1126,7 @@
       U.uPrzew.value = e;
       [arch, wyspa].concat(wstawki).forEach(function (P) { if (P) P.mesh.scale.y = e; });
       chmuryMesh.position.y = STROP_CHMUR_KM * e;
+      UF.uStropA4.value = stropA4 * e;
       ustawPiny();
       if (sciana && przek) { if (wTrakcie) sciana.scale.y = e; else zbudujSciane(przek.linia); }
       renderer.shadowMap.needsUpdate = true;
@@ -1069,6 +1252,72 @@
       }
     }
 
+    // --- czas geologiczny (Task 7) ---
+    // Przynależność, tekstury RGBA8 i parametry jednostek — leniwie, przy pierwszym czas(Ma > 0) (ok. 0,4 s; makieta „dziś”
+    // nie płaci). Program cieniowania się nie zmienia: gałąź ewolucji była w nim od budowy, za uniformem.
+    function przygotujEwolucje() {
+      if (ewo.gotowa) return;
+      ewo.gotowa = true;
+      [wyspa].concat(wstawki).forEach(function (P) {
+        // wstawki: przynależność z pola wyspy (granice i mieszanie widziane poza prostokątem wstawki — bez szwu)
+        P.przyn = P === wyspa ? Ew.przynaleznosc(P.s, jednostki, { pip: pip }) : Ew.przynaleznoscWstawki(P.s, wyspa.s, wyspa.przyn, jednostki, { pip: pip });
+        var rgba = new Uint8Array(P.w * P.h * 4);
+        for (var i = 0; i < P.w * P.h; i++) { rgba[i * 4] = P.przyn[i]; rgba[i * 4 + 1] = P.przyn.drugi[i]; rgba[i * 4 + 2] = P.przyn.waga[i]; rgba[i * 4 + 3] = P.przyn.brzeg[i]; }
+        var t = z(new T.DataTexture(rgba, P.w, P.h, T.RGBAFormat, T.UnsignedByteType));
+        t.magFilter = t.minFilter = T.NearestFilter; t.generateMipmaps = false; t.unpackAlignment = 1; t.needsUpdate = true;
+        P.tPrzyn = t;
+        P.mat.userData.u.uPrzyn.value = t; P.mat.userData.u.uEwoAkt.value = 1;
+      });
+      uWoda.uPrzynW.value = wyspa.tPrzyn; uWoda.uEwoWoda.value = 1;
+      ewo.P = Ew.parametry(wyspa.s, wyspa.przyn, jednostki).map(function (u) { var c = {}; for (var k in u) c[k] = u[k]; c.zapWyp0 = u.zapWyp; return c; });
+      if (ewo.P.length > MAX_JEDN_GPU) console.error('Geologia: ' + ewo.P.length + ' jednostek — shader czasu geologicznego mieści ' + MAX_JEDN_GPU);
+      ustawUniformyEwolucji();
+    }
+    function ustawUniformyEwolucji() {
+      ewo.P.slice(0, MAX_JEDN_GPU).forEach(function (u, k) {
+        var c = u.centrum ? Teren.doLokalnych(null, u.centrum[0], u.centrum[1]) : [0, 0];
+        UE.uEwoO.value[k].set(u.od, u.do, u.zapMa == null ? -1 : u.zapMa, u.zapWyp);
+        UE.uEwoP.value[k].set(u.pod, u.podWys, u.R_km || 1, u.centrum ? 1 : 0);
+        UE.uEwoC.value[k].set(c[0], c[1]);
+      });
+    }
+    function czasGeo(Ma) {   // (nazwa: `czas` w tej funkcji to zegar animacji wody i chmur)
+      if (Ma == null) return ewo.Ma;
+      Ma = Math.max(0, +Ma || 0);
+      if (Ma === ewo.Ma) return Ma;
+      if (Ma > 0) przygotujEwolucje();
+      ewo.Ma = Ma; UE.uEwoMa.value = Ma;
+      ustawPiny();
+      if (sciana && przek) zbudujSciane(przek.linia);
+      renderer.shadowMap.needsUpdate = true;
+      return Ma;
+    }
+    // Haki animacji (geologia/animacje.js): łuna lawy w shaderze terenu, żar A1, cień chmur A4, wypełnienie zbocza (A3).
+    var stropA4 = 1.3;
+    var efekty = {
+      // punkty: [[x, z]] (km, układ makiety) płonącej części toru, kolor: [r, g, b] liniowo (moc w barwie), zasieg_km
+      luna: function (punkty, kolor, zasieg_km) {
+        var n = punkty ? Math.min(24, punkty.length) : 0;
+        for (var i = 0; i < n; i++) UF.uLunaP.value[i].set(punkty[i][0], punkty[i][1]);
+        UF.uLunaN.value = n >= 2 ? n : 0;
+        if (kolor) UF.uLunaKolor.value.set(kolor[0], kolor[1], kolor[2]);
+        UF.uLunaZasieg.value = zasieg_km || 0.3;
+      },
+      zar: function (moc) { UF.uZar.value = Math.max(0, +moc || 0); },
+      cienChmur: function (moc, strop_km, czasS) {
+        if (strop_km != null) stropA4 = strop_km;
+        UF.uCienChmur.value = Math.max(0, Math.min(1, +moc || 0)); UF.uStropA4.value = stropA4 * e; UF.uCzasA4.value = czasS || 0;
+      },
+      // A3: mnożnik wypełnienia zbocza sprzed osuwiska (1 = całe, 0 = zsunięte) — GPU i CPU razem
+      wypelnienie: function (id, mnoznik) {
+        przygotujEwolucje();
+        ewo.P.forEach(function (u) { if (u.id === id) u.zapWyp = u.zapWyp0 * Math.max(0, Math.min(1, mnoznik)); });
+        ustawUniformyEwolucji();
+        ustawPiny();
+        renderer.shadowMap.needsUpdate = true;
+      }
+    };
+
     function zwolnij() {
       zwolnijSciane();
       scena.traverse(function (ob) { if (ob.isLight && ob.shadow && ob.shadow.map) { ob.shadow.map.dispose(); ob.shadow.map = null; } });
@@ -1087,6 +1336,11 @@
       chmury: function (wl) { chmuryMesh.visible = !!wl; return chmuryMesh.visible; },
       woda: function (stan, f) { f = f == null ? 1 : Math.max(0, Math.min(1, +f)); U.uSzklo.value = uWoda.uSzklo.value = stan === 'szklana' ? f : 1 - f; return U.uSzklo.value; },
       swiatlo: swiatlo, przewyzszenie: przewyzszenie, pick: pick, podswietl: podswietl, najedz: najedz, kotwica: kotwica, animuj: animuj, zwolnij: zwolnij,
+      czas: czasGeo, efekty: efekty, renderer: renderer,
+      // dane czasu geologicznego wyspy (A1: szczyty jednostek) — przygotowuje je przy pierwszym wołaniu
+      ewolucja: function () { przygotujEwolucje(); return { s: wyspa.s, przyn: wyspa.przyn, P: ewo.P }; },
+      uniformySwiatla: function () { return { kier: uWoda.uSlonce.value, slonce: uWoda.uKolorSlonca.value, amb: uWoda.uAmb.value }; },
+      tekstury: { wysW: wyspa.tWys, prostW: uWoda.uProstW.value, rozmW: uWoda.uRozmW.value },
       szklo: function () { return U.uSzklo.value; },
       wysokosc: wysokosc, probkaSwiatla: probkaSwiatla, trafiaSciane: trafiaSciane, punktNaMorzu: punktNaMorzu,
       lad: lad, granice: { wyspa: wyspa.prost, archipelag: arch ? arch.prost : wyspa.prost }, srodekPrzekroju: srodekPrzekroju,
@@ -1095,13 +1349,13 @@
         return { przewyzszenie: e, kolorowanie: ['teren', 'geologia', 'krajobraz', 'kalibracja'][U.uTryb.value], szklo: U.uSzklo.value, chmury: chmuryMesh.visible,
           swiatlo: { pora: sw.pora, az: sw.az, el: sw.el }, przekroj: przek ? { kat_st: przek.kat_st, przesuniecie_km: przek.przesuniecie_km, maks_m: przek.profil ? przek.profil.maks_m : null } : null,
           podswietlona: podswietlona, najechana: najechana, etykiety: piny.filter(function (g) { return g.userData.pin.widoczna; }).length,
-          wierzcholki: wierzcholki, dysk_km: Rdysku, lod: krok === 1 ? 'pelny' : 'lekki' };
+          wierzcholki: wierzcholki, dysk_km: Rdysku, lod: krok === 1 ? 'pelny' : 'lekki', czasMa: ewo.Ma };
       }
     };
   }
 
   var api = { zbuduj: zbuduj, odlegloscOdBrzegu: odlegloscOdBrzegu, nawietrznosc: nawietrznosc, indeksyJednostek: indeksyJednostek,
     liniaPrzekroju: liniaPrzekroju, wysokoscTrojkatna: wysokoscTrojkatna, zbudujPoziom: zbudujPoziom, prostokat: prostokat,
-    kierunekSlonca: kierunekSlonca, PORY: PORY };
+    kierunekSlonca: kierunekSlonca, PORY: PORY, GLSL_WSPOLNE: GLSL_WSPOLNE, GLSL_CHMURY_A4: GLSL_CHMURY_A4 };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GeologiaScena = api;
 })(typeof window !== 'undefined' ? window : globalThis);
