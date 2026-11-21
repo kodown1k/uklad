@@ -532,6 +532,7 @@
   #kino .k-btns{margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
   #kino .k-end a{color:#e6f5ff;text-decoration:none;border-bottom:1px solid rgba(159,230,255,.45)}
   #kino .k-end a:hover{border-bottom-color:#e6f5ff}
+  #kino .k-ip{font-size:.72em;opacity:.6;margin-top:14px}
   #kino .k-btns button{font-size:13px;padding:10px 18px}
   /* podpis czaszy DSN (solar.js dsnFxFrame) — nad etykietami warstwy geo */
   .dsn-lab{position:absolute;transform:translateY(-50%);white-space:pre;font:12px/1.45 'IBM Plex Mono',monospace;color:#fff4dc;
@@ -757,7 +758,8 @@
 </div>
 
 <div id="credit" class="hud">
-  Dane: Natural Earth (PD) · pasma górskie © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL) · tekstury NASA/JPL
+  Dane: Natural Earth (PD) · pasma górskie © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL) · tekstury NASA/JPL<br>
+  Strona zapisuje adres IP wejścia na 90 dni do statystyk odwiedzin.
 </div>
 
 <!-- Loader -->
@@ -858,6 +860,8 @@
 <script src="mysliwce/ladowanie.js"></script>
 <script src="solar.js"></script>
 <!-- Cloudflare Web Analytics: liczy wejścia na voyager.kodownik.co i kodownik.co/uklad/ (bez ciasteczek; test/analytics.test.js) --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "e8ab645d2daa4c95b7802a3a5f306a18"}'></script><!-- End Cloudflare Web Analytics -->
+<!-- Piksel wejść do logu Bramy (tylko voyager.kodownik.co; test/licznik.test.js) -->
+<script src="licznik.js"></script>
 <!-- Zjawiska naukowe: czysta logika + rejestr + silnik prezentacji; pliki zjawisk ładuje widok (pole `skrypt` rejestru) -->
 <script src="zjawiska/logika.js"></script>
 <script src="zjawiska/rysunek.js"></script>

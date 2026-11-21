@@ -5859,6 +5859,7 @@ function kinoBuildDom(){
       ${Date.now() < KINO_VGR_UNTIL ? `<div class="k-sub k-vgr">17 listopada po zachodzie słońca NASA zaprasza: wymrugaj w niebo znak Voyagera <span class="k-morse">V-G-R</span> alfabetem Morse'a
         (<span class="k-morse">···– ––· ·–·</span>) — latarką albo migaczem w telefonie: <a href="https://go.nasa.gov/vgr" target="_blank" rel="noopener">go.nasa.gov/vgr</a></div>` : ''}
       <div class="k-sub k-next">Film 2: <a href="https://voyager.kodownik.co/?mrugniecie">Mrugnięcie — V-G-R z Ziemi do Voyagera 1</a></div>
+      <div class="k-sub k-ip">Strona zapisuje adres IP wejścia na 90 dni do statystyk odwiedzin.</div>
       <div class="k-btns"><button id="kAgain" type="button">↻ Jeszcze raz</button><button id="kStay" type="button">Zostań w scenie</button></div></div>
     <div class="k-load" id="kLoad">wczytywanie sceny…</div>
     <div class="k-rot">↻ obróć telefon poziomo — cały kadr</div>`;
