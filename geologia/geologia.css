@@ -1,0 +1,31 @@
+/* Zakładka „Geologia” — nakładka na cały ekran: canvas i kadr zajmują cały kontener, pasek (góra) i rząd rozdziałów
+   (dół) leżą NAD canvasem (pozycjonowane absolutnie). Szkielet: Task 2; wygląd kart i napisów dochodzi z kolejnymi zadaniami. */
+:root {
+  --ge-tlo: #05070a;
+  --ge-szklo: rgba(8, 11, 15, .8);
+  --ge-atrament: #e9eef3;
+  --ge-atrament-2: #9aa7b4;
+  --ge-linia: rgba(160, 190, 215, .2);
+  --ge-akcent: #ffb36b;
+  --ge-kroj: system-ui, "Segoe UI", sans-serif;
+}
+#geologia { position: fixed; inset: 0; z-index: 60; background: var(--ge-tlo); color: var(--ge-atrament);
+  font: 400 14px/1.5 var(--ge-kroj); outline: none; overflow: hidden; }
+#geologia[hidden], #geologia [hidden] { display: none !important; }
+#geologia .ge-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+.ge-pasek { position: absolute; z-index: 5; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 16px;
+  min-width: 0; padding: 7px 14px; background: linear-gradient(180deg, rgba(10, 14, 19, .9), rgba(8, 11, 15, .55));
+  border-bottom: 1px solid var(--ge-linia); }
+.ge-tytul { font-weight: 600; font-size: 16px; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
+.ge-podmenu { display: flex; gap: 6px; margin-left: auto; flex: none; }
+.ge-guzik { font: 600 12.5px/1 var(--ge-kroj); letter-spacing: .1em; text-transform: uppercase; color: var(--ge-atrament-2);
+  background: rgba(255, 255, 255, .03); border: 1px solid var(--ge-linia); padding: 8px 12px; cursor: pointer; }
+.ge-guzik:hover, .ge-guzik:focus-visible { color: var(--ge-atrament); border-color: var(--ge-akcent); outline: none; }
+.ge-guzik[aria-pressed="true"] { color: #0b0e12; background: var(--ge-akcent); border-color: var(--ge-akcent); }
+
+.ge-rozdzialy { position: absolute; z-index: 5; left: 0; right: 0; bottom: 0; display: flex; flex-wrap: wrap; justify-content: center;
+  gap: 6px; padding: 10px 14px; background: linear-gradient(0deg, rgba(8, 11, 15, .85), rgba(8, 11, 15, 0)); }
+
+.ge-ladowanie { position: absolute; z-index: 6; inset: 0; display: grid; place-items: center; pointer-events: none;
+  color: var(--ge-atrament-2); letter-spacing: .08em; }

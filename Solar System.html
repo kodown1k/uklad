@@ -16,6 +16,8 @@
 <link rel="stylesheet" href="zjawiska/zjawiska.css">
 <!-- Myśliwce: arkusz nakładki (moduł mysliwce/ ładuje się leniwie przy pierwszym wejściu w zakładkę) -->
 <link rel="stylesheet" href="mysliwce/mysliwce.css">
+<!-- Geologia: arkusz nakładki (moduł geologia/ ładuje się leniwie przy pierwszym wejściu w zakładkę) -->
+<link rel="stylesheet" href="geologia/geologia.css">
 
 <!-- Planet textures referenced from JS — lifted for offline bundling -->
 <meta name="ext-resource-dependency" content="https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/sunmap.jpg" data-resource-id="sunmap">
@@ -631,6 +633,8 @@
 <!-- nakładka „Myśliwce”: pasek i widok buduje mysliwce/ (ladowanie.js rejestruje zakładkę, reszta modułu leniwie);
      przycisk #zakMysliwce widoczny tylko z ?mysliwce w adresie (zakładka w budowie) -->
 <div id="mysliwce" hidden tabindex="-1" role="region" aria-label="Myśliwce"></div>
+<!-- nakładka „Geologia”: pasek i widok buduje geologia/ (ladowanie.js rejestruje zakładkę, reszta modułu leniwie) -->
+<div id="geologia" hidden tabindex="-1" role="region" aria-label="Geologia"></div>
 
 <div id="rail" class="hud"></div>
 
@@ -640,6 +644,7 @@
     <button type="button" id="zakUklad" class="on" aria-pressed="true"><span class="zak-dl">Układ Słoneczny</span><span class="zak-kr">Układ</span></button>
     <button type="button" id="zakZjawiska" aria-pressed="false"><span class="zak-dl">Zjawiska naukowe</span><span class="zak-kr">Zjawiska</span></button>
     <button type="button" id="zakMysliwce" aria-pressed="false" hidden><span class="zak-dl">Myśliwce</span><span class="zak-kr">Myśliwce</span></button>
+    <button type="button" id="zakGeologia" aria-pressed="false" hidden><span class="zak-dl">Geologia</span><span class="zak-kr">Geologia</span></button>
     <span id="zakInfo" role="status"></span>
   </nav>
   <button id="back"><span class="arrow">←</span> Widok układu</button>
@@ -859,6 +864,7 @@
 <script src="zakladki.js"></script>
 <script src="kino-kadr.js"></script>
 <script src="mysliwce/ladowanie.js"></script>
+<script src="geologia/ladowanie.js"></script>
 <script src="solar.js"></script>
 <!-- Cloudflare Web Analytics: liczy wejścia na voyager.kodownik.co i kodownik.co/uklad/ (bez ciasteczek; test/analytics.test.js) --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "e8ab645d2daa4c95b7802a3a5f306a18"}'></script><!-- End Cloudflare Web Analytics -->
 <!-- Piksel wejść do logu Bramy (tylko voyager.kodownik.co; test/licznik.test.js) -->
