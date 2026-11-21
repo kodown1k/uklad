@@ -1,0 +1,158 @@
+'use strict';
+/* Zakładka Geologia → Teneryfa — widok turystyczny: plan wyjazdu właściciela (23.11–1.12.2026), Hard Rock Hotel,
+   szlaki z OpenStreetMap. Czyste dane (bez DOM/THREE); dual-export (przeglądarka: window.GeologiaTurystyka).
+   Źródło planu: raport „Teneryfa — przewodnik wyjazdu” (panel właściciela, stan z 2026-11-20/21); właściciel
+   zdecydował opublikować plan JAK JEST (z bazą, kalendarzem i autobusami).
+   Konwencje: lon/lat WGS84 dziesiętne, [lon, lat]. Pozycje „z linku planu” = współrzędne z linków map w planie
+   (Google Maps destination=lat,lon / mapy.com start=lon,lat); „OSM” = węzeł/obiekt OpenStreetMap (ODbL) —
+   plan nie podaje dla nich współrzędnych.
+   Linie szlaków (blok SZLAKI) generuje scripts/gen-szlaki-teneryfy.mjs (te same dane: geologia/teneryfa/szlaki.json).
+   Dane tras: kilometry i podejścia z planu liczone „tam i z powrotem”, o ile uwagi nie mówią inaczej;
+   linie OSM to jeden kierunek, uproszczone (Douglas–Peucker ~15 m, zakosy skracają się o kilkanaście %). */
+(function (root) {
+  var PLAN = 'plan wyjazdu właściciela (raport w panelu, 2026-11)';
+  var PLAN_LINK = PLAN + ', link mapy';
+  var OSM = 'OpenStreetMap (ODbL)';
+
+  /* SZLAKI:POCZATEK (generowane: scripts/gen-szlaki-teneryfy.mjs — nie edytować ręcznie) */
+  var SZLAKI = {"taucho-ifonche":{"linia":[[-16.72646,28.15009],[-16.72558,28.15078],[-16.72352,28.15164],[-16.72234,28.151],[-16.72169,28.15012],[-16.72081,28.14955],[-16.72018,28.1494],[-16.71788,28.14983],[-16.71761,28.14963],[-16.71639,28.14954],[-16.71505,28.14851],[-16.71319,28.14859],[-16.71329,28.1482],[-16.71259,28.14783],[-16.71265,28.14729],[-16.71185,28.14685],[-16.71033,28.14659],[-16.71008,28.14597],[-16.70956,28.14599],[-16.70924,28.14554],[-16.70806,28.14613],[-16.70762,28.14559],[-16.707,28.14587],[-16.70556,28.14553],[-16.70443,28.14566],[-16.70402,28.14598],[-16.70348,28.1476],[-16.70285,28.14856],[-16.7025,28.1484],[-16.70202,28.14711],[-16.70162,28.14708],[-16.7012,28.14752],[-16.69954,28.14617],[-16.69845,28.14638],[-16.69824,28.14593],[-16.69803,28.14676],[-16.69734,28.14791],[-16.69618,28.14909],[-16.69567,28.14926],[-16.69571,28.14822],[-16.69653,28.14628],[-16.69589,28.14584],[-16.6959,28.14485],[-16.69538,28.14349],[-16.69485,28.14311],[-16.69452,28.14327],[-16.69448,28.14246],[-16.69388,28.14108],[-16.69405,28.1397],[-16.69368,28.13903],[-16.69368,28.13825],[-16.69328,28.13803],[-16.69339,28.13744],[-16.69265,28.13678],[-16.69215,28.1369],[-16.69176,28.13662],[-16.6915,28.13677],[-16.69093,28.13597],[-16.69081,28.13528],[-16.6903,28.13537],[-16.68992,28.13497]],"liniaZrodlo":"OSM relation 4259122","przyblizona":false,"relacja":4259122,"zszycia":{"n":0,"m":0}},"kaldera-guajara":{"linia":[[-16.62726,28.22383],[-16.62645,28.22257],[-16.62536,28.22269],[-16.62312,28.22236],[-16.62266,28.22174],[-16.62234,28.22068],[-16.62199,28.2205],[-16.62126,28.22142],[-16.62223,28.22178],[-16.62237,28.22227],[-16.62054,28.22272],[-16.61921,28.22256],[-16.61773,28.22322],[-16.61748,28.22465],[-16.61788,28.2247],[-16.61826,28.22446],[-16.6189,28.2246],[-16.61909,28.2258],[-16.61858,28.22582],[-16.61673,28.22497],[-16.61532,28.22495],[-16.61434,28.22423],[-16.6139,28.22445],[-16.61306,28.22547],[-16.61236,28.2258],[-16.61074,28.22429],[-16.60748,28.22437],[-16.60654,28.224],[-16.6062,28.22342],[-16.60549,28.22345],[-16.60515,28.22324],[-16.60442,28.22239],[-16.6044,28.22151],[-16.60357,28.22136],[-16.60315,28.22104],[-16.60364,28.22041],[-16.60355,28.2202],[-16.60327,28.22016],[-16.60274,28.21947],[-16.60201,28.21919],[-16.60265,28.21859],[-16.59985,28.21822],[-16.6005,28.21636],[-16.60105,28.21575],[-16.6004,28.21443],[-16.60132,28.21441],[-16.60164,28.21459],[-16.60257,28.21421],[-16.60334,28.21421],[-16.60386,28.21455],[-16.60417,28.21517],[-16.60502,28.21548],[-16.60501,28.21604],[-16.60758,28.21561],[-16.60873,28.21474],[-16.60916,28.21498],[-16.61013,28.21503],[-16.61035,28.21546],[-16.61083,28.21572],[-16.61127,28.21437],[-16.61226,28.21406],[-16.61377,28.21421],[-16.61386,28.21355],[-16.61354,28.21282],[-16.61498,28.21232],[-16.61539,28.21164],[-16.61606,28.2136],[-16.61691,28.21464]],"liniaZrodlo":"OSM relation 2602966 + 416814 + 416908","przyblizona":false,"relacja":2602966,"relacje":[2602966,416814,416908],"zszycia":{"n":0,"m":0}},"teno-erjos":{"linia":[[-16.817,28.36506],[-16.81717,28.3646],[-16.81685,28.36459],[-16.81653,28.36387],[-16.81528,28.36249],[-16.81412,28.36047],[-16.81421,28.35959],[-16.81364,28.35931],[-16.81353,28.35882],[-16.81396,28.35845],[-16.81356,28.3573],[-16.81358,28.35441],[-16.81421,28.35256],[-16.81459,28.35232],[-16.81428,28.35224],[-16.81427,28.3516],[-16.81416,28.35174],[-16.81392,28.35158],[-16.8138,28.3509],[-16.81345,28.3507],[-16.81376,28.35003],[-16.81321,28.35009],[-16.8129,28.34953],[-16.8133,28.34887],[-16.81281,28.34742],[-16.81311,28.34669],[-16.81314,28.34493],[-16.81279,28.34387],[-16.81208,28.34285],[-16.81086,28.34298],[-16.8102,28.34225],[-16.81056,28.34181],[-16.81017,28.34121],[-16.80998,28.34],[-16.81022,28.33947],[-16.80977,28.33875],[-16.80979,28.33811],[-16.80944,28.33764],[-16.80876,28.33726],[-16.80818,28.33628],[-16.80688,28.33503],[-16.80715,28.33354],[-16.80639,28.33254],[-16.80693,28.33106],[-16.80686,28.32969],[-16.80589,28.3291],[-16.80589,28.32809],[-16.8049,28.32772],[-16.80451,28.3279]],"liniaZrodlo":"OSM relation 1751795","przyblizona":false,"relacja":1751795,"zszycia":{"n":1,"m":31}},"roque-del-conde":{"linia":[[-16.6877,28.10107],[-16.68853,28.10113],[-16.68952,28.10179],[-16.68986,28.10148],[-16.69001,28.10083],[-16.69065,28.10079],[-16.69075,28.10056],[-16.69112,28.10078],[-16.6911,28.10057],[-16.69125,28.10064],[-16.69149,28.10123],[-16.69162,28.10034],[-16.69221,28.09973],[-16.69211,28.0996],[-16.69317,28.09959],[-16.69374,28.09982],[-16.69432,28.09913],[-16.69478,28.09938],[-16.69531,28.09897],[-16.69542,28.09946],[-16.69625,28.09862],[-16.69721,28.09936],[-16.69855,28.09988],[-16.6987,28.10033],[-16.69794,28.1008],[-16.69867,28.10138],[-16.6984,28.10144],[-16.69848,28.10164],[-16.69816,28.10189],[-16.69841,28.10227],[-16.69826,28.10245],[-16.69863,28.10271],[-16.70023,28.10274],[-16.69927,28.1044],[-16.6987,28.10473],[-16.69861,28.10447]],"liniaZrodlo":"OSM relation 4259187","przyblizona":false,"relacja":4259187,"zszycia":{"n":0,"m":0}},"anaga-hidalgo":{"linia":[[-16.31832,28.5716],[-16.31745,28.57154],[-16.31482,28.5704],[-16.31451,28.57055],[-16.31459,28.57017],[-16.31395,28.5705],[-16.31338,28.57006],[-16.31333,28.57039],[-16.3131,28.56948],[-16.31151,28.569],[-16.31086,28.56916],[-16.30884,28.568],[-16.30777,28.56782],[-16.30711,28.56809],[-16.30638,28.5671],[-16.30519,28.56732],[-16.30511,28.56714],[-16.30493,28.56754],[-16.30603,28.56757],[-16.30611,28.56808],[-16.3058,28.56785],[-16.30501,28.56827],[-16.30444,28.56826],[-16.30459,28.56859],[-16.30419,28.56857],[-16.30457,28.56891],[-16.30386,28.5691],[-16.30367,28.56872],[-16.3035,28.56887],[-16.30353,28.56855],[-16.30336,28.56878],[-16.30288,28.56825],[-16.30283,28.5678],[-16.30186,28.5676],[-16.30145,28.56695],[-16.30167,28.56645],[-16.30135,28.56602],[-16.29938,28.56621],[-16.29861,28.56601],[-16.29833,28.56559],[-16.29791,28.56542],[-16.29796,28.56466],[-16.29842,28.56462],[-16.29862,28.56423],[-16.29817,28.56379],[-16.29643,28.56344],[-16.29607,28.56292],[-16.29542,28.56304],[-16.29493,28.5625],[-16.29407,28.56264],[-16.29326,28.56233],[-16.29254,28.5615],[-16.29146,28.56143],[-16.29118,28.56187]],"liniaZrodlo":"OSM relation 1691596","przyblizona":false,"relacja":1691596,"zszycia":{"n":0,"m":0}},"masca":{"linia":[[-16.8405,28.30431],[-16.84002,28.30342],[-16.84034,28.30281],[-16.84003,28.30197],[-16.84037,28.30157],[-16.84006,28.30133],[-16.84084,28.3012],[-16.84127,28.30079],[-16.84194,28.30059],[-16.84246,28.29911],[-16.84338,28.29882],[-16.84486,28.29896],[-16.84554,28.29863],[-16.84618,28.29889],[-16.84663,28.29879],[-16.84723,28.2977],[-16.84687,28.2973],[-16.8472,28.29737],[-16.84735,28.29665],[-16.84763,28.29677],[-16.84781,28.29661],[-16.84805,28.29687],[-16.8494,28.29676],[-16.84976,28.29652],[-16.85009,28.29672],[-16.85063,28.2964],[-16.85039,28.29552],[-16.85111,28.29471],[-16.85149,28.29469],[-16.8519,28.29515],[-16.85272,28.29537],[-16.85317,28.29495],[-16.85394,28.29486],[-16.85409,28.29441],[-16.85445,28.29422],[-16.85544,28.29408],[-16.85476,28.29313],[-16.85517,28.29292],[-16.85491,28.2925],[-16.85584,28.29224],[-16.85501,28.2911],[-16.8553,28.29092],[-16.85611,28.29103],[-16.85716,28.29186],[-16.85872,28.29142],[-16.85894,28.29166],[-16.86045,28.29187],[-16.86064,28.2923],[-16.861,28.29232],[-16.86139,28.29191],[-16.86141,28.29002],[-16.86243,28.28899]],"liniaZrodlo":"OSM ways 28589819, 201042331, 201042333, 1235318953, 1235318955, 1332622000","przyblizona":false,"drogi":[28589819,201042331,201042333,1235318953,1235318955,1332622000],"zszycia":{"n":0,"m":0}},"anaga-chamorga":{"linia":[[-16.159,28.57],[-16.15918,28.57018],[-16.15857,28.57016],[-16.15839,28.57079],[-16.15724,28.5717],[-16.15619,28.57202],[-16.15681,28.57254],[-16.15636,28.57322],[-16.15645,28.57373],[-16.15495,28.57452],[-16.15464,28.57499],[-16.15373,28.57558],[-16.1533,28.57669],[-16.15264,28.57711],[-16.15174,28.57729],[-16.15098,28.57807],[-16.14971,28.57822],[-16.14854,28.57942],[-16.14797,28.57934],[-16.14665,28.57821],[-16.1455,28.57813],[-16.145,28.57854],[-16.14396,28.57889],[-16.14393,28.57925],[-16.1437,28.5793],[-16.14384,28.57948],[-16.14318,28.58019],[-16.14144,28.58111],[-16.14072,28.58123],[-16.14019,28.58113],[-16.14024,28.58072],[-16.14002,28.58074],[-16.13965,28.58017],[-16.13966,28.5804],[-16.13932,28.57977],[-16.13907,28.57997],[-16.13922,28.58034],[-16.13876,28.58],[-16.13856,28.57953],[-16.1387,28.57931],[-16.13797,28.57935],[-16.13777,28.57923],[-16.13796,28.57907],[-16.13734,28.57896],[-16.1378,28.57864],[-16.13764,28.5784],[-16.13837,28.57845],[-16.13827,28.5781],[-16.13707,28.5777],[-16.136,28.57786],[-16.13517,28.57838],[-16.136,28.57786],[-16.13707,28.5777],[-16.13827,28.5781],[-16.13837,28.57845],[-16.13764,28.5784],[-16.1378,28.57864],[-16.13734,28.57896],[-16.13796,28.57907],[-16.13777,28.57923],[-16.13797,28.57935],[-16.1387,28.57931],[-16.13856,28.57953],[-16.13876,28.58],[-16.13922,28.58034],[-16.13907,28.57997],[-16.13932,28.57977],[-16.13966,28.5804],[-16.13965,28.58017],[-16.14002,28.58074],[-16.14024,28.58072],[-16.14019,28.58113],[-16.14072,28.58123],[-16.14144,28.58111],[-16.14318,28.58019],[-16.14384,28.57948],[-16.1437,28.5793],[-16.14393,28.57925],[-16.14396,28.57889],[-16.145,28.57854],[-16.14537,28.57817],[-16.14665,28.57821],[-16.14797,28.57934],[-16.14848,28.57943],[-16.14971,28.57822],[-16.15098,28.57807],[-16.15174,28.57729],[-16.15264,28.57711]],"liniaZrodlo":"OSM ways 729362120, 46588447, 127127506, 1042169247, 1042169248, 1042169249, 1042169250, 1042169251, 1042169252, 50587241, 391192100, 261086223, 43531528, 132734244, 27003145, 1339182715, 1339182606, 46933022 (PR-TF 6.1, Camino de Roque Bermejo, ścieżki do latarni)","przyblizona":false,"maxPrzyklejenie_km":0.027,"zszycia":{"n":1,"m":16},"drogi":[729362120,46588447,127127506,1042169247,1042169248,1042169249,1042169250,1042169251,1042169252,50587241,391192100,261086223,43531528,132734244,27003145,1339182715,1339182606,46933022],"odnogi":[{"od":13,"do":87}]},"rasca-faro":{"linia":[[-16.70415,28.02687],[-16.70433,28.02712],[-16.70465,28.02554],[-16.70531,28.02414],[-16.70542,28.02344],[-16.70485,28.02298],[-16.705,28.02243],[-16.70553,28.02224],[-16.70565,28.0213],[-16.70543,28.02123],[-16.70601,28.02111],[-16.70652,28.01934],[-16.70602,28.01843],[-16.70583,28.0173],[-16.70475,28.01648],[-16.70453,28.01568],[-16.70383,28.01565],[-16.70369,28.01477],[-16.70298,28.01432],[-16.70308,28.01351],[-16.70196,28.01259],[-16.70093,28.01257],[-16.70053,28.01202],[-16.70001,28.01204],[-16.69931,28.0115],[-16.69818,28.01005],[-16.69758,28.00824],[-16.69715,28.00543],[-16.69594,28.00447],[-16.69558,28.00389],[-16.69487,28.00377],[-16.69414,28.0033],[-16.69387,28.00164],[-16.69423,28.00117]],"liniaZrodlo":"OSM ways 51683645, 246164691, 289266495, 158578981, 289266497, 53129390, 289266501, 246164689, 192436734, 192436762, 192436761, 192436749, 158579012, 50563568, 472164313, 622474279, 50563502, 158578965","przyblizona":false,"maxPrzyklejenie_km":0.018,"zszycia":{"n":2,"m":63},"drogi":[51683645,246164691,289266495,158578981,289266497,53129390,289266501,246164689,192436734,192436762,192436761,192436749,158579012,50563568,472164313,622474279,50563502,158578965]},"diego-hernandez":{"linia":[[-16.7751,28.12113],[-16.76162,28.10998]],"liniaZrodlo":"przybliżona z punktów planu","przyblizona":true}};
+  /* SZLAKI:KONIEC */
+
+  var baza = { nazwa: 'Mieszkanie obok Hard Rock Hotel', adres: 'Avenida de Adeje 300, Playa Paraíso', lonLat: [-16.7751, 28.12113] };
+
+  var punkty = [
+    { id: 'hard-rock-hotel', nazwa: 'Hard Rock Hotel Tenerife', rodzaj: 'hotel', lonLat: [-16.77518, 28.11986],
+      opis: 'Budynek hotelu (Playa Paraíso, Adeje); w sobotę 28.11 wieczorem koncert Kultu.', zrodlo: OSM + ', way 80938233 (tourism=hotel), środek obrysu' },
+    { id: 'baza', nazwa: 'Baza — Avenida de Adeje 300', rodzaj: 'baza', lonLat: baza.lonLat,
+      opis: 'Mieszkanie przy Hard Rock Hotel, Playa Paraíso.', zrodlo: PLAN_LINK + ' (początek tras z bazy)' },
+    { id: 'przystanek-7610', nazwa: 'Przystanek Hard Rock Hotel nr 7610', rodzaj: 'przystanek', lonLat: [-16.77614, 28.12135],
+      opis: 'Kierunek Costa Adeje i Los Cristianos (471); 100 m od mieszkania.', zrodlo: PLAN_LINK + '; ' + OSM + ', węzeł 13387211483' },
+    { id: 'przystanek-7611', nazwa: 'Przystanek Hard Rock Hotel nr 7611', rodzaj: 'przystanek', lonLat: [-16.77613, 28.12124],
+      opis: 'Kierunek powrotny do bazy (471).', zrodlo: PLAN + '; ' + OSM + ', węzeł 2198904166' },
+    { id: 'playa-diego-hernandez', nazwa: 'Playa de Diego Hernández', rodzaj: 'plaza', lonLat: [-16.76162, 28.10998],
+      opis: 'Odosobniona plaża, ok. 200 m długości; cel pierwszego spaceru (pon 23.11).', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 14080247946' },
+    { id: 'taucho', nazwa: 'Taucho — początek Camino de Ifonche', rodzaj: 'start', lonLat: [-16.72646, 28.15009],
+      opis: 'Początek szlaku PR-TF 71.2 (wtorek 24.11, autem).', zrodlo: PLAN + '; pozycja: ' + OSM + ', początek relacji 4259122' },
+    { id: 'ifonche', nazwa: 'Ifonche', rodzaj: 'cel', lonLat: [-16.68995, 28.13487],
+      opis: 'Osada w chronionym krajobrazie Ifonche; koniec Camino de Ifonche.', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 282718113' },
+    { id: 'chamorga', nazwa: 'Chamorga', rodzaj: 'start', lonLat: [-16.15907, 28.56996],
+      opis: 'Osada w Anadze; start szlaku do Roque Bermejo i latarni (śr 25.11, autem).', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 295989290' },
+    { id: 'roque-bermejo-anaga', nazwa: 'Roque Bermejo (Anaga)', rodzaj: 'atrakcja', lonLat: [-16.13518, 28.57832],
+      opis: 'Przysiółek na końcu szlaku PR-TF 6.1.', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 874514216' },
+    { id: 'faro-de-anaga', nazwa: 'Faro de Anaga', rodzaj: 'latarnia', lonLat: [-16.14002, 28.58132],
+      opis: 'Latarnia na krańcu Anagi.', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 599051999' },
+    { id: 'casas-de-tafada', nazwa: 'Casas de Tafada', rodzaj: 'cel', lonLat: [-16.15269, 28.57715],
+      opis: 'Zabudowania na drodze powrotnej do Chamorgi.', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 295993517' },
+    { id: 'parador-del-teide', nazwa: 'Parador del Teide (przystanek 342)', rodzaj: 'start', lonLat: [-16.62726, 28.22383],
+      opis: 'Dno kaldery Las Cañadas, 2150 m; start szlaku (czw 26.11); jedyny autobus w dół o 15:42.', zrodlo: PLAN_LINK },
+    { id: 'degollada-de-guajara', nazwa: 'Degollada de Guajara', rodzaj: 'punkt-widokowy', lonLat: [-16.60002, 28.2179],
+      opis: 'Przełęcz w krawędzi kaldery, 2379 m, 4,8 km od startu; cel dnia (najpóźniejsza zawrotka 13:15).', zrodlo: PLAN_LINK },
+    { id: 'alto-de-guajara', nazwa: 'Alto de Guajara', rodzaj: 'cel', lonLat: [-16.61691, 28.21464],
+      opis: 'Szczyt 2708 m, 6,9 km od startu — poza oknem autobusu (5 h 45 min marszu według normy).', zrodlo: PLAN + '; pozycja: ' + OSM + ', koniec relacji 416908' },
+    { id: 'roques-de-garcia', nazwa: 'Roques de García', rodzaj: 'atrakcja', lonLat: [-16.63465, 28.22637],
+      opis: 'Skały tuż obok Paradoru — na czas oczekiwania na autobus.', zrodlo: PLAN_LINK },
+    { id: 'los-silos', nazwa: 'Los Silos', rodzaj: 'start', lonLat: [-16.81671, 28.36582],
+      opis: 'Start szlaku PR-TF 53 (pt 27.11, autem).', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 272416771' },
+    { id: 'erjos', nazwa: 'Erjos', rodzaj: 'cel', lonLat: [-16.8044, 28.32761],
+      opis: 'Koniec szlaku PR-TF 53.', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 11438763253' },
+    { id: 'palm-mar', nazwa: 'Palm-Mar', rodzaj: 'start', lonLat: [-16.70396, 28.02686],
+      opis: 'Start spaceru po lawie do latarni (sob 28.11; rezerwa); dojazd taksówką z Los Cristianos.', zrodlo: PLAN_LINK },
+    { id: 'faro-de-rasca', nazwa: 'Faro de Rasca', rodzaj: 'latarnia', lonLat: [-16.6943, 28.00109],
+      opis: 'Latarnia na płaskiej lawie Malpaís de Rasca.', zrodlo: PLAN_LINK },
+    { id: 'vento', nazwa: 'Vento (start SL-TF 218)', rodzaj: 'start', lonLat: [-16.6877, 28.10107],
+      opis: 'Start szlaku na Roque del Conde (nd 29.11); 540 m od przystanku González de Yerro (342).', zrodlo: PLAN_LINK },
+    { id: 'roque-del-conde', nazwa: 'Roque del Conde', rodzaj: 'punkt-widokowy', lonLat: [-16.69861, 28.10447],
+      opis: 'Płaski szczyt 980 m nad Arona; widok na całe południe wyspy.', zrodlo: PLAN_LINK },
+    { id: 'punta-del-hidalgo', nazwa: 'Punta del Hidalgo', rodzaj: 'start', lonLat: [-16.32174, 28.5692],
+      opis: 'Start szlaku PR-TF 10 (pon 30.11, autem).', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 76471275' },
+    { id: 'chinamada', nazwa: 'Chinamada', rodzaj: 'cel', lonLat: [-16.29115, 28.56194],
+      opis: 'Osada w skale, cel szlaku z Punta del Hidalgo.', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 301437192' },
+    { id: 'masca', nazwa: 'Masca', rodzaj: 'start', lonLat: [-16.8405, 28.30526],
+      opis: 'Wioska, start zejścia Barranco de Masca (wejście tylko z rezerwacją; dzień do ustalenia z przyjaciółmi).', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 263716278' },
+    { id: 'playa-de-masca', nazwa: 'Playa de Masca', rodzaj: 'plaza', lonLat: [-16.86199, 28.28719],
+      opis: 'Koniec wąwozu; stąd łódź do Los Gigantes.', zrodlo: PLAN + '; pozycja: ' + OSM + ', way 28339463' },
+    { id: 'santiago-del-teide-parking', nazwa: 'Santiago del Teide — parking przy cmentarzu', rodzaj: 'przystanek', lonLat: [-16.81042, 28.29473],
+      opis: 'Tu zostaje auto w dniu Masci; stąd autobus 355 do wioski.', zrodlo: PLAN_LINK },
+    { id: 'los-gigantes-port', nazwa: 'Los Gigantes — port', rodzaj: 'przystanek', lonLat: [-16.84247, 28.24742],
+      opis: 'Koniec rejsu z Playa de Masca; stąd 1 km pieszo na przystanek 7228.', zrodlo: PLAN_LINK }
+  ];
+
+  function trasa(def) {
+    var s = SZLAKI[def.id];
+    var t = { id: def.id, nazwa: def.nazwa };
+    if (def.numer) t.numer = def.numer;
+    if (def.dzien) t.dzien = def.dzien;
+    if (def.dlugosc_km != null) t.dlugosc_km = def.dlugosc_km;
+    if (def.podejscie_m != null) t.podejscie_m = def.podejscie_m;
+    t.transport = def.transport; t.startId = def.startId; t.celId = def.celId;
+    t.linia = s.linia; t.liniaZrodlo = s.liniaZrodlo; t.przyblizona = s.przyblizona;
+    if (s.odnogi) t.odnogi = s.odnogi;      // [{ od, do }] indeksy linii: odcinek „tam i z powrotem” (widok może go przesunąć)
+    if (s.zszycia) t.zszycia = s.zszycia;   // luki w OSM zszyte prostą: { n, m }
+    if (def.odcinekDodatkowy) t.odcinekDodatkowy = def.odcinekDodatkowy;
+    t.karta = def.karta;
+    if (def.uwagi) t.uwagi = def.uwagi;
+    return t;
+  }
+
+  var trasy = [
+    trasa({ id: 'diego-hernandez', nazwa: 'Playa de Diego Hernández', dzien: 'pon 23.11', dlugosc_km: 10, transport: 'pieszo', startId: 'baza', celId: 'playa-diego-hernandez',
+      karta: 'Pierwszy spacer po przylocie: pieszo z bazy wzdłuż wybrzeża do odosobnionej plaży Diego Hernández i z powrotem, mniej więcej dziesięć kilometrów.',
+      uwagi: 'Linia przybliżona prostą między bazą a plażą (OSM nie ma tej trasy jako szlaku); ok. 10 km to długość trasy tam i z powrotem według opowieści dnia.' }),
+    trasa({ id: 'taucho-ifonche', nazwa: 'Taucho – Ifonche, Camino de Ifonche', numer: 'PR-TF 71.2', dzien: 'wt 24.11', dlugosc_km: 12.9, podejscie_m: 581, transport: 'auto', startId: 'taucho', celId: 'ifonche',
+      karta: 'Stara droga pasterska nad wybrzeżem do osady Ifonche, przez pola na pumeksie w chronionym krajobrazie Ifonche. Wracacie tą samą ścieżką. Autem z bazy 15 km (19 min).',
+      uwagi: 'Plan: 12,9 km tam i z powrotem, 581 m podejść. Do Taucho plan nie znalazł pewnego autobusu.' }),
+    trasa({ id: 'anaga-chamorga', nazwa: 'Anaga: Chamorga – Roque Bermejo – Faro de Anaga – Casas de Tafada', dzien: 'śr 25.11', dlugosc_km: 7.5, podejscie_m: 653, transport: 'auto', startId: 'chamorga', celId: 'casas-de-tafada',
+      karta: 'Koniec drogi w Anadze: z Chamorgi do Roque Bermejo, dalej do latarni na krańcu i z powrotem przez Casas de Tafada. Autem z bazy 118 km (99 min).',
+      uwagi: 'Autobusem z południa nie zdążycie na poranny kurs do Chamorgi (jedyny w dni robocze o 6:20).' }),
+    trasa({ id: 'kaldera-guajara', nazwa: 'Kaldera Teide: Parador – Degollada de Guajara – Alto de Guajara', dzien: 'czw 26.11', dlugosc_km: 9.6, podejscie_m: 380, transport: 'autobus', startId: 'parador-del-teide', celId: 'alto-de-guajara',
+      odcinekDodatkowy: { od: 'degollada-de-guajara', opis: 'poza oknem autobusu — tylko z autem/taksówką; km i podejście z planu dotyczą przełęczy, linia idzie dalej do Alto de Guajara' },
+      karta: 'Z Paradoru na dnie kaldery na wschód pod ścianą Guajary i na przełęcz Degollada de Guajara (2379 m); za plecami cały czas Teide. To najmocniejszy z trzech dni autobusowych.',
+      uwagi: 'Plan na przełęcz: 9,6 km tam i z powrotem, ok. 380 m podejść, 3 h 25 min. Odcinek do Alto de Guajara (2708 m, 6,9 km od startu) jest poza oknem autobusu 342 (w dół tylko o 15:42), więc celem jest przełęcz.' }),
+    trasa({ id: 'teno-erjos', nazwa: 'Teno: Los Silos – Cuevas Negras – Erjos', numer: 'PR-TF 53', dzien: 'pt 27.11', dlugosc_km: 10.4, podejscie_m: 894, transport: 'auto', startId: 'los-silos', celId: 'erjos',
+      karta: 'Szlak z Los Silos przez Cuevas Negras do Erjos, wsi założonej przez wulkan. Autem z bazy 46 km (49 min).',
+      uwagi: 'Start w Los Silos i meta w Erjos to dwa różne autobusy; plan nie potwierdził, czy 460 staje w Erjos. W tym dniu może wypaść Masca z przyjaciółmi.' }),
+    trasa({ id: 'rasca-faro', nazwa: 'Malpaís de Rasca – Faro de Rasca', dzien: 'sob 28.11', dlugosc_km: 7.3, podejscie_m: 81, transport: 'autobus', startId: 'palm-mar', celId: 'faro-de-rasca',
+      karta: 'Spacer po płaskiej, ostrej lawie z Palm-Mar do latarni i z powrotem (2 h marszu); wieczorem koncert Kultu w Hard Rock Hotel.',
+      uwagi: 'Rezerwa, raczej odpada. 471 do Los Cristianos, potem taksówka lub Uber do Palm-Mar (ok. 6 km; w sobotę żaden autobus tam nie dojeżdża).' }),
+    trasa({ id: 'roque-del-conde', nazwa: 'Roque del Conde z Vento', numer: 'SL-TF 218', dzien: 'nd 29.11', dlugosc_km: 5.7, podejscie_m: 473, transport: 'autobus', startId: 'vento', celId: 'roque-del-conde',
+      karta: 'Stołowa góra nad Arona, widoczna z całego wybrzeża. Szlak startuje w Vento, schodzi do wąwozu i wspina się zakosami na płaski szczyt (980 m); z góry widać całe południe wyspy.',
+      uwagi: 'W niedzielę jedyny kurs 471 o 8:15 zdąży na 342 do Arona; powroty od 14:25 z przesiadką w Los Cristianos.' }),
+    trasa({ id: 'anaga-hidalgo', nazwa: 'Anaga: Punta del Hidalgo – Chinamada', numer: 'PR-TF 10', dzien: 'pon 30.11', dlugosc_km: 9, podejscie_m: 806, transport: 'auto', startId: 'punta-del-hidalgo', celId: 'chinamada',
+      karta: 'Wieś w skale: z Punta del Hidalgo szlakiem PR-TF 10 do Chinamady. Autem z bazy 110 km (83 min).',
+      uwagi: 'Autobusem z południa ok. 2,5 h w jedną stronę (111 do Santa Cruz, dalej 105 do Punta del Hidalgo).' }),
+    trasa({ id: 'masca', nazwa: 'Barranco de Masca: z wioski do morza', dzien: undefined, dlugosc_km: 4.4, transport: 'autobus', startId: 'masca', celId: 'playa-de-masca',
+      karta: 'Zejście wąwozem z Masci do Playa de Masca, stamtąd łodzią do Los Gigantes. Wejście tylko z imienną rezerwacją (od 40,66 €), obowiązkowe buty trekkingowe; ok. 4 h, ok. 750 m w dół.',
+      uwagi: 'Z przyjaciółmi, dzień do ustalenia (poniedziałek–sobota), np. pt 27.11 zamiast dnia autem. Długość według OpenStreetMap 4,4 km, oficjalnie ok. 5 km. Auto zostaje w Santiago del Teide, dalej autobus 355; powrót 462 albo 325. W planie bez przypisanego dnia kalendarza.' })
+  ].map(function (t) { if (t.dzien === undefined) delete t.dzien; return t; });
+
+  var kalendarz = [
+    { data: '2026-11-23', etykieta: 'pon 23.11', tytul: 'Pierwszy zachód nad zatoką', trasa: 'diego-hernandez', jak: 'pieszo z bazy' },
+    { data: '2026-11-24', etykieta: 'wt 24.11', tytul: 'Stara droga nad wybrzeżem', trasa: 'taucho-ifonche', jak: 'autem (do Taucho nie ma pewnego autobusu)' },
+    { data: '2026-11-25', etykieta: 'śr 25.11', tytul: 'Koniec drogi, latarnia na krańcu', trasa: 'anaga-chamorga', jak: 'autem (autobusem z południa nie zdążycie na poranny kurs do Chamorgi)' },
+    { data: '2026-11-26', etykieta: 'czw 26.11', tytul: 'Na krawędzi kotła', trasa: 'kaldera-guajara', jak: 'autobusem: 471 o 8:15, 342 o 9:25 do Paradoru, powrót 342 o 15:42' },
+    { data: '2026-11-27', etykieta: 'pt 27.11', tytul: 'Wieś, którą założył wulkan', trasa: 'teno-erjos', jak: 'autem; albo w tym dniu Masca z przyjaciółmi' },
+    { data: '2026-11-28', etykieta: 'sob 28.11', tytul: 'Latarnia na lawie, wieczorem Kult', trasa: 'rasca-faro', jak: 'wieczorem Kult, 20:00 w Hard Rock Hotel; Rasca raczej odpada' },
+    { data: '2026-11-29', etykieta: 'nd 29.11', tytul: 'Stół hrabiego', trasa: 'roque-del-conde', jak: 'autobusem: 471 o 8:15, 342 o 9:25 do Arona' },
+    { data: '2026-11-30', etykieta: 'pon 30.11', tytul: 'Wieś w skale', trasa: 'anaga-hidalgo', jak: 'autem (autobusem z południa ok. 2,5 h w jedną stronę)' },
+    { data: '2026-12-01', etykieta: 'wt 1.12', tytul: 'Wylot', jak: 'wylot; Masca z przyjaciółmi — dzień do ustalenia, od poniedziałku do soboty' }
+  ];
+
+  var autobusy = [
+    { linia: '471', opis: 'Z bazy (przystanek Hard Rock Hotel, nr 7610 w stronę Costa Adeje i Los Cristianos, nr 7611 z powrotem): w dni robocze co 25–35 min, w weekend co ok. 50 min.' },
+    { linia: '342', opis: 'Pod Teide: jeden kurs w górę (9:25 z dworca Costa Adeje, Parador 10:57) i jeden w dół (15:42 z Paradoru), codziennie przez cały pobyt; ta sama linia dojeżdża do Arona (wysiadka po 28 min).' },
+    { linia: '480', opis: 'Arona → Los Cristianos (powrót z Roque del Conde, z przesiadką na 471 do bazy).' },
+    { linia: '355', opis: 'Santiago del Teide → Masca (dzień Masci; w niedzielę tylko 4 kursy). Powrót z Los Gigantes: 462 albo 325.' }
+  ];
+
+  var ostrzezenie = {
+    tekst: 'Szlaki mogą być zamknięte. Po burzach Bruna i Charles Rada Wyspy (Cabildo) zamknęła 8 i 10 listopada 2026 wszystkie szlaki i drogi gruntowe w obszarach chronionych oraz wjazd do Parku Narodowego Teide, bez daty otwarcia. Obejmuje to kalderę, Malpaís de Rasca i Barranco de Masca. Do 20.11 plan nie znalazł komunikatu o ponownym otwarciu; wyjątkiem jest Masca, której oficjalna strona (Masca Today) pokazywała 20.11 status „Open”. Przed każdym wyjściem sprawdźcie zakładkę z aktualnościami na tenerifeon.es albo profil Cabildo de Tenerife; szlaki otwiera dopiero nowa uchwała, a obniżenie stopnia alarmu ich nie otwiera.',
+    stan_na: '2026-11-20',
+    link: 'https://www.tenerifeon.es/noticias/cierre-de-senderos-pistas-forestales-y-equipamientos-de-los-espacios-naturales-protegidos-de-tenerife'
+  };
+
+  var api = {
+    baza: baza, punkty: punkty, trasy: trasy, kalendarz: kalendarz, autobusy: autobusy, ostrzezenie: ostrzezenie,
+    zrodlo: PLAN + '; linie szlaków © współtwórcy OpenStreetMap (ODbL)'
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GeologiaTurystyka = api;
+})(typeof window !== 'undefined' ? window : globalThis);
