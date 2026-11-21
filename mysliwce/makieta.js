@@ -16,7 +16,8 @@
    „Plan” (rentgen): krawędzie EdgesGeometry na półprzezroczystych bryłach. Rekonstrukcja, nie rysunek techniczny. */
 (function (root) {
   var KAFEL = 4;                    // [m] — tyle płatowca obejmuje jeden kafel tekstury paneli
-  var PX = 1024;
+  var PX = 1024;                    // płótno kafla pełnego LOD; rysunek zawsze w tych jednostkach (N), płótno może być mniejsze
+  var PX_LEKKI = 256;               // LOD `lekki` (hangar: kafel 4 m z 74 m to ~60–100 px, na końcu przelotu ~250 px)
   var KOLOR_PODSW = 0x22b4ff;
 
   function generator(ziarno) {      // mulberry32 — deterministyczny wygląd paneli
@@ -33,10 +34,14 @@
   // Trzy płótna z jednego układu paneli: kolor (ton per panel ±6%, linie 7 tekseli, nity, drzwiczki z ząbkami),
   // szorstkość (per panel ±0,08 wokół 0,75; taśma wokół drzwiczek gładsza) i wysokość (rowki linii, wgłębienia nitów)
   // → mapa normalnych liczona Sobelem. Linie mają ≥ 6 tekseli, żeby przeżyły mipmapy (detal nie ginie poniżej piksela).
-  function plotno() { var c = document.createElement('canvas'); c.width = c.height = PX; return c; }
-  function maluj(los, opcjeKafla) {
+  function plotno(px) { var c = document.createElement('canvas'); c.width = c.height = px; return c; }
+  // `px` = rozmiar płótna (domyślnie PX). Rysunek idzie w jednostkach PX (ctx.scale), więc układ paneli, nity i drzwiczki
+  // są te same przy każdym rozmiarze, a sekwencja losowań nie zależy od px (poza ziarnem powłoki na końcu).
+  function maluj(los, opcjeKafla, px) {
+    px = px || PX;
     var drzwi = opcjeKafla && opcjeKafla.drzwi === 0 ? 0 : 1;
-    var A = plotno(), B = plotno(), H = plotno(), a = A.getContext('2d'), b = B.getContext('2d'), h = H.getContext('2d'), N = PX;
+    var A = plotno(px), B = plotno(px), H = plotno(px), a = A.getContext('2d'), b = B.getContext('2d'), h = H.getContext('2d'), N = PX;
+    if (px !== PX) [a, b, h].forEach(function (c) { c.scale(px / PX, px / PX); });
     // rysunek powtórzony w 9 przesunięciach = kafel bez szwu
     function wkolo(fn) { for (var dx = -N; dx <= N; dx += N) for (var dy = -N; dy <= N; dy += N) fn(dx, dy); }
     var szary = function (v, al) { v = Math.max(0, Math.min(255, Math.round(v))); return 'rgba(' + v + ',' + v + ',' + v + ',' + (al == null ? 1 : al) + ')'; };
@@ -106,17 +111,19 @@
       obrys(h, szary(70), 6);
     }
     // drobny szum (ziarno powłoki)
-    var img = a.getImageData(0, 0, N, N), px2 = img.data;
+    var img = a.getImageData(0, 0, px, px), px2 = img.data;
     for (var k = 0; k < px2.length; k += 4) { var sz2 = (los() - 0.5) * 6; px2[k] += sz2; px2[k + 1] += sz2; px2[k + 2] += sz2; }
     a.putImageData(img, 0, 0);
-    return { kolor: A, szorstkosc: B, normalne: normalneSobel(H) };
+    return { kolor: A, szorstkosc: B, normalne: normalneSobel(H, px) };
   }
   // Mapa normalnych z płótna wysokości (Sobel, zawijanie na brzegach kafla). Płótno ma y w dół, tekstura v w górę
   // (flipY), stąd znak składowej y. Wynik zapisany w tym samym płótnie.
-  function normalneSobel(H) {
-    var N = PX, ctx = H.getContext('2d');
-    ctx.filter = 'blur(1.5px)'; ctx.drawImage(H, 0, 0); ctx.filter = 'none';      // łagodne zbocza rowków
-    var src = ctx.getImageData(0, 0, N, N).data, out = ctx.createImageData(N, N), o = out.data, K = 2.2;
+  // Mniejsze płótno: rozmycie i siła w tych samych jednostkach co przy PX (nachylenie zboczy na metr bez zmian).
+  function normalneSobel(H, px) {
+    var N = px || PX, sk = N / PX, ctx = H.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.filter = 'blur(' + Math.max(0.5, 1.5 * sk) + 'px)'; ctx.drawImage(H, 0, 0); ctx.filter = 'none';      // łagodne zbocza rowków
+    var src = ctx.getImageData(0, 0, N, N).data, out = ctx.createImageData(N, N), o = out.data, K = 2.2 * sk;
     var hgt = function (x, y) { return src[(((y + N) % N) * N + ((x + N) % N)) * 4] / 255; };
     for (var y = 0; y < N; y++) {
       for (var x = 0; x < N; x++) {
@@ -390,8 +397,9 @@
       t.kolor.encoding = T.sRGBEncoding;           // szorstkość i normalne liniowe
       return t;
     };
-    var tex = tekstury(maluj(los));
-    tex.plat = tekstury(maluj(generator(ziarnoZ(id + '/plat')), { drzwi: 0 }));
+    var px = (opcje.lod || 'pelny') === 'lekki' ? PX_LEKKI : PX;
+    var tex = tekstury(maluj(los, null, px));
+    tex.plat = tekstury(maluj(generator(ziarnoZ(id + '/plat')), { drzwi: 0 }, px));
     var niesf = !!dane.niesfotografowany;
     var fabryka = materialy(T, opcje, tex, niesf);
     var opisy = {};

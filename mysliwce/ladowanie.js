@@ -6,18 +6,20 @@
    Adresy:  #mysliwce → hangar ({id:null}); #mysliwiec=<id>[&tryb=pokaz|makieta] → {id, tryb} (domyślnie pokaz);
             #mysliwiec=<nieznany> → {id:null, nieznany} (hangar z komunikatem). Obcy hash → null.
    Zapytanie: ?mysliwce = przycisk zakładki widoczny (do czasu gotowości zakładki jest ukryty — main publikuje się
-   sam); ?smoke&mysliwiec=<id>&makieta = hak testowy (marker MYSLIWCE_READY <id> makieta); ?smoke&mysliwiec=<id>&ujecie=N
-   [&t=0..1] = kadr pokazu w chwili t ujęcia N (marker MYSLIWCE_READY <id> <N>). Hash i hak działają też
-   bez ?mysliwce — wtedy przycisk pojawia się tylko na czas otwartej nakładki (żeby było widać, gdzie jesteś). */
+   sam); ?smoke&mysliwce = hak testowy hangaru (marker MYSLIWCE_READY hangar; &hover=<id> = podświetlona maszyna,
+   &przelot=<id>[&u=0..1] = kadr przelotu kamery); ?smoke&mysliwiec=<id>&makieta = hak testowy (marker
+   MYSLIWCE_READY <id> makieta); ?smoke&mysliwiec=<id>&ujecie=N [&t=0..1] = kadr pokazu w chwili t ujęcia N (marker
+   MYSLIWCE_READY <id> <N>). Hash i hak działają też bez ?mysliwce — wtedy przycisk pojawia się tylko na czas
+   otwartej nakładki (żeby było widać, gdzie jesteś). */
 (function (root) {
   // Ta sama kolejność co MysliwceDane.MYSLIWCE (test pilnuje); parser hasha działa przed wczytaniem dane.js.
   var IDS = ['f-22a', 'f-35a', 'f-47', 'su-57', 'su-75', 'j-20a', 'j-35a', 'j-36', 'j-50'];
   var TRYBY = ['pokaz', 'makieta'];
-  // Kolejność leniwego ładowania: tylko pliki, które istnieją. Kolejne zadania dopisują swoje (hangar.js) PRZED
-  // widok.js — widok.js jest ostatni, bo korzysta z reszty; pokaz.js za kino.js, silniki.js i makieta.js.
+  // Kolejność leniwego ładowania: tylko pliki, które istnieją. Kolejne zadania dopisują swoje PRZED widok.js — widok.js
+  // jest ostatni, bo korzysta z reszty; pokaz.js za kino.js, silniki.js i makieta.js; hangar.js za studio.js i makieta.js.
   var PLIKI = ['mysliwce/dane.js', 'mysliwce/czesci.js', 'mysliwce/sylwetki.js', 'mysliwce/platowiec.js',
     'mysliwce/makieta.js', 'mysliwce/studio.js', 'mysliwce/ogien.js', 'mysliwce/dzwiek.js', 'mysliwce/silniki.js',
-    'mysliwce/kino.js', 'mysliwce/pokaz.js', 'mysliwce/widok.js'];
+    'mysliwce/kino.js', 'mysliwce/pokaz.js', 'mysliwce/hangar.js', 'mysliwce/widok.js'];
   var FONTY = 'https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap';
 
   function dekoduj(s) { try { return decodeURIComponent(s); } catch (_) { return s; } }
@@ -47,6 +49,7 @@
       var mt = /[?&]t=([0-9.]+)(?=&|$)/.exec(s), t = mt ? parseFloat(mt[1]) : 0;
       wynik.tryb = 'pokaz'; wynik.ujecie = +uj[1]; wynik.t = isFinite(t) ? Math.max(0, Math.min(1, t)) : 0;
     }
+    if (wynik.smoke && wynik.widoczna && !znane) wynik.tryb = 'hangar';   // hak hangaru: ?smoke&mysliwce
     return wynik;
   }
 
@@ -127,6 +130,7 @@
   // Start po wczytaniu wszystkich skryptów strony (solar.js też): hak testowy albo link z hashem.
   function start() {
     if (zap.smoke && zap.id) root.Zakladki.przelacz('mysliwce', { id: zap.id, tryb: zap.tryb || 'makieta', ujecie: zap.ujecie, t: zap.t });
+    else if (zap.tryb === 'hangar') root.Zakladki.przelacz('mysliwce', { id: null });
     else if (parsujHashMysliwcow(root.location.hash)) root.Zakladki.zAdresu(root.location.hash);
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', start); else setTimeout(start, 0);

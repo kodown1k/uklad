@@ -1,8 +1,10 @@
 'use strict';
 /* Zakładka Myśliwce — nakładka z własnym rendererem (plik przeglądarkowy; ładuje go leniwie mysliwce/ladowanie.js).
-   window.Mysliwce = { otworz(stan), zamknij(), stan(), diagnostyka(), makieta(), pokaz(), rzutKotwicy(rodzaj) }.
-   Tryby: hangar / pokaz / makieta. Hangaru (Task 9) jeszcze nie ma — wejście bez id otwiera pokaz pierwszej maszyny
-   (albo ostatnio oglądanej), „Hangar” i Esc w makiecie wracają do Układu, dopóki hangar nie powstanie.
+   window.Mysliwce = { otworz(stan), zamknij(), stan(), diagnostyka(), makieta(), pokaz(), hangar(), rzutKotwicy(rodzaj) }.
+   Tryby: hangar / pokaz / makieta. Wejście bez id maszyny (przycisk zakładki, #mysliwce) = hangar (mysliwce/hangar.js) z
+   podświetloną i wycentrowaną ostatnio oglądaną maszyną (zmienna modułu + localStorage, jeśli wolno). W hangarze: ←/→
+   fokus, Enter albo klik w maszynę (też przycisk w pasku maszyn) → przelot kamery i pokaz tej maszyny; Esc → Układ.
+   Esc w pokazie → makieta tej maszyny; Esc w makiecie i przycisk „Hangar” → hangar.
    Pokaz (mysliwce/pokaz.js): kadr 2.39:1 (kanwa w kadrze z Kino.kadrKinowy, pasy = tło nakładki), napisy w dolnym pasie,
    kamera pościgowa wokół lecącej maszyny, dźwięk domyślnie włączony (gestem jest klik zakładki/maszyny; bez gestu — przy
    pierwszym kliknięciu albo klawiszu). Klawisze: spacja pauza, ←/→ ujęcie, F pełny ekran, M dźwięk, Esc → makieta tej
@@ -18,7 +20,11 @@
    powrót = rampa głośności; wyjście do Układu zamyka kontekst.
    Scena (tło, posadzka, światła, env PMREM) i makieta są budowane przy wejściu i zwalniane przy wyjściu do Układu;
    zostaje tylko renderer (jeden kontekst WebGL na całe życie strony).
-   Hak testowy: ?smoke&mysliwiec=<id>&ujecie=N[&t=0..1] → kadr pokazu w chwili t ujęcia N, marker `MYSLIWCE_READY <id> <N>`;
+   Jakość: decyzja w czystej MysliwceHangar.krokJakosci / wejscieJakosci (testy w node): „lekka” po fps < 30 przez 2 s;
+   w hangarze powrót do „pełnej” po ≥ 50 fps przez 5 s, a spadek takiej pełnej blokuje dalsze powroty na sesję; pokaz
+   i makieta przy wejściu dostają jakość wywalczoną poza hangarem (pełna z hangaru nie przechodzi na cięższą scenę).
+   Hak testowy: ?smoke&mysliwce[&hover=<id>][&przelot=<id>[&u=0..1]] → hangar, marker `MYSLIWCE_READY hangar`;
+   ?smoke&mysliwiec=<id>&ujecie=N[&t=0..1] → kadr pokazu w chwili t ujęcia N, marker `MYSLIWCE_READY <id> <N>`;
    ?smoke&mysliwiec=<id>&makieta → stały kadr, natychmiastowe stany, marker `MYSLIWCE_READY <id> makieta`;
    `&dopalacz[=0..1]` = silniki od razu na danym ciągu (domyślnie 1), płomień w stałej chwili t = 1 s, bez dźwięku;
    `&kadr=ogien|ogienbok|ogientyl` = kadry płomienia (¾ z tyłu, bok, prosto w dysze).
@@ -104,14 +110,22 @@
   var aktywny = false, gl = null, sc = null, mk = null, idBiez = null, raf = 0, czasStartu = 0, tOst = 0;
   var cel = { rozloz: 0, komory: 0 }, wart = { rozloz: 0, komory: 0 }, planWl = false;
   var ostatniCel = [0, 0, 0], hover = null, wybrana = null, wskaznik = null, nacisk = null, gotowosc = null, zegarKom = null, lot = null;
-  var fps = { wart: 60, n: 0, t0: 0, slabe: 0 }, jakosc = 'pelna', przesun = { biez: 0, cel: 0 };
+  var fps = { wart: 60, n: 0, t0: 0 }, jakosc = 'pelna', przesun = { biez: 0, cel: 0 };
+  var jq = window.MysliwceHangar.jakoscPoczatek();                 // stan decyzji jakości (przeżywa wyjście do Układu)
   var wymusPelna = /[?&]jakosc=pelna(?=&|$)/.test(location.search);   // hak sondy: bez przejścia na „lekką” przy niskim fps
   var rc = new T.Raycaster(), wekNdc = new T.Vector2();
   // silniki (mysliwce/silniki.js: bezwładność, płomień, światło zbiorcze) bieżącej makiety; silnikiWl = przycisk Dopalacz;
   // dzwiekWl null = jeszcze nie wybrano (pierwsze włączenie dopalacza włącza dźwięk), false = wyciszony klawiszem M
   var sil = null, silnikiWl = false, dzwiek = null, dzwiekWl = null;
-  // tryb bieżący ('makieta' | 'pokaz'), odtwarzacz pokazu, kadr kinowy (Kino.kadrKinowy) i oczekiwanie na gest dla dźwięku
+  // tryb bieżący ('hangar' | 'makieta' | 'pokaz'), odtwarzacz pokazu, kadr kinowy (Kino.kadrKinowy) i oczekiwanie na gest dla dźwięku
   var tryb = null, pk = null, kadrK = null, czekaNaGest = false;
+  // hangar (MysliwceHangar.zbuduj) i ostatnio oglądana maszyna — przeżywa wyjście do Układu (fokus hangaru po powrocie)
+  var hg = null, KLUCZ_OSTATNIEJ = 'mysliwce.ostatnia', ostatnia = null;
+  if (!smoke) { try { var zap0 = localStorage.getItem(KLUCZ_OSTATNIEJ); if (D.mysliwiec(zap0)) ostatnia = zap0; } catch (_) { /* bez localStorage */ } }
+  function zapamietaj(id) {
+    ostatnia = id;
+    if (!smoke) { try { localStorage.setItem(KLUCZ_OSTATNIEJ, id); } catch (_) { /* tryb prywatny / file:// */ } }
+  }
 
   function komunikat(t) {
     ui.komunikat.textContent = t || ''; ui.komunikat.hidden = !t;
@@ -148,6 +162,7 @@
     }
     kadrK = null; ui.canvas.style.cssText = '';
     gl.renderer.setSize(w, h, false);
+    if (hg) hg.rozmiar(w, h);
     if (sc) { sc.kamera.aspect = w / h; kadrPoboczny(true); }
   }
   // Kadr przesunięty o różnicę połówek kart: karta danych (lewa) pcha makietę w prawo, karta części (prawa) w lewo —
@@ -228,7 +243,7 @@
     mk = window.Makieta.zbuduj(T, id, { lod: 'pelny', env: sc.studio.env.texture, anizotropia: gl.renderer.capabilities.getMaxAnisotropy() });
     mk.grupa.position.y = -mk.obwiednia.min[1];               // koła na posadzce
     sc.scena.add(mk.grupa);
-    idBiez = id; hover = null; wybrana = null;
+    idBiez = id; hover = null; wybrana = null; zapamietaj(id);
     mk.rozloz(wart.rozloz); mk.komory(wart.komory); if (planWl) mk.plan(true);
     // silniki nowej maszyny przejmują bieżący ciąg (zmiana maszyny na dopalaczu nie gasi i nie rozkręca od zera)
     sil = window.Silniki.utworz(T, { scena: sc.scena, wyloty: mk.wyloty, rodzic: mk.czesci.dysze, dzwiek: dzwiekWl ? dzwiek : null, jakosc: jakosc });
@@ -238,7 +253,7 @@
     wypelnijDane(dane);
     zamknijCzesc();
     ui.tytul.textContent = 'Myśliwce · ' + dane.nazwa;
-    Object.keys(ui.przyciskiMaszyn).forEach(function (k) { ui.przyciskiMaszyn[k].setAttribute('aria-pressed', String(k === id)); });
+    zaznaczMaszyne(id);
   }
   // Kadry makiety (w układzie posadzki, makieta stoi na kołach): start — ¾ z przodu z prawej burty, lekko z góry;
   // rozłożony — ten sam kierunek, dalej (części wychodzą poza obrys); komory — nisko z boku, widać brzuch i otwarte drzwi.
@@ -303,6 +318,7 @@
   }
   function wybierz(id) {
     if (!aktywny || !D.mysliwiec(id)) return;
+    if (tryb === 'hangar') { zHangaru(id); return; }
     if (tryb === 'pokaz') { wejdzPokaz(id); ustawAdres(id, false); return; }
     pokazMakiete(id);
     ustawAdres(id, false);
@@ -313,7 +329,7 @@
   }
   function ustawAdres(id, nowy) {
     if (smoke) return;
-    var h = '#mysliwiec=' + id + '&tryb=' + (tryb || 'makieta');
+    var h = tryb === 'hangar' ? '#mysliwce' : '#mysliwiec=' + id + '&tryb=' + (tryb || 'makieta');
     if (location.hash === h) return;
     try { history[nowy ? 'pushState' : 'replaceState'](null, '', location.pathname + location.search + h); } catch (_) { /* file:// */ }
   }
@@ -429,10 +445,10 @@
     if (!dzwiek || !dzwiekWl) return;
     if (doc.hidden) dzwiek.pauza(); else if (!(pk && pk.stan().pauza)) dzwiek.wznow();
   });
-  // Pokaz bez gestu (wejście z linku): dźwięk rusza przy pierwszym kliknięciu albo klawiszu (polityka autoplay) — M to wybór
+  // Pokaz i hangar bez gestu (wejście z linku): dźwięk rusza przy pierwszym kliknięciu albo klawiszu (polityka autoplay) — M to wybór
   // użytkownika, więc go nie wyprzedzamy.
   function gestDzwieku(e) {
-    if (!czekaNaGest || !aktywny || tryb !== 'pokaz') return;
+    if (!czekaNaGest || !aktywny || (tryb !== 'pokaz' && tryb !== 'hangar')) return;
     // M i przycisk „♪ Dźwięk” (klik, Enter/spacja z fokusem) same przełączają dźwięk — gest tylko zdejmuje oczekiwanie,
     // inaczej pierwszy klik w przycisk najpierw włączał (pointerdown), a zaraz potem wyciszał (click)
     if ((e.type === 'keydown' && (e.key === 'm' || e.key === 'M')) || (e.target && ui.dzwiek.contains(e.target))) { czekaNaGest = false; return; }
@@ -441,7 +457,7 @@
   }
   window.addEventListener('pointerdown', gestDzwieku, true);
   window.addEventListener('keydown', gestDzwieku, true);
-  function dzwiekPokazu() {
+  function dzwiekWejscia() {
     if (smoke || dzwiekWl === false) return;
     var gest = !navigator.userActivation || navigator.userActivation.isActive;
     if (gest) ustawDzwiek(true); else czekaNaGest = true;
@@ -495,13 +511,14 @@
       nacisk.px = e.clientX;
     }
   });
-  ui.canvas.addEventListener('pointerleave', function () { wskaznik = null; ustawHover(null); });
+  ui.canvas.addEventListener('pointerleave', function () { wskaznik = null; ustawHover(null); if (hg) { hg.hover(null); ui.canvas.style.cursor = ''; } });
   ui.canvas.addEventListener('pointerdown', function (e) { nacisk = { x: e.clientX, y: e.clientY, t: performance.now() }; });
   ui.canvas.addEventListener('pointerup', function (e) {
     if (!nacisk) return;
     var ruch = Math.hypot(e.clientX - nacisk.x, e.clientY - nacisk.y), dt = performance.now() - nacisk.t;
     nacisk = null;
     if (ruch > 6 || dt > 600) return;                         // obrót kamery, nie klik
+    if (hg) { var idH = trafienieHangaru(e.clientX, e.clientY); if (idH) zHangaru(idH); return; }
     var r = trafienie(e.clientX, e.clientY);
     if (r) pokazCzesc(r); else zamknijCzesc();
   });
@@ -509,15 +526,29 @@
   /* ---------- pętla ---------- */
   function klatka(teraz) {
     raf = aktywny ? requestAnimationFrame(klatka) : 0;
-    if (!mk || (!sc && !pk)) return;
+    if (!hg && (!mk || (!sc && !pk))) return;
     var dt = Math.min(0.25, Math.max(0, (teraz - tOst) / 1000)); tOst = teraz;   // animacje w czasie rzeczywistym także przy niskim fps
     fps.n++;
     if (teraz - fps.t0 >= 1000) {
       fps.wart = fps.n * 1000 / (teraz - fps.t0); fps.n = 0; fps.t0 = teraz;
-      fps.slabe = (fps.wart < 30 && !smoke && !doc.hidden) ? fps.slabe + 1 : 0;
-      if (fps.slabe >= 2 && jakosc === 'pelna' && !wymusPelna) ustawJakosc('lekka');
+      if (!wymusPelna) {
+        var rj = window.MysliwceHangar.krokJakosci(jq, !smoke && !doc.hidden ? fps.wart : null, tryb);
+        jq = rj.stan;
+        if (rj.jakosc !== jakosc) ustawJakosc(rj.jakosc);
+      }
     }
     dopasuj();
+    if (hg) {
+      hg.animuj(smoke ? 1 : (teraz - czasStartu) / 1000);
+      if (wskaznik && !hg.stan().przelot) {
+        var idW = trafienieHangaru(wskaznik.x, wskaznik.y);
+        hg.hover(idW); ui.canvas.style.cursor = idW ? 'pointer' : '';
+      }
+      gl.post.renderuj(hg.scena, hg.kamera, { czas: smoke ? 1 : (teraz - czasStartu) / 1000, zrodlaGoraca: [] });
+      klasaPostu();
+      if (gotowosc) { console.log('MYSLIWCE_READY ' + gotowosc); gotowosc = null; }
+      return;
+    }
     if (pk) {
       pk.krok(dt);
       klasaPostu();
@@ -551,27 +582,112 @@
     if (sc) sc.studio.cienie(j === 'pelna');
     if (sil) sil.jakosc(j);
     if (pk) pk.jakosc(j);
+    if (hg) hg.jakosc(j);
     gl.w = 0; dopasuj();
+  }
+  // Wejście w tryb: pokaz i makieta dostają jakość wywalczoną poza hangarem (przed budową sceny trybu).
+  function jakoscWejscia(t) {
+    if (wymusPelna) return;
+    var rj = window.MysliwceHangar.wejscieJakosci(jq, t);
+    jq = rj.stan;
+    if (rj.jakosc !== jakosc) ustawJakosc(rj.jakosc);
   }
 
-  /* ---------- tryby: pokaz i makieta ---------- */
-  // Przyciski i panele trybu: pokaz chowa narzędzia makiety, pasek maszyn i karty (karta danych wraca w finale).
+  /* ---------- tryby: hangar, pokaz i makieta ---------- */
+  // Przyciski i panele trybu: pokaz chowa narzędzia makiety, pasek maszyn i karty (karta danych wraca w finale);
+  // hangar chowa narzędzia makiety i kartę, zostawia pasek maszyn (klik = przelot i pokaz).
   function trybUI() {
-    var p = tryb === 'pokaz';
-    [ui.rozloz, ui.komory, ui.plan, ui.dopalacz, ui.karta].forEach(function (b) { b.hidden = p; });
-    ui.ciag.hidden = p || !silnikiWl;
-    [ui.pauza, ui.doMakiety, ui.doHangaru].forEach(function (b) { b.hidden = !p; });
+    var p = tryb === 'pokaz', hn = tryb === 'hangar';
+    [ui.rozloz, ui.komory, ui.plan, ui.dopalacz, ui.karta].forEach(function (b) { b.hidden = p || hn; });
+    ui.ciag.hidden = p || hn || !silnikiWl;
+    [ui.pauza, ui.doMakiety].forEach(function (b) { b.hidden = !p; });
+    ui.doHangaru.hidden = hn;
     ui.dol.hidden = p;
     ui.scena.classList.toggle('my-tryb-pokaz', p);
+    ui.zamknij.title = hn ? 'Wróć do Układu Słonecznego (Esc)' : 'Wróć do Układu Słonecznego';
+    ui.doHangaru.title = tryb === 'makieta' ? 'Wróć do hangaru (Esc)' : 'Wróć do hangaru';
     ui.canvas.setAttribute('aria-label', p ? 'Pokaz kinowy maszyny — spacja pauza, strzałki zmieniają ujęcie, Esc otwiera makietę'
-      : 'Makieta 3D — przeciągnij, by obrócić; kółko przybliża; kliknij część, by ją opisać');
-    if (p) { zamknijCzesc(); ustawHover(null); wskaznik = null; ui.dane.hidden = true; }
+      : hn ? 'Hangar — strzałki wybierają maszynę, Enter albo klik otwiera jej pokaz, Esc wraca do Układu'
+        : 'Makieta 3D — przeciągnij, by obrócić; kółko przybliża; kliknij część, by ją opisać');
+    if (p || hn) { zamknijCzesc(); ustawHover(null); ui.dane.hidden = true; }
+    if (p) wskaznik = null;
+    ui.canvas.style.cursor = '';
     gl.w = 0; dopasuj();
   }
-  function wejdzMakieta(id) {
+  /* ---------- hangar ---------- */
+  function zwolnijHangar() {
+    if (!hg) return;
+    hg.zwolnij(); hg = null;
+    gl.renderer.renderLists.dispose();
+  }
+  function zaznaczMaszyne(id) {
+    Object.keys(ui.przyciskiMaszyn).forEach(function (k) { ui.przyciskiMaszyn[k].setAttribute('aria-pressed', String(k === id)); });
+  }
+  // Zwraca false, gdy hangar się nie zbudował: pokaz i makieta są już zwolnione, więc zamiast czarnej nakładki —
+  // powrót do Układu z komunikatem w pasku zakładek (#zakInfo; komunikat nakładki zniknąłby razem z nią).
+  function wejdzHangar(fokus) {
     var bylPokaz = tryb === 'pokaz';
+    zwolnijPokaz();
+    if (sc) zwolnijScene();
+    ustawSilniki(false);
+    tryb = 'hangar';
+    zapewnijGL();
+    jakoscWejscia(tryb);
+    trybUI();
+    fokus = D.mysliwiec(fokus) ? fokus : null;
+    if (!hg) {
+      try {
+        hg = window.MysliwceHangar.zbuduj(T, { renderer: gl.renderer, jakosc: jakosc, smoke: smoke, ruch: !ograniczonyRuch(), fokus: fokus,
+          anizotropia: gl.renderer.capabilities.getMaxAnisotropy() });
+      } catch (e) {
+        hg = null;
+        var powod = (e && e.message) || String(e);
+        console.warn('Myśliwce: hangar się nie zbudował (' + powod + ') — powrót do Układu');
+        window.Zakladki.zamknijDoUkladu();
+        var info = $('zakInfo');
+        if (info) info.textContent = 'Hangar Myśliwców się nie zbudował (' + powod + ').';
+        return false;
+      }
+      gl.w = 0; dopasuj();
+    } else hg.fokus(fokus);
+    idBiez = fokus;
+    zaznaczMaszyne(fokus);
+    ui.tytul.textContent = 'Myśliwce · hangar';
+    ui.etykieta.hidden = true;
+    if (dzwiek) dzwiek.ambient('hangar');
+    if (bylPokaz && dzwiek && dzwiekWl && !doc.hidden) dzwiek.wznow();   // pauza pokazu nie zostaje w hangarze
+    if (!smoke && dzwiekWl !== false && !dzwiek) dzwiekWejscia();
+    return true;
+  }
+  function trafienieHangaru(x, y) {
+    if (!hg) return null;
+    var r = ui.canvas.getBoundingClientRect();
+    if (!(r.width > 0)) return null;
+    return hg.trafienie((x - r.left) / r.width * 2 - 1, -(y - r.top) / r.height * 2 + 1);
+  }
+  // Wybór maszyny w hangarze: przelot kamery, potem pokaz (wyjście albo zmiana trybu w trakcie przelotu — bez pokazu).
+  function zHangaru(id) {
+    if (!hg || hg.stan().przelot || !D.mysliwiec(id)) return;
+    var h0 = hg;
+    zapamietaj(id); idBiez = id; zaznaczMaszyne(id);
+    hg.hover(null); ui.canvas.style.cursor = '';
+    hg.wybierz(id).then(function (wynik) {
+      if (wynik == null || hg !== h0 || !aktywny || tryb !== 'hangar') return;
+      wejdzPokaz(id);
+      ustawAdres(id, true);
+    }, function (e) { console.error('Myśliwce: przelot hangaru — ' + (e && e.message || e)); });
+  }
+  function krokHangaru(d) {
+    if (!hg || hg.stan().przelot) return;
+    var id = window.MysliwceHangar.nastepny(hg.stan().fokus, d);
+    hg.fokus(id); idBiez = id; zaznaczMaszyne(id);
+  }
+  function wejdzMakieta(id) {
+    var bylPokaz = tryb === 'pokaz' || tryb === 'hangar';
     if (pk) zwolnijPokaz();
+    zwolnijHangar();
     tryb = 'makieta';
+    jakoscWejscia(tryb);
     if (!sc) zbudujScene();
     trybUI();
     if (bylPokaz) { ustawDane(smoke || (korzen.clientWidth || window.innerWidth) >= 900); ustawSilniki(false); }
@@ -590,11 +706,13 @@
     o = o || {};
     if (sc) zwolnijScene();
     zwolnijPokaz();
+    zwolnijHangar();
     tryb = 'pokaz';
     zapewnijGL();
+    jakoscWejscia(tryb);
     trybUI();
     var dane = D.mysliwiec(id), czesci = (window.MysliwceCzesci.CZESCI[id] || []);
-    idBiez = id;
+    idBiez = id; zapamietaj(id);
     // plan potrzebuje bryły makiety (kotwice) — budujemy świat z makietą, potem odtwarzacz z planem
     var ujecia = null;
     try {
@@ -631,10 +749,10 @@
     wypelnijDane(dane);
     ui.dane.hidden = true;
     ui.tytul.textContent = 'Myśliwce · ' + dane.nazwa + ' · pokaz';
-    Object.keys(ui.przyciskiMaszyn).forEach(function (k) { ui.przyciskiMaszyn[k].setAttribute('aria-pressed', String(k === id)); });
+    zaznaczMaszyne(id);
     gl.w = 0; dopasuj();
     if (o.n || o.t) pk.ustaw(o.n || 0, o.t || 0);
-    if (smoke) pk.pauza(true); else dzwiekPokazu();
+    if (smoke) pk.pauza(true); else dzwiekWejscia();
   }
   function zPokazuDoMakiety() { if (idBiez) { wejdzMakieta(idBiez); ustawAdres(idBiez, true); } }
   function pauzaPokazu(wl) {
@@ -651,10 +769,10 @@
     pk.idz(Math.max(0, Math.min(s.ujec - 1, s.ujecie + d)));
     ui.pauza.textContent = pk.stan().pauza ? 'Dalej' : 'Pauza';
   }
-  // Hangar (Task 9) jeszcze nie istnieje — do tego czasu powrót do Układu.
+  // Powrót do hangaru z pokazu albo makiety: fokus na maszynie, którą właśnie oglądano.
   function doHangaru() {
-    if (window.Mysliwce && window.Mysliwce.hangar) window.Mysliwce.hangar();
-    else window.Zakladki.zamknijDoUkladu();
+    if (!aktywny) return;
+    if (wejdzHangar(idBiez || ostatnia)) ustawAdres(null, true);
   }
 
   /* ---------- klawiatura (capture: skróty Układu nie dostają klawiszy, gdy zakładka jest aktywna) ---------- */
@@ -666,6 +784,19 @@
     var k = e.key;
     if (natywny && (k === ' ' || k === 'Enter')) return;
     if (tag === 'INPUT' && /^(Arrow|Page|Home$|End$)/.test(k)) return;      // suwak ciągu: strzałki zmieniają ciąg, nie maszynę
+    if (tryb === 'hangar') {
+      var ah = {
+        Escape: function () { if (doc.fullscreenElement) doc.exitFullscreen(); else window.Zakladki.zamknijDoUkladu(); },
+        f: pelnyEkran, m: function () { ustawDzwiek(!dzwiekWl); },
+        ArrowRight: function () { krokHangaru(1); }, ArrowLeft: function () { krokHangaru(-1); },
+        Enter: function () { var f = hg && hg.stan().fokus; if (f) zHangaru(f); else krokHangaru(1); },
+      };
+      ah[' '] = ah.Enter;
+      var fh = ah[k] || ah[k.toLowerCase()];
+      if (!fh) return;
+      e.preventDefault(); fh();
+      return;
+    }
     if (tryb === 'pokaz') {
       var ap = {
         ' ': function () { pauzaPokazu(); }, f: pelnyEkran, m: function () { ustawDzwiek(!dzwiekWl); },
@@ -700,11 +831,11 @@
         zapewnijGL();
         ustawDane(smoke || (korzen.clientWidth || window.innerWidth) >= 900);   // telefon: karta na żądanie
       }
-      var id = stan.id || idBiez || D.MYSLIWCE[0].id;
-      if (stan.nieznany) komunikat('Nie znam maszyny „' + stan.nieznany + '”. Pokazuję ' + D.mysliwiec(id).nazwa + '.');
+      if (!stan.id) return otworzHangar(stan, pierwsze);
+      var id = stan.id;
       if (stan.tryb === 'makieta') wejdzMakieta(id);
       else {
-        // pokaz (także wejście bez id, dopóki nie ma hangaru); hak smoke: ujęcie N w chwili t (ułamek czasu ujęcia)
+        // pokaz; hak smoke: ujęcie N w chwili t (ułamek czasu ujęcia)
         if (wejdzPokaz(id) !== false && smoke && stan.ujecie != null) {
           var n = Math.max(0, Math.min(pk.stan().ujec - 1, stan.ujecie | 0));
           pk.ustaw(n, 0); pk.ustaw(n, (+stan.t || 0) * pk.stan().czas);
@@ -725,14 +856,35 @@
         if (kd) ustawKadr(kd);
         if (zap.tryb === 'makieta') gotowosc = id + ' makieta';
       }
-      if (!raf) { tOst = czasStartu = performance.now(); fps.t0 = tOst; fps.n = 0; raf = requestAnimationFrame(klatka); }
-      if (!smoke) korzen.focus({ preventScroll: true });
+      uruchomPetle();
       return true;
     } catch (e) {
       console.error('Myśliwce: błąd budowy makiety — ' + (e && e.message || e));
       komunikat('Nie udało się zbudować makiety 3D (' + (e && e.message || e) + ').');
       return false;
     }
+  }
+  // Wejście bez maszyny: hangar z fokusem na bieżącej (zmiana hasha w trakcie) albo ostatnio oglądanej maszynie.
+  function otworzHangar(stan, pierwsze) {
+    if (!wejdzHangar(idBiez || ostatnia)) return false;
+    if (stan.nieznany) komunikat('Nie znam maszyny „' + stan.nieznany + '”. Wybierz maszynę w hangarze.');
+    ustawAdres(null, pierwsze && !L.parsujHashMysliwcow(location.hash));
+    if (smoke) {
+      var mh = /[?&]hover=([a-z0-9-]+)/.exec(location.search), mp = /[?&]przelot=([a-z0-9-]+)/.exec(location.search);
+      if (mh) hg.hover(mh[1]);
+      if (mp && D.mysliwiec(mp[1])) {
+        var mu = /[?&]u=([0-9.]+)/.exec(location.search);
+        hg.przelot(mp[1], mu ? Math.max(0, Math.min(1, +mu[1])) : 0.5); idBiez = mp[1]; zaznaczMaszyne(mp[1]);
+      }
+      if (zap.tryb === 'hangar') gotowosc = 'hangar';
+    }
+    uruchomPetle();
+    return true;
+  }
+  // Pętla klatek (jedna na wejście w zakładkę) i fokus klawiatury na nakładce.
+  function uruchomPetle() {
+    if (!raf) { tOst = czasStartu = performance.now(); fps.t0 = tOst; fps.n = 0; raf = requestAnimationFrame(klatka); }
+    if (!smoke) korzen.focus({ preventScroll: true });
   }
   function zamknij() {
     if (!aktywny) return;
@@ -744,6 +896,7 @@
     zwolnijDzwiek();
     zwolnijPokaz();
     zwolnijScene();
+    zwolnijHangar();
     tryb = null; ui.scena.classList.remove('my-tryb-pokaz'); ui.canvas.style.cssText = '';
     idBiez = null;
   }
@@ -756,12 +909,13 @@
         rozloz: wart.rozloz, komory: wart.komory, plan: planWl, czesc: wybrana && mk ? mk.czesci[wybrana].userData.czesc.id : null,
         podswietlona: mk ? mk.stan().podswietl : null, przelot: !!lot, przesuniecie: Math.round(przesun.biez), przesuniecieCel: Math.round(przesun.cel),
         dopalacz: { wl: silnikiWl, ciag: sil ? sil.stan().ciag : 0, cel: sil ? sil.stan().cel : 0, ognie: sil ? sil.stan().strugi : 0 },
-        dzwiek: Object.assign({ wl: dzwiekWl, utworzony: !!dzwiek }, dzwiek ? dzwiek.stan() : null) };
+        dzwiek: Object.assign({ wl: dzwiekWl, utworzony: !!dzwiek }, dzwiek ? dzwiek.stan() : null),
+        hangar: hg ? hg.stan() : null, ostatnia: ostatnia };
     },
     diagnostyka: function () {
       if (!gl) return null;
       var n = 0, geo = {}, mat = {};
-      var s0 = sc ? sc.scena : pk ? pk.scena : null;
+      var s0 = sc ? sc.scena : pk ? pk.scena : hg ? hg.scena : null;
       if (s0) s0.traverse(function (o) { n++; if (o.geometry) geo[o.geometry.uuid] = 1; if (o.material) mat[o.material.uuid] = 1; });
       var m = gl.renderer.info.memory, pr = gl.renderer.info.programs;
       return { geometrieSceny: Object.keys(geo).length, materialy: Object.keys(mat).length, geometrieGPU: m.geometries, tekstury: m.textures,
@@ -770,6 +924,14 @@
     // Haki sondy (scripts/probe-mysliwce.mjs): bieżąca makieta i rzut kotwicy części na ekran (px w oknie).
     makieta: function () { return mk; },
     pokaz: function () { return pk; },
+    hangar: function () { return hg; },
+    // rzut środka maszyny w hangarze na ekran (px w oknie) — sonda klika i najeżdża jak użytkownik
+    rzutHangaru: function (id) {
+      var v = hg && hg.rzut(id);
+      if (!v) return null;
+      var r = ui.canvas.getBoundingClientRect();
+      return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height, z: v.z };
+    },
     // źródła gorąca płomieni (świat) — wejście passu falowania (Task 7) i kontrola sondy
     zrodlaGoraca: function () { return sil ? sil.zrodlaGoraca() : []; },
     poziomDzwieku: function () { return dzwiek ? dzwiek.poziom() : null; },
