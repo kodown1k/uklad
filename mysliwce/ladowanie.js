@@ -16,10 +16,12 @@
   var IDS = ['f-22a', 'f-35a', 'f-47', 'su-57', 'su-75', 'j-20a', 'j-35a', 'j-36', 'j-50'];
   var TRYBY = ['pokaz', 'makieta'];
   // Kolejność leniwego ładowania: tylko pliki, które istnieją. Kolejne zadania dopisują swoje PRZED widok.js — widok.js
-  // jest ostatni, bo korzysta z reszty; pokaz.js za kino.js, silniki.js i makieta.js; hangar.js za studio.js i makieta.js.
+  // jest ostatni, bo korzysta z reszty; pokaz.js za kino.js, silniki.js i makieta.js; hangar.js za studio.js i makieta.js;
+  // widok-hangar.js i widok-pokaz.js (tryby widoku) tuż przed widok.js — widok.js tworzy je przy wczytaniu.
   var PLIKI = ['mysliwce/dane.js', 'mysliwce/czesci.js', 'mysliwce/sylwetki.js', 'mysliwce/platowiec.js',
     'mysliwce/makieta.js', 'mysliwce/studio.js', 'mysliwce/ogien.js', 'mysliwce/dzwiek.js', 'mysliwce/silniki.js',
-    'mysliwce/kino.js', 'mysliwce/pokaz.js', 'mysliwce/hangar.js', 'mysliwce/widok.js'];
+    'mysliwce/kino.js', 'mysliwce/pokaz.js', 'mysliwce/hangar.js', 'mysliwce/widok-hangar.js', 'mysliwce/widok-pokaz.js',
+    'mysliwce/widok.js'];
   var FONTY = 'https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap';
 
   function dekoduj(s) { try { return decodeURIComponent(s); } catch (_) { return s; } }
