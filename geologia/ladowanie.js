@@ -4,12 +4,14 @@
    mysliwce/ladowanie.js). Czysta część (dual-export, testy w node): ROZDZIALY, PLIKI, parsujHashGeologii,
    parsujZapytanieGeologii.
 
-   Adresy:  #geologia | #geologia=<miejsce>[&rozdzial=<id>][&tryb=pokaz|makieta] → {miejsce, tryb, rozdzial}
-            (domyślnie pokaz, rozdział `polozenie`; makieta = bez rozdziału); #geologia=<nieznane> → miejsce domyślne
-            + pole `nieznane`. Obcy hash → null.
+   Adresy:  #geologia | #geologia=<miejsce>[&rozdzial=<id>][&tryb=pokaz|makieta[&warstwa=turystyka]] → {miejsce, tryb, rozdzial[, warstwa]}
+            (domyślnie pokaz, rozdział `polozenie`; makieta = bez rozdziału; `warstwa` tylko w makiecie i tylko znana);
+            #geologia=<nieznane> → miejsce domyślne + pole `nieznane`. Obcy hash → null.
    Zapytanie: ?geologia = przycisk zakładki widoczny (do czasu gotowości jest ukryty); hak testowy
             ?smoke&geologia=<miejsce>[&rozdzial=<id>|&makieta|&tryb=makieta][&t=0..1][&czas=<Ma>][&przekroj=<°>[&przesuniecie=<km>]][&geologiczna]
-            [&jakosc=pelna][&kontrola=biel|czern][&anim=a1..a5&f=0..1] (marker GEOLOGIA_READY <miejsce> <rozdzial|makieta>). `&makieta` = `&tryb=makieta`;
+            [&jakosc=pelna][&kontrola=biel|czern][&anim=a1..a5&f=0..1][&warstwa=turystyka][&widok=poludnie|polnoc|gora]
+            (marker GEOLOGIA_READY <miejsce> <rozdzial|makieta>). `&makieta` = `&tryb=makieta`;
+            `&warstwa=turystyka` = warstwa turystyczna makiety (Task 7b), `&widok` = kadr z przycisków kompasu;
             `&czas` = chwila geologiczna [mln lat] w makiecie; `&anim` + `&f` = animacja A1–A5 w kadrze ujęcia (f przycięte do 0..1, bez f → 1);
             `&przesuniecie` = linia przekroju przesunięta o km od Teide;
             `&geologiczna` = makieta w barwach jednostek; `&jakosc=pelna` = bez przejścia na lżejszą jakość przy niskim fps (G-L).
@@ -28,9 +30,12 @@
   ];
   // Kolejność leniwego ładowania: tylko pliki, które istnieją. Kolejne zadania dopisują swoje PRZED widok.js —
   // widok.js jest ostatni, bo korzysta z reszty. Pliki konkretnego miejsca: GeologiaMiejsca.MIEJSCA[].pliki.
-  var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/ewolucja.js', 'geologia/scena.js', 'geologia/gwiazdy.js', 'geologia/animacje.js', 'geologia/widok.js'];
+  var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/ewolucja.js', 'geologia/scena.js', 'geologia/gwiazdy.js', 'geologia/animacje.js',
+    'geologia/turystyka-scena.js', 'geologia/widok.js'];
   var KONTROLE = ['biel', 'czern'];
   var ANIMACJE = ['a1', 'a2', 'a3', 'a4', 'a5'];
+  var WARSTWY = ['turystyka'];
+  var WIDOKI = ['poludnie', 'polnoc', 'gora'];    // ta sama lista co Kompas.WIDOKI (geologia/turystyka-scena.js)
 
   function dekoduj(s) { try { return decodeURIComponent(s); } catch (_) { return s; } }
   function czyRozdzial(id) { return ROZDZIALY.some(function (r) { return r.id === id; }); }
@@ -47,9 +52,11 @@
     var wynik = { miejsce: MIEJSCA_ID[0], tryb: 'pokaz', rozdzial: 'polozenie' };
     var nieznane = id && MIEJSCA_ID.indexOf(id) < 0 ? id : null;
     if (id && !nieznane) wynik.miejsce = id;
-    var t = /&tryb=([^&]*)/.exec(reszta), r = /&rozdzial=([^&]*)/.exec(reszta);
-    if (t && t[1] === 'makieta') { wynik.tryb = 'makieta'; wynik.rozdzial = null; }
-    else if (r && czyRozdzial(r[1])) wynik.rozdzial = r[1];
+    var t = /&tryb=([^&]*)/.exec(reszta), r = /&rozdzial=([^&]*)/.exec(reszta), w = /&warstwa=([^&]*)/.exec(reszta);
+    if (t && t[1] === 'makieta') {
+      wynik.tryb = 'makieta'; wynik.rozdzial = null;
+      if (w && WARSTWY.indexOf(w[1]) >= 0) wynik.warstwa = w[1];
+    } else if (r && czyRozdzial(r[1])) wynik.rozdzial = r[1];
     if (nieznane) wynik.nieznane = nieznane;
     return wynik;
   }
@@ -60,7 +67,7 @@
     var wart = function (n) { var m = new RegExp('[?&]' + n + '=([^&]*)').exec(s); return m ? dekoduj(m[1]).toLowerCase() : null; };
     var liczba = function (n) { var v = wart(n); if (v === null || v === '') return null; var x = Number(v); return isFinite(x) ? x : null; };
     var mi = wart('geologia'), miejsce = MIEJSCA_ID.indexOf(mi) >= 0 ? mi : null;
-    var ro = wart('rozdzial'), t = liczba('t'), ko = wart('kontrola'), an = wart('anim'), f = liczba('f');
+    var ro = wart('rozdzial'), t = liczba('t'), ko = wart('kontrola'), an = wart('anim'), f = liczba('f'), wa = wart('warstwa'), wi = wart('widok');
     return {
       smoke: flaga('smoke'), widoczna: flaga('geologia'), miejsce: miejsce,
       tryb: miejsce ? (wart('tryb') === 'makieta' || flaga('makieta') ? 'makieta' : 'pokaz') : null,
@@ -70,11 +77,13 @@
       jakosc: wart('jakosc') === 'pelna' ? 'pelna' : null,
       kontrola: KONTROLE.indexOf(ko) >= 0 ? ko : null,
       anim: ANIMACJE.indexOf(an) >= 0 ? an : null,
-      f: ANIMACJE.indexOf(an) >= 0 ? (f === null ? 1 : Math.max(0, Math.min(1, f))) : null
+      f: ANIMACJE.indexOf(an) >= 0 ? (f === null ? 1 : Math.max(0, Math.min(1, f))) : null,
+      warstwa: WARSTWY.indexOf(wa) >= 0 ? wa : null,
+      widok: WIDOKI.indexOf(wi) >= 0 ? wi : null
     };
   }
 
-  var api = { MIEJSCA_ID: MIEJSCA_ID, TRYBY: TRYBY, ROZDZIALY: ROZDZIALY, PLIKI: PLIKI, ANIMACJE: ANIMACJE,
+  var api = { MIEJSCA_ID: MIEJSCA_ID, TRYBY: TRYBY, ROZDZIALY: ROZDZIALY, PLIKI: PLIKI, ANIMACJE: ANIMACJE, WARSTWY: WARSTWY, WIDOKI: WIDOKI,
     parsujHashGeologii: parsujHashGeologii, parsujZapytanieGeologii: parsujZapytanieGeologii, krzywe: null };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
   api.krzywe = root.Kino || null;              // G-C: jedyny odczyt window.Kino — przy wczytaniu
@@ -163,7 +172,9 @@
   function start() {
     if (zap.smoke && zap.miejsce) {
       var makieta = zap.tryb === 'makieta';
-      root.Zakladki.przelacz('geologia', { miejsce: zap.miejsce, tryb: makieta ? 'makieta' : 'pokaz', rozdzial: makieta ? null : (zap.rozdzial || 'polozenie') });
+      var s = { miejsce: zap.miejsce, tryb: makieta ? 'makieta' : 'pokaz', rozdzial: makieta ? null : (zap.rozdzial || 'polozenie') };
+      if (makieta && zap.warstwa) s.warstwa = zap.warstwa;
+      root.Zakladki.przelacz('geologia', s);
     } else if (parsujHashGeologii(root.location.hash)) root.Zakladki.zAdresu(root.location.hash);
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', start); else setTimeout(start, 0);

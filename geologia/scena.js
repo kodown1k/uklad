@@ -5,7 +5,10 @@
          woda(stan, f), swiatlo({ pora, az, el }), przewyzszenie(x), czesci: { [id]: Object3D }, pick(ndcX, ndcY) → id|null,
          podswietl(id|null), kotwica(id) → [x, y, z], animuj(t), czas(Ma), zwolnij(),
          efekty: { luna, zar, cienChmur, wypelnienie } (haki animacji A1–A4, geologia/animacje.js),
-         (dodatki dla widoku i sondy) wysokosc(x, z), probkaSwiatla(x, z), lad, granice, trafiaSciane(ndc), punktNaMorzu(ndc), stan() }
+         (dodatki dla widoku i sondy) wysokosc(x, z), probkaSwiatla(x, z), lad, granice, trafiaSciane(ndc), punktNaMorzu(ndc), stan(),
+         (Task 7b) dodajWarstwe(buduj) — hak warstw nakładanych na makietę (warstwa turystyczna): buduj({ T, scena, z, kamera,
+         renderer, wysokosc, przewyzszenie(), uPrzew, czasMa() }) → obiekt z animuj() → prostokąty zajęte [x0,y0,x1,y1,…] (px),
+         które etykiety części omijają; zasoby przez z() — zwalnia je zwolnij(); przygasCzesci(f) — krycie znaczników części }
    Układ: 1 j. = 1 km, +x wschód, +y góra (km × przewyższenie), +z południe, początek = środek bbox wyspy (Teren.doLokalnych).
    Poziomy: archipelag (pod spodem, wycięty w prostokącie wyspy), wyspa (krawędź kafla wtopiona w archipelag na 8 km),
    wstawki 34 m (krawędź wtopiona w wyspę na 300 m; wyspa wycina ich prostokąty). Wtapianie jest geometryczne — wysokości
@@ -928,6 +931,7 @@
     });
     piny.sort(function (a, b) { return b.userData.pin.waga - a.userData.pin.waga; });
     var podswietlona = null, najechana = null, zajete = new Float64Array(piny.length * 8), rozm = new T.Vector2();
+    var warstwy = [], przygaszenie = 1;
 
     function ustawPin(g) {
       var P = g.userData.pin, y0 = (wysokoscKm(P.x, P.z) || 0) * e;
@@ -1232,9 +1236,16 @@
         P.glowa.scale.set(s, s, 1);
         P.etykieta.scale.set(P.px[0] * SKALA_ETYKIETY * k, P.px[1] * SKALA_ETYKIETY * k, 1);
       }
+      // warstwy nakładane (Task 7b): ich etykiety i piny mają pierwszeństwo — zajmują miejsce przed etykietami części
+      var nz = 0, wyb = podswietlona ? czesci[podswietlona] : null;
+      for (var iw = 0; iw < warstwy.length; iw++) {
+        var zw = warstwy[iw].animuj ? warstwy[iw].animuj() : null;
+        if (!zw || !zw.length) continue;
+        if (zajete.length < (nz + piny.length * 2) * 4 + zw.length) { var zn = new Float64Array((nz + piny.length * 2) * 4 + zw.length * 2); zn.set(zajete.subarray(0, nz * 4)); zajete = zn; }
+        zajete.set(zw, nz * 4); nz += zw.length / 4;
+      }
       // rozrzedzanie etykiet w kolejności priorytetu (wybrana część pierwsza); zajęte są etykiety I kropki pinów
       // o wyższym priorytecie — etykieta Pico Viejo nie przykryje kropki Teide
-      var nz = 0, wyb = podswietlona ? czesci[podswietlona] : null;
       for (a = -1; a < piny.length; a++) {
         g = a < 0 ? wyb : piny[a];
         if (!g || (a >= 0 && g === wyb)) continue;
@@ -1318,7 +1329,25 @@
       }
     };
 
+    // Hak warstw (Task 7b): warstwa dostaje helper z() sceny (G-L) i wspólny uniform przewyższenia terenu.
+    function dodajWarstwe(buduj) {
+      var w = buduj({ T: T, scena: scena, z: z, kamera: kamera, renderer: renderer, wysokosc: wysokosc,
+        przewyzszenie: function () { return e; }, uPrzew: U.uPrzew, czasMa: function () { return ewo.Ma; } });
+      if (w) warstwy.push(w);
+      return w;
+    }
+    // Krycie znaczników części (warstwa turystyczna przygasza etykiety geologiczne): 1 = pełne.
+    function przygasCzesci(f) {
+      przygaszenie = Math.max(0, Math.min(1, +f));
+      piny.forEach(function (g) {
+        var P = g.userData.pin;
+        P.glowa.material.opacity = przygaszenie; P.etykieta.material.opacity = przygaszenie; P.szpilka.material.opacity = 0.75 * przygaszenie;
+      });
+      return przygaszenie;
+    }
+
     function zwolnij() {
+      warstwy.length = 0;
       zwolnijSciane();
       scena.traverse(function (ob) { if (ob.isLight && ob.shadow && ob.shadow.map) { ob.shadow.map.dispose(); ob.shadow.map = null; } });
       zasoby.forEach(function (x) { if (x && x.dispose) x.dispose(); });
@@ -1343,13 +1372,14 @@
       tekstury: { wysW: wyspa.tWys, prostW: uWoda.uProstW.value, rozmW: uWoda.uRozmW.value },
       szklo: function () { return U.uSzklo.value; },
       wysokosc: wysokosc, probkaSwiatla: probkaSwiatla, trafiaSciane: trafiaSciane, punktNaMorzu: punktNaMorzu,
+      dodajWarstwe: dodajWarstwe, przygasCzesci: przygasCzesci,
       lad: lad, granice: { wyspa: wyspa.prost, archipelag: arch ? arch.prost : wyspa.prost }, srodekPrzekroju: srodekPrzekroju,
       dekoracje: { sciana: function () { return sciana; }, chmury: chmuryMesh, kopula: kopula, lawa: lawa, klucz: klucz, wypelnienie: wypelnienie },
       stan: function () {
         return { przewyzszenie: e, kolorowanie: ['teren', 'geologia', 'krajobraz', 'kalibracja'][U.uTryb.value], szklo: U.uSzklo.value, chmury: chmuryMesh.visible,
           swiatlo: { pora: sw.pora, az: sw.az, el: sw.el }, przekroj: przek ? { kat_st: przek.kat_st, przesuniecie_km: przek.przesuniecie_km, maks_m: przek.profil ? przek.profil.maks_m : null } : null,
           podswietlona: podswietlona, najechana: najechana, etykiety: piny.filter(function (g) { return g.userData.pin.widoczna; }).length,
-          wierzcholki: wierzcholki, dysk_km: Rdysku, lod: krok === 1 ? 'pelny' : 'lekki', czasMa: ewo.Ma };
+          wierzcholki: wierzcholki, dysk_km: Rdysku, lod: krok === 1 ? 'pelny' : 'lekki', czasMa: ewo.Ma, przygaszenie: przygaszenie };
       }
     };
   }

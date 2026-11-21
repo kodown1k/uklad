@@ -108,3 +108,67 @@
   .ge-legenda { bottom: 40px; max-height: 40%; }
   .ge-suwak { width: 80px; }
 }
+
+/* ---------- Task 7b: kompas, widoki, warstwa turystyczna ---------- */
+.ge-karty { top: var(--ge-pod-paskiem, 64px); bottom: 104px; z-index: 3; }   /* pod paskiem, nad kompasem */
+.ge-kompas { position: absolute; right: 14px; bottom: 12px; display: flex; align-items: flex-end; gap: 8px; }
+.ge-widoki { display: flex; flex-direction: column; gap: 4px; }
+.ge-widoki .ge-guzik { padding: 6px 9px; font-size: 11px; letter-spacing: .06em; background: var(--ge-szklo); }
+.ge-roza { flex: none; width: 76px; height: 76px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; }
+.ge-roza svg { display: block; width: 100%; height: 100%; }
+.ge-roza:hover circle:first-child { stroke: var(--ge-akcent); }
+.ge-roza:focus-visible { outline: 2px solid var(--ge-akcent); outline-offset: 2px; }
+/* ostrzeżenie o zamkniętych szlakach: osobny wiersz paska, pełny tekst */
+.ge-ostrzezenie { flex: 1 1 100%; display: flex; gap: 8px; align-items: flex-start; padding: 5px 9px; font-size: 12px; line-height: 1.38;
+  color: #ffe6c2; background: rgba(110, 52, 0, .42); border: 1px solid rgba(255, 179, 107, .5); }
+.ge-ostrzezenie-tekst { margin: 0; flex: 1; min-width: 0; }
+.ge-ostrzezenie-tekst strong { color: var(--ge-akcent); }
+.ge-ostrzezenie a { color: var(--ge-akcent); }
+.ge-ostrzezenie-wiecej { display: none; flex: none; padding: 4px 7px; font-size: 11px; }
+.ge-pasek-przelacz { display: none; margin-left: auto; padding: 6px 10px; font-size: 11px; }
+/* plan dni: lewa kolumna pod paskiem; na wąskim ekranie dolna szuflada */
+.ge-plan { position: absolute; left: 14px; top: var(--ge-pod-paskiem, 70px); width: min(310px, calc(100vw - 28px));
+  max-height: calc(100% - var(--ge-pod-paskiem, 70px) - 60px); display: flex; flex-direction: column; padding: 8px 10px; }
+.ge-plan-naglowek { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 2px 0 6px; border: 0;
+  background: none; color: var(--ge-atrament); font: 600 12px/1.3 var(--ge-kroj); letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
+.ge-plan-strzalka { color: var(--ge-akcent); font-size: 14px; }
+.ge-plan-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; overflow: auto; min-height: 0; }
+.ge-plan[data-zwiniety="true"] .ge-plan-lista { display: none; }
+.ge-plan[data-zwiniety="true"] .ge-plan-naglowek { padding-bottom: 2px; }
+.ge-plan-dzien { display: grid; grid-template-columns: 62px 1fr; gap: 8px; width: 100%; padding: 5px 6px; text-align: left; cursor: pointer;
+  color: inherit; background: rgba(255, 255, 255, .03); border: 1px solid transparent; font: inherit; }
+.ge-plan-dzien:hover:not(:disabled), .ge-plan-dzien:focus-visible { border-color: var(--ge-akcent); outline: none; }
+.ge-plan-dzien:disabled { cursor: default; opacity: .72; }
+.ge-plan-data { font-weight: 700; font-size: 12px; color: var(--ge-akcent); font-variant-numeric: tabular-nums; }
+.ge-plan-tekst { display: grid; gap: 1px; min-width: 0; }
+.ge-plan-tyt { font-size: 12.5px; font-weight: 600; line-height: 1.3; }
+.ge-plan-trasa { display: flex; gap: 6px; align-items: center; font-size: 11px; line-height: 1.3; color: var(--ge-atrament-2); }
+.ge-plan-kreska { flex: none; display: inline-block; width: 18px; height: 4px; border-radius: 2px; }
+.ge-plan-kreska[data-przerywana="true"] { background-image: repeating-linear-gradient(90deg, transparent 0 5px, #05070a 5px 8px); }
+/* karta trasy / punktu */
+.ge-tur-transport { display: flex; gap: 8px; align-items: center; margin: 4px 0; font-size: 12.5px; }
+.ge-tur-uwaga { margin: 6px 0; padding: 4px 8px; font-size: 12px; color: #ffd9a8; border-left: 2px solid var(--ge-akcent); background: rgba(255, 179, 107, .08); }
+.ge-tur-uwagi { font-size: 12px; color: var(--ge-atrament-2); }
+.ge-tur-lista { display: grid; gap: 3px; margin: 6px 0; padding-left: 18px; font-size: 12px; }
+.ge-tur-link { padding: 0; border: 0; background: none; color: var(--ge-akcent); font: inherit; text-align: left; text-decoration: underline; cursor: pointer; }
+@media (max-width: 1100px) {
+  .ge-czas { bottom: 104px; }
+  .ge-legenda { bottom: 104px; }
+}
+@media (max-width: 700px) {
+  .ge-karty { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 50%; justify-content: flex-end; }
+  .ge-roza { width: 58px; height: 58px; }
+  .ge-widoki .ge-guzik { padding: 5px 7px; font-size: 10.5px; }
+  .ge-ostrzezenie-wiecej { display: block; }
+  .ge-ostrzezenie:not(.ge-rozwiniete) .ge-ostrzezenie-tekst { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .ge-ostrzezenie { align-items: center; }
+  /* pasek zwijany do jednego wiersza: nazwa zakładki + przycisk; wiersz ostrzeżenia zostaje */
+  .ge-pasek-przelacz { display: block; }
+  .ge-pasek-zwiniety > #zakladki, .ge-pasek-zwiniety > .ge-narzedzia, .ge-pasek-zwiniety > .ge-podmenu { display: none !important; }
+  .ge-pasek-zwiniety { row-gap: 5px; padding-top: 5px; padding-bottom: 5px; }
+  .ge-ostrzezenie { font-size: 11.5px; padding: 4px 7px; }
+  .ge-pasek { background: #090c11; }                         /* etykiety sceny nie prześwitują przez wysoki pasek */
+  /* plan dni = dolna szuflada; kompas i podpis przewyższenia nad jej nagłówkiem */
+  .ge-plan { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 45%; padding: 6px 12px 8px; }
+  .ge-tryb-tur .ge-kompas, .ge-tryb-tur .ge-podpis-przew { bottom: 50px; }
+}
