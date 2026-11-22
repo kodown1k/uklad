@@ -4,14 +4,15 @@
    (spec „Reżyseria filmów”, R2–R6, R9, R10). Bez DOM/THREE; dual-export: przeglądarka window.Rozdzialy.
 
    Rozdzialy.plan({ dane, opowiesc, siatka, poziomy?, czasy?, krzywe }) → Rozdzial[] (kolejność opowiesc.ujecia)
-     Rozdzial = { id, tytul, czas, wersy: [{ id, start, koniec }], ujecia: [{ id, od, do, wejscie, przejscie: { od, do } | null,
+     Rozdzial = { id, tytul, czas, lektor, wersy: [{ id, start, koniec }], ujecia: [{ id, od, do, wejscie, przejscie: { od, do } | null,
        …pola ujęcia z opowiesc, czasMa?: [od, do] }], kamera: [{ t, poz: [lon, lat, wys_m], cel: [lon, lat, wys_m], fov, ujecie }],
        animacje: [{ nazwa, od, do, f: [f0, f1] }], zdarzenia: [{ t, co, wers?, ujecie }], stan: { kolorowanie, przekroj?,
        czasMa?: [od, do], chmury }, przewyzszenie: [{ t, e }] }
      Czas ujęcia = max(cel_s, naturalny), naturalny = wejście + wersy (KinoKadr.harmonogram z `wymowa || tekst`, tempo
      12,1 zn./s, przerwa 0,35 s; `czasy` z nagrań wygrywają) + oddech. Gdy nagrania przekraczają cel ujęcia, nadwyżka
      jest odbierana z ciszy innych ujęć z lektorem (proporcjonalnie, nie poniżej ich czasu naturalnego), więc rozdział
-     trzyma cel R8. Nadwyżka cel_s nad naturalnym idzie w ¼ na wejście (≤ 1,5 s), reszta po równo za każdym wersem.
+     trzyma cel R8. `lektor` = choć jeden wers rozdziału ma czas z nagrania (`czasy`) — jedyne źródło prawdy dla UI
+     pokazu, czy lektor istnieje (bez nagrań przycisk startu nie obiecuje dźwięku). Nadwyżka cel_s nad naturalnym idzie w ¼ na wejście (≤ 1,5 s), reszta po równo za każdym wersem.
      `krzywe` = korzeniowy kino.js (dojazd, cruise, logLerp, aimArc) — wstrzyknięte, nigdy window.Kino (ruling G-C).
    Rozdzialy.kamera(rozdzial, t, siatka, proporcja = 2.39) → { poz: [x, y, z], cel: [x, y, z], fov, przechyl, pozR, celR,
      poziom, ujecie } — układ sceny makiety (1 j. = 1 km, +x wschód, +y góra, +z południe, początek = Teren.SRODEK) z
@@ -299,7 +300,8 @@
     ujecia.forEach(function (u) {
       if (u.animacja && u.animacja.nazwa === 'a1') u.czasMa = [maA1(ctx, u.animacja.od), maA1(ctx, u.animacja.do)];
     });
-    var rozdzial = { id: rid, tytul: O.ROZDZIALY_TYTULY[rid], czas: czas, wersy: wersy.map(function (w) { return { id: w.id, start: w.start, koniec: w.koniec }; }),
+    var rozdzial = { id: rid, tytul: O.ROZDZIALY_TYTULY[rid], czas: czas,
+      lektor: wersy.some(function (w) { return ctx.czasy[w.id] > 0; }), wersy: wersy.map(function (w) { return { id: w.id, start: w.start, koniec: w.koniec }; }),
       ujecia: ujecia, kamera: [], animacje: animacje, zdarzenia: zdarzenia, stan: null, przewyzszenie: [{ t: 0, e: E_FILM }] };
     // przewyższenie: rampy z ujęć (`przewyzszenie: [{ u, e }]`, spec R2 — zmiana zawsze animowana), poza nimi ×1,5
     ujecia.forEach(function (u) {

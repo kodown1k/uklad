@@ -243,6 +243,7 @@
   width: max-content; max-width: min(92vw, 560px); padding: 18px 22px; text-align: center; }
 .ge-film-karta-tytul { margin: 0; font-size: 15px; letter-spacing: .14em; text-transform: uppercase; }
 .ge-film-karta-guziki { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.ge-film-karta-dopisek { margin: -4px 0 0; font-size: 12px; letter-spacing: .06em; color: var(--ge-atrament-2); }   /* „lektor w przygotowaniu” (do Task 9) */
 .ge-guzik-glowny { color: #0b0e12; background: var(--ge-akcent); border-color: var(--ge-akcent); }
 .ge-do-makiety { margin-left: auto; }
 .ge-do-makiety:not([hidden]) + .ge-podmenu { margin-left: 0; }     /* w makiecie (przycisk ukryty) podmenu zostaje z prawej (7b) */
@@ -254,3 +255,41 @@
 /* etykieta lądu poza kadrem: przy krawędzi pola S, bez odnośnika */
 .ge-film-etykieta-krawedz::before, .ge-film-etykieta-krawedz::after { display: none; }
 .ge-film-etykieta-krawedz .ge-film-etykieta-tekst { bottom: 0; transform: translate(-50%, 50%); }
+.ge-film-etykieta-prawa .ge-film-etykieta-tekst { transform: translate(-100%, 50%); }   /* przy prawej krawędzi kadru, strzałka na zewnątrz */
+.ge-film-etykieta-lewa .ge-film-etykieta-tekst { transform: translate(0, 50%); }
+.ge-film-etykieta-waska .ge-film-etykieta-tekst { white-space: pre; line-height: 1.25; }
+.ge-film-etykieta-waska.ge-film-etykieta-prawa .ge-film-etykieta-tekst { text-align: right; }
+
+/* ---------- Task 8c: warstwa „Wulkany” — legenda z licznikami, karta wulkanu ---------- */
+/* szeroki ekran: dół kadru, w miejscu suwaka czasu (w trybie wulkanów schowanego) */
+.ge-wulk-legenda { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); width: min(520px, calc(100vw - 800px));
+  min-width: 300px; max-height: 42%; display: flex; flex-direction: column; padding: 6px 12px 8px; }
+.ge-wulk-legenda[data-zwiniety="true"] .ge-wulk-tresc { display: none; }
+.ge-wulk-naglowek { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; padding: 2px 0 4px; border: 0;
+  background: none; color: var(--ge-atrament); font: 600 12px/1.3 var(--ge-kroj); letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
+.ge-wulk-strzalka { color: var(--ge-akcent); font-size: 14px; }
+.ge-wulk-tresc { overflow: auto; min-height: 0; }
+.ge-wulk-grupy { margin: 2px 0 4px; }
+.ge-wulk-grupy li { align-items: center; }
+.ge-wulk-nazwa { flex: 1; }
+.ge-wulk-licznik { font-variant-numeric: tabular-nums; }
+/* znak grupy: trójkąt jak pin w scenie (barwa w border-bottom-color) */
+.ge-wulk-znak { flex: none; display: inline-block; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent;
+  border-bottom: 12px solid #fff; filter: drop-shadow(0 0 1px #05070a); }
+.ge-wulk-liczby { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 4px 0; font-size: 12.5px; }
+.ge-wulk-osm b, .ge-wulk-lit b { color: var(--ge-akcent); font-variant-numeric: tabular-nums; }
+.ge-wulk-zrodlo { font-size: 12px; }
+.ge-wulk-zrodlo summary { cursor: pointer; color: var(--ge-atrament-2); }
+.ge-wulk-atrybucja { margin-top: 4px; }
+.ge-wulk-atrybucja a { color: var(--ge-akcent); }
+@media (max-width: 1100px) {
+  /* lewa kolumna nad podpisem przewyższenia; karty (prawa kolumna) zostają wolne */
+  .ge-wulk-legenda { left: 14px; transform: none; width: min(420px, calc(100vw - 436px)); min-width: 260px; bottom: 46px; max-height: 38%; }
+  .ge-tryb-wulk .ge-plan { max-height: calc(100% - var(--ge-pod-paskiem, 70px) - 46% ); }
+}
+@media (max-width: 700px) {
+  /* dolna szuflada na całą szerokość (jak plan dni); układ nad planem — ukladSzuflad() w widok.js */
+  .ge-wulk-legenda { left: 0; right: 0; bottom: 0; width: auto; min-width: 0; max-height: 45%; padding: 6px 12px 8px; }
+  .ge-tryb-wulk .ge-plan { max-height: 45%; }
+  .ge-wulk-liczby { font-size: 12px; }
+}

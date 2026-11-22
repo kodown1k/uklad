@@ -2,11 +2,12 @@
 /* Zakładka Geologia — rejestr miejsc (podmenu). Nowe miejsce = nowy wpis w MIEJSCA (plus katalog z danymi);
    wpis w ladowanie.js (MIEJSCA_ID) trzyma test w node. Dual-export.
    MIEJSCA[].pliki — pliki ładowane leniwie przy pierwszym wejściu w to miejsce (przed widok.js nie wchodzą:
-   widok.js jest wspólny). Zadania dopisują swoje (Task 4: dane.js, Task 5: opowiesc.js) — wpis bez pliku = 404 w smoke.
+   widok.js jest wspólny). Zadania dopisują swoje (Task 4: dane.js, Task 5: opowiesc.js, Task 8c: wulkany.js — dane OSM
+   wkompilowane w plik, wulkany.json to tylko artefakt generatora) — wpis bez pliku = 404 w smoke.
    podmenu(miejsca, aktywne) → [{ id, nazwa, wcisniety }] — czysta lista pozycji podmenu na pasku. */
 (function (root) {
   var MIEJSCA = [
-    { id: 'teneryfa', nazwa: 'Teneryfa', pliki: ['geologia/teneryfa/dane.js', 'geologia/teneryfa/opowiesc.js', 'geologia/teneryfa/turystyka.js'], katalog: 'geologia/teneryfa/' }
+    { id: 'teneryfa', nazwa: 'Teneryfa', pliki: ['geologia/teneryfa/dane.js', 'geologia/teneryfa/opowiesc.js', 'geologia/teneryfa/wulkany.js', 'geologia/teneryfa/turystyka.js'], katalog: 'geologia/teneryfa/' }
   ];
 
   function podmenu(miejsca, aktywne) {

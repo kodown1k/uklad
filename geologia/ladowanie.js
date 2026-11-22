@@ -4,14 +4,17 @@
    mysliwce/ladowanie.js). Czysta część (dual-export, testy w node): ROZDZIALY, PLIKI, parsujHashGeologii,
    parsujZapytanieGeologii.
 
-   Adresy:  #geologia | #geologia=<miejsce>[&rozdzial=<id>][&tryb=pokaz|makieta[&warstwa=turystyka]] → {miejsce, tryb, rozdzial[, warstwa]}
-            (domyślnie pokaz, rozdział `polozenie`; makieta = bez rozdziału; `warstwa` tylko w makiecie i tylko znana);
+   Adresy:  #geologia | #geologia=<miejsce>[&rozdzial=<id>][&tryb=pokaz|makieta[&warstwa=<lista>]] → {miejsce, tryb, rozdzial[, warstwa]}
+            (domyślnie pokaz, rozdział `polozenie`; makieta = bez rozdziału; `warstwa` tylko w makiecie: lista po przecinku
+            z WARSTWY — `turystyka`, `wulkany`, `turystyka,wulkany`; nieznane pozycje odrzucane, kolejność jak WARSTWY, bez powtórzeń;
+            pusta po odrzuceniu → bez pola);
             #geologia=<nieznane> → miejsce domyślne + pole `nieznane`. Obcy hash → null.
    Zapytanie: ?geologia = przycisk zakładki widoczny (do czasu gotowości jest ukryty); hak testowy
             ?smoke&geologia=<miejsce>[&rozdzial=<id>|&makieta|&tryb=makieta][&t=0..1][&czas=<Ma>][&przekroj=<°>[&przesuniecie=<km>]][&geologiczna]
-            [&jakosc=pelna][&kontrola=biel|czern][&anim=a1..a5&f=0..1][&warstwa=turystyka][&widok=poludnie|polnoc|gora]
+            [&jakosc=pelna][&kontrola=biel|czern][&anim=a1..a5&f=0..1][&warstwa=<lista>][&widok=poludnie|polnoc|gora]
             (marker GEOLOGIA_READY <miejsce> <rozdzial|makieta>). `&makieta` = `&tryb=makieta`;
-            `&warstwa=turystyka` = warstwa turystyczna makiety (Task 7b), `&widok` = kadr z przycisków kompasu;
+            `&warstwa=turystyka` = warstwa turystyczna makiety (Task 7b), `&warstwa=wulkany` = warstwa wulkanów (Task 8c),
+            obie naraz `&warstwa=turystyka,wulkany`; `&widok` = kadr z przycisków kompasu;
             `&czas` = chwila geologiczna [mln lat] w makiecie; `&anim` + `&f` = animacja A1–A5 w kadrze ujęcia (f przycięte do 0..1, bez f → 1);
             `&przesuniecie` = linia przekroju przesunięta o km od Teide;
             `&geologiczna` = makieta w barwach jednostek; `&jakosc=pelna` = bez przejścia na lżejszą jakość przy niskim fps (G-L).
@@ -31,14 +34,21 @@
   // Kolejność leniwego ładowania: tylko pliki, które istnieją. Kolejne zadania dopisują swoje PRZED widok.js —
   // widok.js jest ostatni, bo korzysta z reszty. Pliki konkretnego miejsca: GeologiaMiejsca.MIEJSCA[].pliki.
   var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/ewolucja.js', 'geologia/scena.js', 'geologia/gwiazdy.js', 'geologia/animacje.js',
-    'geologia/rozdzialy.js', 'geologia/turystyka-scena.js', 'geologia/pokaz.js', 'geologia/widok.js'];
+    'geologia/rozdzialy.js', 'geologia/turystyka-scena.js', 'geologia/wulkany-scena.js', 'geologia/pokaz.js', 'geologia/widok.js'];
   var KONTROLE = ['biel', 'czern'];
   var ANIMACJE = ['a1', 'a2', 'a3', 'a4', 'a5'];
-  var WARSTWY = ['turystyka'];
+  var WARSTWY = ['turystyka', 'wulkany'];
   var WIDOKI = ['poludnie', 'polnoc', 'gora'];    // ta sama lista co Kompas.WIDOKI (geologia/turystyka-scena.js)
 
   function dekoduj(s) { try { return decodeURIComponent(s); } catch (_) { return s; } }
   function czyRozdzial(id) { return ROZDZIALY.some(function (r) { return r.id === id; }); }
+  // Lista warstw z adresu → znormalizowany napis ('turystyka', 'wulkany', 'turystyka,wulkany') albo null.
+  function warstwy(v) {
+    if (typeof v !== 'string') return null;
+    var dane = dekoduj(v).toLowerCase().split(',').map(function (x) { return x.trim(); });
+    var znane = WARSTWY.filter(function (w) { return dane.indexOf(w) >= 0; });
+    return znane.length ? znane.join(',') : null;
+  }
 
   function parsujHashGeologii(hash) {
     if (typeof hash !== 'string') return null;
@@ -55,7 +65,8 @@
     var t = /&tryb=([^&]*)/.exec(reszta), r = /&rozdzial=([^&]*)/.exec(reszta), w = /&warstwa=([^&]*)/.exec(reszta);
     if (t && t[1] === 'makieta') {
       wynik.tryb = 'makieta'; wynik.rozdzial = null;
-      if (w && WARSTWY.indexOf(w[1]) >= 0) wynik.warstwa = w[1];
+      var lw = w ? warstwy(w[1]) : null;
+      if (lw) wynik.warstwa = lw;
     } else if (r && czyRozdzial(r[1])) wynik.rozdzial = r[1];
     if (nieznane) wynik.nieznane = nieznane;
     return wynik;
@@ -78,13 +89,13 @@
       kontrola: KONTROLE.indexOf(ko) >= 0 ? ko : null,
       anim: ANIMACJE.indexOf(an) >= 0 ? an : null,
       f: ANIMACJE.indexOf(an) >= 0 ? (f === null ? 1 : Math.max(0, Math.min(1, f))) : null,
-      warstwa: WARSTWY.indexOf(wa) >= 0 ? wa : null,
+      warstwa: warstwy(wa),
       widok: WIDOKI.indexOf(wi) >= 0 ? wi : null
     };
   }
 
   var api = { MIEJSCA_ID: MIEJSCA_ID, TRYBY: TRYBY, ROZDZIALY: ROZDZIALY, PLIKI: PLIKI, ANIMACJE: ANIMACJE, WARSTWY: WARSTWY, WIDOKI: WIDOKI,
-    parsujHashGeologii: parsujHashGeologii, parsujZapytanieGeologii: parsujZapytanieGeologii, krzywe: null };
+    parsujHashGeologii: parsujHashGeologii, parsujZapytanieGeologii: parsujZapytanieGeologii, warstwy: warstwy, krzywe: null };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
   api.krzywe = root.Kino || null;              // G-C: jedyny odczyt window.Kino — przy wczytaniu
   root.GeologiaLadowanie = api;

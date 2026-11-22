@@ -24,20 +24,28 @@
    dnia; na wąskim ekranie dolna szuflada), stały pasek ostrzeżenia o zamkniętych szlakach (pełny tekst, data stanu, link).
    Warstwa jest liczona z dzisiejszej rzeźby: włączenie przy czasie ≠ dziś cofa czas do „dziś”, w trybie turystycznym
    suwak czasu jest schowany, a przy czasie ≠ dziś (hak sondy), przekroju i animacji warstwa jest niewidoczna.
-   Esc (G-E): pokaz → makieta tego miejsca; makieta → zamyka kartę trasy/punktu → kartę części/mitów → wychodzi z pełnego
-   ekranu → Układ.
+   Warstwa „Wulkany” (Task 8c): przełącznik w pasku (domyślnie wyłączony, niezależny od Turystyki — obie mogą być włączone;
+   hash `&warstwa=wulkany` albo `&warstwa=turystyka,wulkany`): stożki z OSM (geologia/teneryfa/wulkany.js) w trzech barwach
+   grup (GeologiaWulkany.grupuj), piny z geologia/wulkany-scena.js przez hak dodajWarstwe (zasoby w z() sceny, budowana raz na
+   makietę, przełączanie = widoczność), etykiety stałe dla stratowulkanów i ośrodków erupcji historycznych, pozostałe stożki
+   — etykieta na wskazanie/wybór; legenda z licznikami („N na mapie (OSM)” obok liczby z literatury ze źródłem; na wąskim
+   ekranie zwijana dolna szuflada) i karta wulkanu (nazwa, wysokość, grupa, rok erupcji, opis, źródło, atrybucja OSM).
+   Jak Turystyka: liczona z dzisiejszej rzeźby — włączenie cofa czas do „dziś”, suwak czasu schowany, przy czasie ≠ dziś,
+   przekroju i animacji warstwa niewidoczna. Klik: punkt turystyki → pin wulkanu → linia trasy → znacznik części.
+   Esc (G-E): pokaz → makieta tego miejsca; makieta → zamyka kartę wulkanu → kartę trasy/punktu → kartę części/mitów →
+   zwija rozwinięty plan dni / legendę wulkanów → wychodzi z pełnego ekranu → Układ.
    Hak testowy: ?smoke&geologia=<miejsce>[&rozdzial=<id>|&makieta][&przekroj=<°>[&przesuniecie=<km>]][&geologiczna][&kontrola=biel|czern][&krzywe]
    [&czas=<Ma>][&anim=a1..a5&f=0..1] (animacja w stałym kadrze ujęcia z KADRY_ANIM, światło i woda ujęcia, bez znaczników)
    → stały kadr, marker `GEOLOGIA_READY <miejsce> <rozdzial|makieta>`; w smoke lektor i podkład nie startują (stan().lektor
    === 'cisza'), zmiany stanu są natychmiastowe. `&jakosc=pelna` = bez przejścia na lżejszą jakość (G-L); `&lod=lekki` =
    siatka terenu co drugą próbkę (jak na telefonie).
    `&krzywe` (tylko smoke): doładowuje mysliwce/kino.js i loguje `GEOLOGIA_KRZYWE ok|zle` (ruling G-C).
-   `&warstwa=turystyka` = warstwa turystyczna przed markerem, `&widok=poludnie|polnoc|gora` = kadr z przycisków kompasu.
+   `&warstwa=turystyka|wulkany|turystyka,wulkany` = warstwy przed markerem, `&widok=poludnie|polnoc|gora` = kadr z przycisków kompasu.
    Tekst z danych trafia do DOM wyłącznie przez textContent. Błędy własne: prefiks „Geologia: ”,
    ostrzeżenia nie będące błędem: „Geologia/uwaga: ”. */
 (function () {
   var T = window.THREE, L = window.GeologiaLadowanie, M = window.GeologiaMiejsca, S = window.GeologiaScena, Teren = window.Teren;
-  var TS = window.GeologiaTurystykaScena;
+  var TS = window.GeologiaTurystykaScena, WS = window.GeologiaWulkanyScena;
   var doc = document, $ = function (id) { return doc.getElementById(id); };
   var korzen = $('geologia');
   var zap = L.parsujZapytanieGeologii(location.search), smoke = zap.smoke;
@@ -88,7 +96,7 @@
   // makieta: scena, sterowanie, stan przełączników
   var mk = null, budowa = 0, rzezby = {};
   var mks = { kolorowanie: 'teren', przekroj: null, chmury: false, przew: 1.5, przewCel: 1.5, czesc: null, mity: false, hover: null, czas: 0, anim: null,
-    turystyka: false, tur: null, widok: null, azymut: null };
+    turystyka: false, tur: null, widok: null, azymut: null, wulkany: false, wulk: null };
   var nacisk = null, ciag = null, wskaznik = null;
   var pokaz = null;                     // geologia/pokaz.js — tworzony przy pierwszym wejściu w pokaz
 
@@ -121,7 +129,9 @@
     ui.katSuwak.title = 'Kierunek linii przekroju: 0° = północ–południe, 90° = zachód–wschód';
     ui.katTekst = el('output', 'ge-kat-wart', '90°', ui.kat);
     ui.bChmury = guzik(grupa('Chmury'), 'Morze chmur', 'Warstwa chmur pasatowych na wysokości ok. 1,5 km');
-    ui.bTurystyka = guzik(grupa('Warstwy'), 'Turystyka', 'Warstwa turystyczna: szlaki z planu wyjazdu, Hard Rock Hotel, plan dni', 'ge-guzik-tur');
+    var gWarstwy = grupa('Warstwy');
+    ui.bTurystyka = guzik(gWarstwy, 'Turystyka', 'Warstwa turystyczna: szlaki z planu wyjazdu, Hard Rock Hotel, plan dni', 'ge-guzik-tur');
+    ui.bWulkany = guzik(gWarstwy, 'Wulkany', 'Warstwa wulkanów: stożki z OpenStreetMap w trzech grupach, licznik i opisy', 'ge-guzik-wulk');
     var gw = grupa('Przewyższenie');
     ui.bPrzew = PRZEWYZSZENIA.map(function (x) { var b = guzik(gw, '×' + liczba(x, 1), 'Przewyższenie pionowe ×' + liczba(x, 1)); b.dataset.przew = String(x); return b; });
     var gk = grupa('Karty');
@@ -180,6 +190,21 @@
     ui.kTur = el('aside', 'ge-panel ge-karta ge-karta-tur', null, ui.karty); ui.kTur.hidden = true; ui.kTur.setAttribute('aria-label', 'Karta trasy');
     ui.kTurX = guzik(ui.kTur, '✕', 'Zamknij kartę (Esc)', 'ge-panel-x'); ui.kTurX.removeAttribute('aria-pressed');
     ui.kTurT = el('div', 'ge-karta-tresc', null, ui.kTur);
+    ui.kWulk = el('aside', 'ge-panel ge-karta ge-karta-wulk', null, ui.karty); ui.kWulk.hidden = true; ui.kWulk.setAttribute('aria-label', 'Karta wulkanu');
+    ui.kWulkX = guzik(ui.kWulk, '✕', 'Zamknij kartę (Esc)', 'ge-panel-x'); ui.kWulkX.removeAttribute('aria-pressed');
+    ui.kWulkT = el('div', 'ge-karta-tresc', null, ui.kWulk);
+    // legenda wulkanów (szeroki ekran: dół, w miejscu suwaka czasu; wąski: zwijana dolna szuflada)
+    ui.legWulk = el('aside', 'ge-panel ge-wulk-legenda', null, ui.makieta); ui.legWulk.hidden = true; ui.legWulk.setAttribute('aria-label', 'Legenda wulkanów');
+    ui.legWulkNaglowek = el('button', 'ge-wulk-naglowek', null, ui.legWulk); ui.legWulkNaglowek.type = 'button';
+    ui.legWulkTytul = el('span', 'ge-wulk-tytul', 'Wulkany', ui.legWulkNaglowek);
+    ui.legWulkStrzalka = el('span', 'ge-wulk-strzalka', '▾', ui.legWulkNaglowek);
+    ui.legWulkTresc = el('div', 'ge-wulk-tresc', null, ui.legWulk);
+    ui.legWulkNaglowek.addEventListener('click', function () {
+      var wl = ui.legWulk.dataset.zwiniety === 'true';
+      // wąski ekran: legenda, plan i karta to dolne szuflady — naraz otwarta jedna
+      if (wl && waskiEkran()) { zamknijTur(); zamknijWulkan(); if (!ui.kCzesc.hidden) zamknijCzesc(); if (planRozwiniety()) rozwinPlan(false); }
+      rozwinLegendeWulkanow(wl);
+    });
     // kompas: róża (klik = północ u góry) i przyciski widoków
     ui.kompas = el('div', 'ge-kompas', null, ui.makieta);
     ui.kompas.setAttribute('role', 'group'); ui.kompas.setAttribute('aria-label', 'Kompas i widoki');
@@ -204,7 +229,7 @@
     ui.planNaglowek.addEventListener('click', function () {
       var wl = ui.plan.dataset.zwiniety === 'true';
       // wąski ekran: plan i karta to dwie dolne szuflady — naraz otwarta jedna
-      if (wl && waskiEkran()) { zamknijTur(); if (!ui.kCzesc.hidden) zamknijCzesc(); }
+      if (wl && waskiEkran()) { zamknijTur(); zamknijWulkan(); if (!ui.kCzesc.hidden) zamknijCzesc(); if (legendaWulkanowRozwinieta()) rozwinLegendeWulkanow(false); }
       rozwinPlan(wl);
     });
     ui.planLista = el('ol', 'ge-plan-lista', null, ui.plan);
@@ -223,6 +248,8 @@
     ui.kMityX.addEventListener('click', zamknijMity);
     ui.kTurX.addEventListener('click', zamknijTur);
     ui.bTurystyka.addEventListener('click', function () { ustawTurystyke(!mks.turystyka); });
+    ui.bWulkany.addEventListener('click', function () { ustawWulkany(!mks.wulkany); });
+    ui.kWulkX.addEventListener('click', zamknijWulkan);
     zbudujLegende();
     zbudujOsCzasu();
     podpinanieWskaznika();
@@ -262,7 +289,11 @@
     var tur = mks.turystyka && st.tryb === 'makieta';
     if (tur) zbudujTurystykeUI();
     if (ui.ostrzezenie) ui.ostrzezenie.hidden = !tur;
-    ui.czas.hidden = tur;                       // warstwa liczona z dzisiejszej rzeźby — w trybie turystycznym bez suwaka czasu
+    ui.bWulkany.setAttribute('aria-pressed', String(mks.wulkany));
+    var wulk = mks.wulkany && st.tryb === 'makieta';
+    if (wulk) zbudujLegendeWulkanow();
+    // warstwy liczone z dzisiejszej rzeźby — w trybie turystycznym i wulkanów bez suwaka czasu
+    ui.czas.hidden = tur || wulk;
     widocznoscTurystyki();
     ukladKart();
   }
@@ -277,7 +308,7 @@
   }
   function przesunKadr() {
     if (!mk || !gl || !gl.w) return;
-    var otwarta = !ui.kCzesc.hidden || !ui.kMity.hidden || !ui.kPrzekroj.hidden || !ui.kTur.hidden;
+    var otwarta = !ui.kCzesc.hidden || !ui.kMity.hidden || !ui.kPrzekroj.hidden || !ui.kTur.hidden || !ui.kWulk.hidden;
     var off = otwarta && gl.w >= 900 ? (ui.karty.offsetWidth + 14) / 2 : 0, k = mk.sc.kamera;
     // panel „Plan dni” (lewa kolumna na szerokim ekranie) przesuwa środek w prawo o połowę swojej szerokości
     if (gl.w >= 900 && !ui.plan.hidden && ui.plan.dataset.zwiniety !== 'true') off -= (ui.plan.offsetWidth + 14) / 2;
@@ -286,15 +317,32 @@
     var offY = 0;
     if (gl.w <= 700) {
       var p = $('gePasek');
-      var szuflada = otwarta ? Math.min(ui.karty.offsetHeight, gl.h * 0.5) : planRozwiniety() ? ui.plan.offsetHeight : 0;
+      var szuflada = otwarta ? Math.min(ui.karty.offsetHeight, gl.h * 0.5) : planRozwiniety() ? ui.plan.offsetHeight
+        : legendaWulkanowRozwinieta() ? ui.legWulk.offsetHeight : 0;
       offY = szuflada / 2 - (p ? p.offsetHeight : 0) / 2;
     }
+    ukladSzuflad();
     if (Math.abs(off) > 0.5 || Math.abs(offY) > 0.5) k.setViewOffset(gl.w, gl.h, off, offY, gl.w, gl.h); else k.clearViewOffset();
     k.updateProjectionMatrix();
   }
+  // Wąski ekran z legendą wulkanów: legenda stoi nad szufladą planu dni (obie dolne), kompas i podpis przewyższenia nad
+  // legendą. Szeroki ekran i sama Turystyka: układ z CSS (style inline zdjęte).
+  function ukladSzuflad() {
+    var leg = !ui.legWulk.hidden, plan = !ui.plan.hidden, nad = [ui.kompas, ui.podpisPrzew];
+    if (gl.w > 700 || !leg) {
+      ui.legWulk.style.bottom = '';
+      nad.forEach(function (e) { e.style.bottom = ''; });
+      return;
+    }
+    var hPlan = plan ? Math.ceil(ui.plan.getBoundingClientRect().height) : 0;     // ułamki px: offsetHeight zaokrągla w dół
+    ui.legWulk.style.bottom = hPlan + 'px';
+    // kompas i podpis zawsze nad legendą (także rozwiniętą — inaczej przyciski widoków leżą na jej treści)
+    var b = hPlan + Math.ceil(ui.legWulk.getBoundingClientRect().height) + 8;
+    nad.forEach(function (e) { e.style.bottom = b + 'px'; });
+  }
   function adres() {
     if (smoke) return;
-    var h = '#geologia=' + st.miejsce + (st.tryb === 'makieta' ? '&tryb=makieta' + (mks.turystyka ? '&warstwa=turystyka' : '') : '&rozdzial=' + st.rozdzial);
+    var h = '#geologia=' + st.miejsce + (st.tryb === 'makieta' ? '&tryb=makieta' + (aktywneWarstwy() ? '&warstwa=' + aktywneWarstwy() : '') : '&rozdzial=' + st.rozdzial);
     try { history.replaceState(null, '', location.pathname + location.search + h); } catch (_) { /* file:// */ }
   }
   var zegarKom = null;
@@ -448,7 +496,7 @@
     sc.kolorowanie(mks.kolorowanie);
     sc.chmury(mks.chmury);
     if (T.OrbitControls) utworzSterowanie(); else console.warn('Geologia/uwaga: brak OrbitControls — makieta bez obracania kamerą');
-    zwinPasek(mks.turystyka && waskiEkran());     // stan paska ze stanu warstwy przy każdym wejściu, zanim policzymy kadr
+    zwinPasek((mks.turystyka || mks.wulkany) && waskiEkran());     // stan paska ze stanu warstw przy każdym wejściu, zanim policzymy kadr
     odswiezNarzedzia();                 // układ nakładek (pasek z ostrzeżeniem, plan, przesunięcie kadru) przed dopasowaniem kadru
     var k0 = kadrStartowy(); ustawKadr(k0.poz, k0.cel); mk.kadrAuto = 'start';
     if (mks.przekroj) ustawPrzekroj(mks.przekroj, true);
@@ -463,6 +511,7 @@
       if (zap.widok) ustawWidok(zap.widok, false);
     }
     if (mks.turystyka) ustawTurystyke(true);
+    if (mks.wulkany) ustawWulkany(true);
     odswiezNarzedzia();
     if (smoke) gotowosc = st.miejsce + ' makieta';
   }
@@ -471,11 +520,11 @@
     if (!mk) return;
     if (mk.ster) mk.ster.dispose();
     if (mk.anim) mk.anim.zwolnij();
-    mk.sc.zwolnij();                    // zwalnia też zasoby warstwy turystycznej (z() sceny)
+    mk.sc.zwolnij();                    // zwalnia też zasoby warstw turystycznej i wulkanów (z() sceny)
     mk = null;
     gl.renderer.renderLists.dispose();
-    mks.czesc = null; mks.hover = null; mks.tur = null; mks.widok = null; mks.azymut = null;
-    if (ui) { ui.kCzesc.hidden = true; ui.kPrzekroj.hidden = true; ui.kTur.hidden = true; }
+    mks.czesc = null; mks.hover = null; mks.tur = null; mks.widok = null; mks.azymut = null; mks.wulk = null;
+    if (ui) { ui.kCzesc.hidden = true; ui.kPrzekroj.hidden = true; ui.kTur.hidden = true; ui.kWulk.hidden = true; }
   }
   function utworzSterowanie() {
     var k = new T.OrbitControls(mk.sc.kamera, ui.canvas);
@@ -588,9 +637,11 @@
     // wskazywanie tylko po ruchu kursora lub kamery (najwyżej raz na klatkę), nie w każdej klatce
     if (wskaznik && wskaznik.nowy && !nacisk) {
       wskaznik.nowy = false;
-      var tu = trafienieTur(wskaznik.x, wskaznik.y), id = tu ? null : trafienie(wskaznik.x, wskaznik.y);
+      var tu = trafienieTur(wskaznik.x, wskaznik.y), wu = tu && tu.typ === 'punkt' ? null : trafienieWulk(wskaznik.x, wskaznik.y);
+      var id = tu || wu ? null : trafienie(wskaznik.x, wskaznik.y);
       if (id !== mks.hover) { mks.hover = id; sc.najedz(id); }
-      ui.canvas.style.cursor = id || tu ? 'pointer' : (mks.przekroj && trafiaSciane(wskaznik.x, wskaznik.y) ? 'ns-resize' : '');
+      if (mk.wulk) mk.wulk.najedz(wu ? wu.id : null);
+      ui.canvas.style.cursor = id || tu || wu ? 'pointer' : (mks.przekroj && trafiaSciane(wskaznik.x, wskaznik.y) ? 'ns-resize' : '');
     }
   }
   function ograniczonyRuch() { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
@@ -748,7 +799,7 @@
   // Plan dni idzie za FAKTYCZNĄ widocznością warstwy (przekrój, czas ≠ dziś, animacja ją chowają): plan bez tras na mapie
   // nie miałby dokąd przelecieć. Przekroju nie wyłączamy za użytkownika — to on go włączył.
   function widocznoscTurystyki() {
-    var w = turystykaWidoczna();
+    var w = turystykaWidoczna(), ww = widocznoscWulkanow();
     if (ui && ui.plan.hidden === w) {
       ui.plan.hidden = !w;
       ui.makieta.classList.toggle('ge-tryb-tur', w);
@@ -756,7 +807,7 @@
     }
     if (!mk) return;
     if (mk.tur) mk.tur.widoczna(w);
-    mk.sc.przygasCzesci(mks.turystyka && w ? 0.4 : 1);
+    mk.sc.przygasCzesci((mks.turystyka && w) || ww ? 0.4 : 1);
   }
   function planRozwiniety() { return !!(ui && !ui.plan.hidden && ui.plan.dataset.zwiniety === 'false'); }
   // Pasek na wąskim ekranie: zwinięty = jeden wiersz (nazwa zakładki + przycisk) i wiersz ostrzeżenia; domyślnie zwinięty,
@@ -779,7 +830,7 @@
       else if (!window.GeologiaTurystyka) console.error('Geologia: brak danych GeologiaTurystyka — warstwa turystyczna niedostępna');
     }
     if (!mks.turystyka) zamknijTur(true);
-    if (ui && waskiEkran()) zwinPasek(mks.turystyka && st.tryb === 'makieta');
+    if (ui && waskiEkran()) zwinPasek((mks.turystyka || mks.wulkany) && st.tryb === 'makieta');
     if (ui) odswiezNarzedzia();
     adres();
     return mks.turystyka;
@@ -856,7 +907,7 @@
     if (typ === 'trasa') {
       x = D.trasy.filter(function (q) { return q.id === id; })[0];
       if (!x) return;
-      zamknijCzesc(); zamknijMity(true);
+      zamknijCzesc(); zamknijMity(true); zamknijWulkan();
       t.replaceChildren();
       var kal = D.kalendarz.filter(function (d) { return d.trasa === id; })[0];
       el('p', 'ge-karta-rodzaj', 'Trasa · ' + (x.dzien || 'dzień do ustalenia'), t);
@@ -882,7 +933,7 @@
     } else {
       x = D.punkty.filter(function (q) { return q.id === id; })[0];
       if (!x) return;
-      zamknijCzesc(); zamknijMity(true);
+      zamknijCzesc(); zamknijMity(true); zamknijWulkan();
       t.replaceChildren();
       el('p', 'ge-karta-rodzaj', 'Punkt · ' + (RODZAJE_PUNKTOW[x.rodzaj] || x.rodzaj), t);
       el('h3', 'ge-karta-nazwa', x.nazwa, t);
@@ -905,6 +956,7 @@
     }
     mks.tur = { typ: typ, id: id };
     if (waskiEkran() && ui.plan.dataset.zwiniety !== 'true') rozwinPlan(false);   // jedna dolna szuflada naraz
+    if (waskiEkran() && legendaWulkanowRozwinieta()) rozwinLegendeWulkanow(false);
     ui.kTur.dataset.typ = typ; ui.kTur.dataset.id = id;
     ui.kTur.hidden = false; ui.kTur.scrollTop = 0;
     if (mk && mk.tur) mk.tur.wybierz(typ, id);
@@ -915,6 +967,132 @@
     if (!ui) return;
     ui.kTur.hidden = true; delete ui.kTur.dataset.typ; delete ui.kTur.dataset.id;
     if (mk && mk.tur) mk.tur.wybierz(null, null);
+    przesunKadr();
+  }
+
+  /* ---------- warstwa „Wulkany” (Task 8c) ---------- */
+  var GRUPA_KARTY = { strato: 'stratowulkan', historyczne: 'stożek erupcji historycznej', pozostale: 'pozostały stożek' };
+  function aktywneWarstwy() {
+    return L.WARSTWY.filter(function (w) { return w === 'turystyka' ? mks.turystyka : w === 'wulkany' ? mks.wulkany : false; }).join(',');
+  }
+  function wulkanyWidoczna() {
+    return !!(mk && mk.wulk && mks.wulkany && st.tryb === 'makieta' && !(mks.czas > 0) && !mks.przekroj && !mks.anim);
+  }
+  // Legenda idzie za faktyczną widocznością warstwy (jak plan dni Turystyki); zwraca widoczność.
+  function widocznoscWulkanow() {
+    var w = wulkanyWidoczna();
+    if (ui && ui.legWulk.hidden === w) {
+      ui.legWulk.hidden = !w;
+      ui.makieta.classList.toggle('ge-tryb-wulk', w);
+      przesunKadr();
+    }
+    if (mk && mk.wulk) mk.wulk.widoczna(w);
+    if (!w && ui && !ui.kWulk.hidden) zamknijWulkan();
+    return w;
+  }
+  function legendaWulkanowRozwinieta() { return !!(ui && !ui.legWulk.hidden && ui.legWulk.dataset.zwiniety === 'false'); }
+  function rozwinLegendeWulkanow(wl) {
+    ui.legWulk.dataset.zwiniety = String(!wl);
+    ui.legWulkNaglowek.setAttribute('aria-expanded', String(!!wl));
+    ui.legWulkStrzalka.textContent = wl ? '▾' : '▴';
+    przesunKadr();
+  }
+  // Warstwa liczona z dzisiejszej rzeźby (jak Turystyka): włączenie przy czasie ≠ dziś cofa czas do „dziś”. Budowana raz
+  // na makietę; przełączanie = widoczność (liczniki GPU stałe).
+  function ustawWulkany(wl) {
+    mks.wulkany = !!wl;
+    var GW = window.GeologiaWulkany;
+    if (mks.wulkany && st.tryb === 'makieta' && mk) {
+      if (mks.czas > 0) { ustawCzas(0); komunikat('Warstwa wulkanów pokazuje dzisiejszą wyspę — czas geologiczny wrócił do „dziś”.'); }
+      if (!mk.wulk && WS && GW) {
+        mk.grupyWulk = GW.grupuj(GW.wulkany);
+        var g = mk.grupyWulk, refTur = null;
+        mk.wulk = WS.utworzWarstwe(T, mk.sc, g.strato.concat(g.historyczne, g.pozostale), { kolory: GW.KOLORY_GRUP,
+          // etykiety wulkanów omijają piny i etykiety Turystyki (tablica prostokątów warstwy turystycznej z jej animuj)
+          zajeteInne: function () { if (!mk || !mk.tur || !mk.tur.widoczna()) return null; if (!refTur) refTur = mk.tur.animuj(); return refTur; } });
+      } else if (!GW) console.error('Geologia: brak danych GeologiaWulkany — warstwa wulkanów niedostępna');
+    }
+    if (!mks.wulkany) zamknijWulkan();
+    // telefon: pasek zwinięty, gdy włączona jest któraś warstwa (jak w 7b)
+    if (ui && waskiEkran()) zwinPasek((mks.turystyka || mks.wulkany) && st.tryb === 'makieta');
+    if (ui) odswiezNarzedzia();
+    adres();
+    return mks.wulkany;
+  }
+  // Legenda: liczniki grup (barwy pinów), „N na mapie (OSM)” obok liczby z literatury ze źródłem, atrybucja OSM — raz.
+  function zbudujLegendeWulkanow() {
+    var GW = window.GeologiaWulkany;
+    if (!GW || ui.legWulkZbudowana) return;
+    ui.legWulkZbudowana = true;
+    var g = GW.grupuj(GW.wulkany), l = GW.legenda(g, GW.LITERATURA), t = ui.legWulkTresc;
+    ui.legWulkTytul.textContent = 'Wulkany · ' + l.naMapie + ' na mapie';
+    var ul = el('ul', 'ge-legenda-lista ge-wulk-grupy', null, t);
+    GW.GRUPY.forEach(function (k) {
+      var li = el('li', null, null, ul); li.dataset.grupa = k;
+      var z = el('span', 'ge-wulk-znak', null, li); z.style.borderBottomColor = GW.KOLORY_GRUP[k];
+      var tx = GW.NAZWY_GRUP[k].charAt(0).toUpperCase() + GW.NAZWY_GRUP[k].slice(1);
+      el('span', 'ge-wulk-nazwa', tx, li);
+      el('b', 'ge-wulk-licznik', String(l.wGrupach[k]) + (k === 'historyczne' ? ' (' + l.erupcje + ' erupcje)' : ''), li);
+    });
+    var lic = el('p', 'ge-wulk-liczby', null, t);
+    var a = el('span', 'ge-wulk-osm', null, lic); el('b', null, String(l.naMapie), a); el('span', null, ' na mapie (OSM)', a);
+    var b = el('span', 'ge-wulk-lit', null, lic); el('span', null, 'w literaturze: ', b); el('b', null, l.literatura.tekst, b);
+    var d = el('details', 'ge-wulk-zrodlo', null, t);
+    el('summary', null, 'Źródło liczby', d);
+    el('p', 'ge-akapit', GW.LITERATURA.tekst, d);
+    znaczekPewnosci(d, l.literatura.pewnosc);
+    zrodlo(d, l.literatura.zrodlo);
+    el('p', 'ge-zrodlo ge-wulk-atrybucja', 'Pozycje stożków: ' + GW.ATRYBUCJA + (GW.OSM && GW.OSM.pobrano ? ', stan ' + dataPl(GW.OSM.pobrano) : '') + '.', t);
+    ui.legWulk.dataset.zwiniety = 'false';
+    rozwinLegendeWulkanow(!waskiEkran());
+  }
+  function pinWulkanu(id) {
+    var g = mk && mk.grupyWulk;
+    return g ? g.strato.concat(g.historyczne, g.pozostale).filter(function (p) { return p.id === id; })[0] || null : null;
+  }
+  function pokazWulkan(id) {
+    var GW = window.GeologiaWulkany, p = pinWulkanu(id);
+    if (!GW || !p || !ui) return;
+    zamknijCzesc(); zamknijMity(true); zamknijTur(true);
+    if (waskiEkran() && planRozwiniety()) rozwinPlan(false);                 // jedna dolna szuflada naraz
+    if (waskiEkran() && legendaWulkanowRozwinieta()) rozwinLegendeWulkanow(false);
+    var w = p.wpis ? GW.wpis(p.wpis) : null, t = ui.kWulkT;
+    t.replaceChildren();
+    el('p', 'ge-karta-rodzaj', 'Wulkan · ' + GRUPA_KARTY[p.grupa], t);
+    el('h3', 'ge-karta-nazwa', p.nazwa || (w && w.nazwa) || 'Stożek bez nazwy', t);
+    var f = [];
+    f.push(p.ele != null ? liczba(p.ele) + ' m n.p.m. (OSM)' : 'wysokość: brak w OSM');
+    if (p.grupa === 'historyczne') f.push('erupcja ' + p.okres);
+    el('p', 'ge-karta-wys', f.join(' · '), t);
+    var gr = el('p', 'ge-tur-transport', null, t);
+    var zn = el('span', 'ge-wulk-znak', null, gr); zn.style.borderBottomColor = GW.KOLORY_GRUP[p.grupa];
+    el('span', null, 'grupa: ' + GW.NAZWY_GRUP[p.grupa] + (w && p.nazwa && w.nazwa.indexOf(p.nazwa) < 0 ? ' — ' + w.nazwa : ''), gr);
+    if (p.zZrodla) el('p', 'ge-tur-uwaga', 'Pin: ' + p.dopisek + ' (' + w.pozycja + ').', t);
+    if (w) {
+      znaczekPewnosci(t, w.pewnosc);
+      el('p', 'ge-akapit', w.opis, t);
+      zrodlo(t, w.zrodlo + (p.grupa === 'historyczne' && !p.zZrodla ? '; ośrodek ↔ stożek OSM: ' + (p.dopasowanie === 'nazwa' ? 'nazwa' : 'odległość') + ' ' + liczba(p.odleglosc_km, 2) + ' km od pozycji ze źródła (' + w.pozycja + ')' : ''));
+    } else el('p', 'ge-tur-uwagi', 'Makieta nie ma dla tego stożka opisu ze źródłem.', t);
+    var o = el('p', 'ge-zrodlo ge-wulk-atrybucja', null, t);
+    if (p.zZrodla) o.textContent = 'Stożka nie ma w OpenStreetMap; pozostałe pozycje: ' + GW.ATRYBUCJA + '.';
+    else {
+      el('span', null, 'Pozycja i nazwa: ' + GW.ATRYBUCJA + ' — ', o);
+      var m = /^(node|way|relation)\/(\d+)$/.exec(p.id);
+      var a = el('a', null, 'obiekt ' + p.id, o);
+      if (m) { a.href = 'https://www.openstreetmap.org/' + m[1] + '/' + m[2]; a.target = '_blank'; a.rel = 'noopener'; }
+      if (p.typ || p.status) el('span', null, ' (' + [p.typ, p.status].filter(Boolean).join(', ') + ')', o);
+    }
+    mks.wulk = { id: id, grupa: p.grupa };
+    ui.kWulk.dataset.id = id; ui.kWulk.dataset.grupa = p.grupa;
+    ui.kWulk.hidden = false; ui.kWulk.scrollTop = 0;
+    if (mk && mk.wulk) mk.wulk.wybierz(id);
+    przesunKadr();
+  }
+  function zamknijWulkan() {
+    mks.wulk = null;
+    if (!ui || ui.kWulk.hidden) { if (mk && mk.wulk) mk.wulk.wybierz(null); return; }
+    ui.kWulk.hidden = true; delete ui.kWulk.dataset.id; delete ui.kWulk.dataset.grupa;
+    if (mk && mk.wulk) mk.wulk.wybierz(null);
     przesunKadr();
   }
 
@@ -944,7 +1122,9 @@
     if (!c) return;
     zamknijMity(true);
     zamknijTur(true);
+    zamknijWulkan();
     if (waskiEkran() && ui.plan.dataset.zwiniety === 'false') rozwinPlan(false);
+    if (waskiEkran() && legendaWulkanowRozwinieta()) rozwinLegendeWulkanow(false);
     mks.czesc = id;
     var t = ui.kCzescT;
     t.replaceChildren();
@@ -968,6 +1148,7 @@
     var D = window.GeologiaTeneryfa;
     zamknijCzesc();
     zamknijTur(true);
+    zamknijWulkan();
     mks.mity = true;
     var t = ui.kMityT;
     t.replaceChildren();
@@ -1050,10 +1231,12 @@
       else otworz({ miejsce: st.miejsce, tryb: 'makieta' });
       return;
     }
-    if (!ui.kTur.hidden) zamknijTur();
+    if (!ui.kWulk.hidden) zamknijWulkan();
+    else if (!ui.kTur.hidden) zamknijTur();
     else if (!ui.kCzesc.hidden) zamknijCzesc();
     else if (mks.mity) zamknijMity();
     else if (planRozwiniety()) rozwinPlan(false);         // rozwinięty „Plan dni” to ogniwo łańcucha G-E (każda szerokość)
+    else if (waskiEkran() && legendaWulkanowRozwinieta()) rozwinLegendeWulkanow(false);   // szuflada legendy (telefon)
     else if (doc.fullscreenElement) doc.exitFullscreen();
     else window.Zakladki.zamknijDoUkladu();
   }
@@ -1080,6 +1263,7 @@
   }
   function trafienie(x, y) { var n = ndc(x, y); return n && mk ? mk.sc.pick(n[0], n[1]) : null; }
   function trafienieTur(x, y) { var n = ndc(x, y); return n && mk && mk.tur && turystykaWidoczna() ? mk.tur.pick(n[0], n[1]) : null; }
+  function trafienieWulk(x, y) { var n = ndc(x, y); return n && mk && mk.wulk && wulkanyWidoczna() ? mk.wulk.pick(n[0], n[1]) : null; }
   function trafiaSciane(x, y) { var n = ndc(x, y); return !!(n && mk && mk.sc.trafiaSciane(n[0], n[1])); }
   function podpinanieWskaznika() {
     ui.canvas.addEventListener('pointermove', function (e) {
@@ -1095,7 +1279,7 @@
         }
       }
     });
-    ui.canvas.addEventListener('pointerleave', function () { wskaznik = null; if (mk) { mks.hover = null; mk.sc.najedz(null); } ui.canvas.style.cursor = ''; });
+    ui.canvas.addEventListener('pointerleave', function () { wskaznik = null; if (mk) { mks.hover = null; mk.sc.najedz(null); if (mk.wulk) mk.wulk.najedz(null); } ui.canvas.style.cursor = ''; });
     ui.canvas.addEventListener('pointerdown', function (e) {
       nacisk = { x: e.clientX, y: e.clientY, t: performance.now() };
       if (mk && mks.przekroj && trafiaSciane(e.clientX, e.clientY)) {
@@ -1124,12 +1308,16 @@
       // obrót kamery albo przeciąganie, nie klik — rozstrzyga tylko ruch: przy wolnej klatce (słaby GPU, obciążona maszyna)
       // naciśnięcie i puszczenie dzieli kilka klatek renderu i próg czasu (Myśliwce: 600 ms) gubił zwykłe kliknięcia
       if (bylCiag || ruch > 6 || !mk) return;
-      // warstwa turystyczna ma pierwszeństwo przed znacznikami części (te są w niej przygaszone)
+      // warstwy mają pierwszeństwo przed znacznikami części (te są w nich przygaszone): punkt turystyki → pin wulkanu →
+      // linia trasy → część
       var tu = trafienieTur(e.clientX, e.clientY);
+      if (tu && tu.typ === 'punkt') { pokazTur(tu.typ, tu.id); return; }
+      var wu = trafienieWulk(e.clientX, e.clientY);
+      if (wu) { pokazWulkan(wu.id); return; }
       if (tu) { pokazTur(tu.typ, tu.id); return; }
       var id = trafienie(e.clientX, e.clientY);
       if (id) pokazCzesc(id);
-      else { if (!ui.kCzesc.hidden) zamknijCzesc(); if (!ui.kTur.hidden) zamknijTur(); }
+      else { if (!ui.kCzesc.hidden) zamknijCzesc(); if (!ui.kTur.hidden) zamknijTur(); if (!ui.kWulk.hidden) zamknijWulkan(); }
     });
   }
 
@@ -1155,7 +1343,9 @@
     if (mk && (tryb !== 'makieta' || miejsce !== st.miejsce)) zwolnijMakiete();
     if (pokaz && tryb !== 'pokaz') pokaz.wyjdz();
     st.miejsce = miejsce; st.tryb = tryb; st.rozdzial = rozdzial; st.ujecie = null; st.t = zap.t;
-    if (tryb === 'makieta' && s.warstwa === 'turystyka') { mks.turystyka = true; if (mk) ustawTurystyke(true); }
+    var wS = tryb === 'makieta' && typeof s.warstwa === 'string' ? s.warstwa.split(',') : [];
+    if (wS.indexOf('turystyka') >= 0) { mks.turystyka = true; if (mk) ustawTurystyke(true); }
+    if (wS.indexOf('wulkany') >= 0) { mks.wulkany = true; if (mk) ustawWulkany(true); }
     korzen.hidden = false;
     try {
       zapewnijGL();
@@ -1182,13 +1372,13 @@
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
     gotowosc = null;
     if (doc.fullscreenElement === korzen) { try { doc.exitFullscreen(); } catch (_) { /* nic */ } }
-    if (ui) { zamknijCzesc(); zamknijMity(true); zamknijTur(true); ui.canvas.style.cursor = ''; }
+    if (ui) { zamknijCzesc(); zamknijMity(true); zamknijTur(true); zamknijWulkan(); ui.canvas.style.cursor = ''; }
     wskaznik = null; nacisk = null; ciag = null;
     if (gl) zwolnijMakiete();
     if (pokaz) pokaz.wyjdz();
     if (ui) zwinPasek(false);           // zwinięcie wynika ze stanu warstwy — przy wyjściu z zakładki zdejmowane
     mks.przekroj = null; mks.chmury = false; mks.kolorowanie = 'teren'; mks.przew = mks.przewCel = 1.5; mks.czas = 0; mks.anim = null;
-    mks.turystyka = false; mks.tur = null; mks.widok = null; mks.azymut = null;
+    mks.turystyka = false; mks.tur = null; mks.widok = null; mks.azymut = null; mks.wulkany = false; mks.wulk = null;
     if (ui) { ui.czasSuwak.value = '1000'; pokazCzas(0, false); }
   }
   // G-C: po wczytaniu mysliwce/kino.js (które podmienia globalny obiekt krzywych) zapamiętane krzywe mają dalej swoje funkcje.
@@ -1224,6 +1414,8 @@
         czasTekst: ui ? ui.czasWart.textContent : null, rekonstrukcja: ui ? !ui.czasPlak.hidden : false,
         turystyka: mks.turystyka, turystykaWidoczna: turystykaWidoczna(), kartaTur: mks.tur ? { typ: mks.tur.typ, id: mks.tur.id } : null,
         warstwa: mk && mk.tur ? mk.tur.stan() : null, widok: mks.widok, kompas: { azymut: mks.azymut },
+        wulkany: mks.wulkany, wulkanyWidoczna: wulkanyWidoczna(), kartaWulkanu: mks.wulk, warstwaWulkanow: mk && mk.wulk ? mk.wulk.stan() : null,
+        legendaWulkanow: mk && mk.grupyWulk ? window.GeologiaWulkany.legenda(mk.grupyWulk, window.GeologiaWulkany.LITERATURA) : null,
         kamera: mk ? { poz: mk.sc.kamera.position.toArray(), cel: mk.ster ? mk.ster.target.toArray() : null,
           min: mk.ster ? mk.ster.minDistance : null, max: mk.ster ? mk.ster.maxDistance : null } : null };
     },
@@ -1259,6 +1451,13 @@
     animacja: function (nazwa, f) { return uruchomAnimacje(nazwa, f); },
     // haki sondy (Task 7b): warstwa turystyczna, widok kompasu, rzut pinu punktu na ekran (px w oknie)
     turystyka: function (wl) { ustawTurystyke(wl); return mks.turystyka; },
+    // haki sondy (Task 8c): warstwa wulkanów, rzut pinu wulkanu na ekran (px w oknie)
+    wulkany: function (wl) { ustawWulkany(wl); return mks.wulkany; },
+    rzutWulkanu: function (id) {
+      if (!mk || !mk.wulk) return null;
+      var q = mk.wulk.rzutPinu(id), r = ui.canvas.getBoundingClientRect();
+      return q ? { x: r.left + q.x, y: r.top + q.y, z: q.z } : null;
+    },
     widok: function (nazwa, plynnie) { return ustawWidok(nazwa, !!plynnie); },
     rzutPunktu: function (id) {
       if (!mk || !mk.tur) return null;

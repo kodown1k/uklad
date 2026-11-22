@@ -27,6 +27,7 @@
   var STEMPEL_S = 2.6;                    // stempel werdyktu po cięciu K (R9.8)
   var OSTRZE_S = 3;                       // płaszczyzna odcięcia jedzie 3 s (R9.6 X2)
   var SZKLO_S = 2.5;                      // woda realna → szklana (R9.4 W2)
+  var KRAWEDZ_X = 0.92;                 // etykieta kierunkowa: krawędź pola S (margines kadru 4%) w NDC
   var MAKS_ETYKIET = 3;
   // Ekspozycja filmu (spec R4, strojone pomiarem Geologia.pomiar() w smoke; makieta zostaje przy 1 / 1 / 1):
   var MGIELKA_OD = 5, MGIELKA_DO = 60;   // km wysokości kamery: mgiełka kolumny powietrza od 0 do pełnej
@@ -118,8 +119,10 @@
       ui.kartaStart.setAttribute('role', 'dialog'); ui.kartaStart.setAttribute('aria-label', 'Odtwórz film');
       ui.kartaStartTytul = el('p', 'ge-film-karta-tytul', null, ui.kartaStart);
       var gs = el('div', 'ge-film-karta-guziki', null, ui.kartaStart);
-      ui.bStartGlos = c.guzik(gs, 'Odtwórz z lektorem', 'Film z lektorem i dźwiękiem', 'ge-guzik-glowny'); ui.bStartGlos.removeAttribute('aria-pressed');
+      // napisy przycisków zależą od nagrań (odswiezLektora): bez nich „Odtwórz” + dopisek „lektor w przygotowaniu”
+      ui.bStartGlos = c.guzik(gs, 'Odtwórz', 'Odtwórz film', 'ge-guzik-glowny'); ui.bStartGlos.removeAttribute('aria-pressed');
       ui.bStartCisza = c.guzik(gs, 'Odtwórz bez dźwięku', 'Film z napisami, bez dźwięku'); ui.bStartCisza.removeAttribute('aria-pressed');
+      ui.kartaStartDopisek = el('p', 'ge-film-karta-dopisek', 'lektor w przygotowaniu', ui.kartaStart);
       ui.bStartGlos.addEventListener('click', function () { start(true); });
       ui.bStartCisza.addEventListener('click', function () { start(false); });
       ui.kartaKoniec = el('div', 'ge-panel ge-film-karta ge-karta-koniec', null, korzen); ui.kartaKoniec.hidden = true;
@@ -172,6 +175,7 @@
         P.plan = R.plan({ dane: D, opowiesc: root.GeologiaOpowiesc, siatka: siatka, poziomy: { archipelag: rz.archipelag, wstawki: rz.wstawki },
           czasy: null, krzywe: L.krzywe });
         P.planKlucz = klucz;
+        if (ui) odswiezLektora();
       }
       P.siatka = siatka; P.rz = rz;
       P.sc = GS.zbuduj(T, c.renderer, { siatka: rz.wyspa, poziomy: { archipelag: rz.archipelag, wstawki: rz.wstawki }, dane: D, lod: lod,
@@ -264,6 +268,7 @@
     function pokazKarteStart() {
       P.karta = true; P.gra = false;
       ui.kartaStartTytul.textContent = c.nazwaMiejsca(P.miejsce) + ' — ' + P.plan.length + ' filmów';
+      odswiezLektora();
       ui.kartaStart.hidden = false;
       if (cisza) cisza.wstrzymaj(true);
       try { ui.bStartGlos.focus({ preventScroll: true }); } catch (_) { /* nic */ }
@@ -287,8 +292,21 @@
       if (!P.karta) grajDalej();
     }
     function ustawDzwiek(wl) { P.dzwiek = !!wl; odswiezGuziki(); }
+    // Czy film ma lektora: jedno źródło — plan rozdziałów (Rozdzialy.plan → rozdzial.lektor, z czasów nagrań). Do Task 9
+    // nagrań nie ma (czasy: null), więc nic nie obiecuje dźwięku: start „Odtwórz” z dopiskiem, bez wyboru „bez dźwięku”,
+    // bez przycisku „Dźwięk” i klawisza M. Gdy nagrania dojdą, wszystko wraca samo.
+    function maLektora() { return !!(P.plan && P.plan.some(function (r) { return r.lektor; })); }
+    function odswiezLektora() {
+      var l = maLektora();
+      ui.bStartGlos.textContent = l ? 'Odtwórz z lektorem' : 'Odtwórz';
+      ui.bStartGlos.title = l ? 'Film z lektorem i dźwiękiem' : 'Odtwórz film z napisami (lektor w przygotowaniu)';
+      ui.bStartCisza.hidden = !l;
+      ui.kartaStartDopisek.hidden = l;
+      ui.bDzwiek.hidden = !l;
+    }
     function odswiezGuziki() {
       if (!ui) return;
+      odswiezLektora();
       ui.bPauza.textContent = P.pauza || !P.gra ? '▶' : '❚❚';
       ui.bPauza.title = P.pauza || !P.gra ? 'Odtwórz (spacja)' : 'Pauza (spacja)';
       ui.bDzwiek.setAttribute('aria-pressed', String(P.dzwiek));
@@ -306,7 +324,7 @@
       if (k === ' ') { if (P.karta) start(P.dzwiek); else pauza(); return true; }
       if (k === 'ArrowRight') { krokRozdzialu(1); return true; }
       if (k === 'ArrowLeft') { krokRozdzialu(-1); return true; }
-      if (k === 'm' || k === 'M') { ustawDzwiek(!P.dzwiek); return true; }
+      if ((k === 'm' || k === 'M') && maLektora()) { ustawDzwiek(!P.dzwiek); return true; }
       return false;
     }
 
@@ -589,6 +607,63 @@
       var poz = (P.starty[P.ri] + t) / P.suma, sz = (poz * 100).toFixed(2) + '%';
       if (ui.postepPas.style.width !== sz) { ui.postepPas.style.width = sz; ui.postep.setAttribute('aria-valuenow', String(Math.round(poz * 100))); }
     }
+    // Czy prostokąt (px kadru) leży nad lądem: siatka 15 × 9 próbek (co ok. 15 px na telefonie), promień z kamery do tafli (y = 0), wysokość
+    // wyświetlanej powierzchni (wstawki > wyspa > archipelag — Gran Canaria też) > 0.
+    var lpA = null, lpB = null;
+    function nadLadem(x0, y0, x1, y1, k) {
+      lpA = lpA || new T.Vector3(); lpB = lpB || new T.Vector3();
+      for (var iy = 0; iy < 9; iy++) for (var ix = 0; ix < 15; ix++) {
+        var px = x0 + (x1 - x0) * ix / 14, py = y0 + (y1 - y0) * iy / 8, nx = px / k.w * 2 - 1, ny = 1 - py / k.h * 2;
+        lpA.set(nx, ny, -1).unproject(kamera); lpB.set(nx, ny, 1).unproject(kamera);
+        if (!(lpA.y > 0) || !(lpB.y < lpA.y)) continue;
+        var f = lpA.y / (lpA.y - lpB.y), h = P.sc.wysokosc(lpA.x + (lpB.x - lpA.x) * f, lpA.z + (lpB.z - lpA.z) * f);
+        if (h != null && h > 0) return true;
+      }
+      return false;
+    }
+    // Miejsce etykiety kierunkowej (NDC [x, y]): wyjściowe, a gdy napis z marginesem (2,5 wiersza pod, 1 nad i 1 w poziomie
+    // — napis tuż nad wyspą czyta się jak jej nazwa) zasłania ląd — pierwsze wolne WZDŁUŻ krawędzi, którą wskazuje strzałka:
+    // przy krawędzi bocznej (strona ±1) w pionie — najpierw w stronę pionowej składowej strzałki (pion −1 dla ↘ ↙, +1 dla ↗ ↖),
+    // potem w przeciwną, dla → ← naprzemiennie; przy krawędzi dolnej/górnej (↓ ↑) w poziomie, naprzemiennie. Krok ¼ wiersza
+    // (pion) albo 12 px (poziom), w obrębie pola S; bez wolnego miejsca — wyjściowe.
+    function wolneMiejsceKrawedzi(tekstEl, vx, vy, strona, k, dolS, pion) {
+      var w = tekstEl.offsetWidth, h = tekstEl.offsetHeight;
+      // margines: pod napisem 2,5 wiersza (etykiety w tym polu stoją NAD swoim obiektem — ląd tuż pod napisem czyta się
+      // jak jego obiekt), nad napisem 1 wiersz
+      var wiersz = h / Math.max(1, (tekstEl.textContent.match(/\n/g) || []).length + 1), mgDol = h / 2 + 2.5 * wiersz, mgGora = h / 2 + wiersz;
+      var limY = [dolS + h / k.h, 0.82 - h / k.h], limX = [-KRAWEDZ_X + w / k.w, KRAWEDZ_X - w / k.w];
+      var wolne = function (x, y) {
+        if (y < limY[0] || y > limY[1]) return false;
+        var ax = (x + 1) / 2 * k.w, ay = (1 - y) / 2 * k.h, x0 = strona > 0 ? ax - w : strona < 0 ? ax : ax - w / 2;
+        return !nadLadem(x0 - wiersz, ay - mgGora, x0 + w + wiersz, ay + mgDol, k);
+      };
+      if (wolne(vx, vy)) return [vx, vy];
+      var j, q, krokY = Math.max(0.005, wiersz / k.h * 2 / 4), krokX = 24 / k.w;
+      if (!strona) {                                   // krawędź dolna / górna pola S: szukanie w poziomie
+        for (j = 1; j <= 200; j++) {
+          var pr = vx + j * krokX, lw = vx - j * krokX;
+          if (pr > limX[1] && lw < limX[0]) break;
+          if (pr <= limX[1] && wolne(pr, vy)) return [pr, vy];
+          if (lw >= limX[0] && wolne(lw, vy)) return [lw, vy];
+        }
+        return [vx, vy];
+      }
+      if (pion) {
+        for (var kier = pion, n = 0; n < 2; n++, kier = -kier) for (j = 1; j <= 200; j++) {
+          q = vy + kier * j * krokY;
+          if (q < limY[0] || q > limY[1]) break;
+          if (wolne(vx, q)) return [vx, q];
+        }
+        return [vx, vy];
+      }
+      for (j = 1; j <= 200; j++) {
+        var g = vy + j * krokY, d = vy - j * krokY;
+        if (g > limY[1] && d < limY[0]) break;
+        if (wolne(vx, g)) return [vx, g];
+        if (wolne(vx, d)) return [vx, d];
+      }
+      return [vx, vy];
+    }
     // etykiety miejsc: najwyżej 3, tylko w polu S (nad polem D napisów), gasną 0,4 s przed przejściem (zdarzenia planu)
     function etykiety(r, u, t, zaslonieta) {
       var D = root.GeologiaTeneryfa || {}, lista = [], k = P.kadr, pion = k.h > k.w;
@@ -624,10 +699,26 @@
           var kat = Math.atan2(dy, dx) / RAD;
           strzalka = ['→', '↗', '↑', '↖', '←', '↙', '↓', '↘'][((Math.round(kat / 45) % 8) + 8) % 8];
         }
-        var E = ui.etykiety[uzyte++], tekst = strzalka ? (strzalka === '←' || strzalka === '↖' || strzalka === '↙' ? strzalka + ' ' + q.tekst : q.tekst + ' ' + strzalka) : q.tekst;
+        // etykieta kierunkowa przy samej krawędzi kadru od strony strzałki (strzałka na zewnątrz, napis do środka)
+        var strona = strzalka === '→' || strzalka === '↗' || strzalka === '↘' ? 1 : strzalka === '←' || strzalka === '↖' || strzalka === '↙' ? -1 : 0;
+        if (strona) v.x = strona * KRAWEDZ_X;
+        // wąski kadr (telefon): napis kierunkowy w dwóch wierszach (nazwa ze strzałką, pod nią odległość) — połowa szerokości
+        var waska = !!strzalka && k.w < 600, czesci = q.tekst.split(' · '), nazwa = czesci[0], reszta = czesci.slice(1).join(' · ');
+        var zeStrzalka = strona < 0 ? strzalka + ' ' + nazwa : nazwa + ' ' + strzalka;
+        var E = ui.etykiety[uzyte++], tekst = !strzalka ? q.tekst : waska && reszta ? zeStrzalka + '\n' + reszta
+          : (strona < 0 ? strzalka + ' ' + q.tekst : q.tekst + ' ' + strzalka);
         if (E.id !== q.id || E.tekst.textContent !== tekst) { E.id = q.id; E.tekst.textContent = tekst; }
         E.el.classList.toggle('ge-film-etykieta-krawedz', !!strzalka);
+        E.el.classList.toggle('ge-film-etykieta-prawa', strona > 0);
+        E.el.classList.toggle('ge-film-etykieta-lewa', strona < 0);
+        E.el.classList.toggle('ge-film-etykieta-waska', waska);
         E.el.hidden = false;
+        // etykieta kierunkowa nie może leżeć na innym lądzie (P3 na telefonie: „Afryka” nad Gran Canarią) — przesuwana
+        // wzdłuż krawędzi w obrębie pola S do pierwszego miejsca nad samym morzem (wolneMiejsceKrawedzi)
+        if (strzalka) {
+          var m2 = wolneMiejsceKrawedzi(E.tekst, v.x, v.y, strona, k, dolS, strzalka === '↘' || strzalka === '↙' ? -1 : strzalka === '↗' || strzalka === '↖' ? 1 : 0);
+          v.x = m2[0]; v.y = m2[1];
+        }
         E.el.style.transform = 'translate(' + ((v.x + 1) / 2 * k.w).toFixed(1) + 'px,' + ((1 - v.y) / 2 * k.h).toFixed(1) + 'px)';
         krycie(E.el, a);
       });
@@ -765,7 +856,7 @@
     function stan() {
       var r = P.plan && P.plan[P.ri], ch = r ? R.chwila(r, P.t) : null;
       return { rozdzial: r ? r.id : null, ujecie: ch ? ch.ujecie : null, t: r ? P.t / r.czas : 0, czas_s: P.t, czasRozdzialu_s: r ? r.czas : null,
-        gra: P.gra && !P.pauza, pauza: P.pauza, koniec: P.koniec, karta: P.karta ? 'odtworz' : P.koniec ? 'koniec' : null, dzwiek: P.dzwiek,
+        gra: P.gra && !P.pauza, pauza: P.pauza, koniec: P.koniec, karta: P.karta ? 'odtworz' : P.koniec ? 'koniec' : null, dzwiek: P.dzwiek, lektor: maLektora(),
         kadr: P.kadr ? { x: P.kadr.x, y: P.kadr.y, w: P.kadr.w, h: P.kadr.h, tryb: P.kadr.tryb } : null,
         glob: P.ostatnie ? P.ostatnie.glob : 0, zaslona: P.ostatnie && P.ostatnie.zaslona ? P.ostatnie.zaslona[3] : 0, napis: P.napis || '' };
     }
