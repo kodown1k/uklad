@@ -41,6 +41,7 @@
   var doc = document, $ = function (id) { return doc.getElementById(id); };
   var korzen = $('geologia');
   var zap = L.parsujZapytanieGeologii(location.search), smoke = zap.smoke;
+  var POKAZ_GOTOWY = false; // Task 8 ustawia true razem z filmami
   var K_KRZYWE = ['dojazd', 'cruise', 'logLerp', 'aimArc'];
   var RAD = Math.PI / 180;
   var NAZWY_PEWNOSCI = { wysoka: 'wysoka', srednia: 'średnia', niska: 'niska', 'bardzo-niska': 'bardzo niska' };
@@ -1120,6 +1121,9 @@
     var s = stan || {};
     var miejsce = M.MIEJSCA.some(function (m) { return m.id === s.miejsce; }) ? s.miejsce : M.MIEJSCA[0].id;
     var tryb = s.tryb === 'makieta' ? 'makieta' : 'pokaz';
+    // Do czasu gotowego pokazu (Task 8) użytkownik trafia do makiety — pusty pokaz bez wyjścia na telefonie.
+    // Hak ?smoke zostaje przy pokazie, żeby bramki szkieletu działały.
+    if (tryb === 'pokaz' && !smoke && !POKAZ_GOTOWY) tryb = 'makieta';
     var rozdzial = tryb === 'makieta' ? null : (L.ROZDZIALY.some(function (r) { return r.id === s.rozdzial; }) ? s.rozdzial : L.ROZDZIALY[0].id);
     zbudujUI();
     if (mk && (tryb !== 'makieta' || miejsce !== st.miejsce)) zwolnijMakiete();
