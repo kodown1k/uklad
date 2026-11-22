@@ -4,7 +4,9 @@
      ustawKamere(poz, cel), przewyzszenie(x) }.
    stan() → { miejsce, tryb, rozdzial, ujecie, t, fps, jakosc: 'pelna'|'lekka', lektor: 'gra'|'cisza'|'brak', gotowa, rzezba,
      kolorowanie, przekroj, chmury, przewyzszenie, czesc, mity, pelnyEkran } (ujecie = id bieżącego ujęcia albo null — Task 8);
-   diagnostyka() → { geometrie, tekstury, programy, audio }.
+   diagnostyka() → { geometrie, tekstury, programy, audio } (audio = liczba żywych AudioContext pokazu: 0 albo 1).
+   Lektor i podkład filmów (Task 9): geologia/lektor.js + geologia/dzwiek.js przez pokaz.js; stan().lektor = stan lektora
+   pokazu ('gra' | 'cisza' po M | 'brak' bez nagrań/zaproszenia/AudioContext), stan().pokaz.zegar = 'audio' | 'klatki'.
    Szkielet (Task 2): pasek z tytułem i podmenu miejsc (GeologiaMiejsca.podmenu), rząd rozdziałów (GeologiaLadowanie.ROZDZIALY),
    canvas na cały kontener. Pasek i rząd rozdziałów leżą NAD canvasem (absolutnie), kadr = cały #geologia.
    Makieta (Task 6): rzeźba z geologia/<miejsce>/rzezba*.png dekodowana bez zarządzania kolorem (createImageBitmap z
@@ -1329,7 +1331,8 @@
       doMakiety: function () { otworz({ miejsce: st.miejsce, tryb: 'makieta' }); },
       doUkladu: function () { window.Zakladki.zamknijDoUkladu(); },
       nazwaMiejsca: function (id) { var m = M.MIEJSCA.filter(function (x) { return x.id === id; })[0]; return m ? m.nazwa : id; },
-      zmianaRozdzialu: function (id) { if (st.tryb !== 'pokaz' || st.rozdzial === id) return; st.rozdzial = id; odswiezUI(); adres(); } });
+      zmianaRozdzialu: function (id) { if (st.tryb !== 'pokaz' || st.rozdzial === id) return; st.rozdzial = id; odswiezUI(); adres(); },
+      zrodloLektora: function (miejsce) { return L.zrodloLektoraStrony ? L.zrodloLektoraStrony(miejsce) : null; } });
     return pokaz;
   }
 
@@ -1404,7 +1407,7 @@
     stan: function () {
       var rz = mk && mk.rz, ps = st.tryb === 'pokaz' && pokaz ? pokaz.stan() : null;
       return { miejsce: st.miejsce, tryb: st.tryb, rozdzial: st.rozdzial, ujecie: ps ? ps.ujecie : st.ujecie, t: ps ? ps.t : st.t, fps: Math.round(fps),
-        jakosc: jakosc, lektor: smoke ? 'cisza' : 'brak', gotowa: st.tryb === 'pokaz' ? !!(pokaz && pokaz.gotowy()) : !!mk, pokaz: ps,
+        jakosc: jakosc, lektor: smoke ? 'cisza' : ps ? ps.lektorStan : 'brak', gotowa: st.tryb === 'pokaz' ? !!(pokaz && pokaz.gotowy()) : !!mk, pokaz: ps,
         rzezba: rz ? { hMax: rz.hMax, hMin: rz.hMin, hMaxJson: rz.meta.hMax, hMinJson: rz.meta.hMin } : null,
         kolorowanie: mks.kolorowanie, przekroj: mks.przekroj ? { kat_st: mks.przekroj.kat_st, przesuniecie_km: mks.przekroj.przesuniecie_km,
           maks_m: mks.przekroj.profil ? mks.przekroj.profil.maks_m : null } : null,
@@ -1428,7 +1431,7 @@
     diagnostyka: function () {
       if (!gl) return null;
       var m = gl.renderer.info.memory, pr = gl.renderer.info.programs;
-      return { geometrie: m.geometries, tekstury: m.textures, programy: pr ? pr.length : 0, audio: 0 };
+      return { geometrie: m.geometries, tekstury: m.textures, programy: pr ? pr.length : 0, audio: pokaz ? pokaz.audio() : 0 };
     },
     // Haki sondy (scripts/probe-geologia.mjs) — scena makiety, renderer, rzut kotwicy części na ekran (px w oknie).
     scena: function () { return mk ? mk.sc : null; },

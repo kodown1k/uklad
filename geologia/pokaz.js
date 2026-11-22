@@ -6,7 +6,7 @@
      gotowy(), stan(), pomiar(opcje), skok(rozdzial, ulamek), diagnostyka() }
    ctx = { T, renderer, korzen, smoke, zap, el(tag, klasa, tekst, rodzic), guzik(rodzic, tekst, tytul, klasa),
      wczytajRzezbe(miejsce) → Promise, lod() → 'pelny'|'lekki', komunikat(t, trwaly), doMakiety(), doUkladu(), pelnyEkran(),
-     zmianaRozdzialu(id), nazwaMiejsca(id) }.
+     zmianaRozdzialu(id), nazwaMiejsca(id), zrodloLektora(miejsce) → { baza, zapytanie, powod } (GeologiaLadowanie) }.
 
    Zegar filmu: jeden, w sekundach rozdziału (seans ciągły: po końcu rozdziału następny od 0, po ostatnim karta końcowa).
    Wszystko w kadrze jest czystą funkcją (rozdział, t): kamera Rozdzialy.kamera (y już z przewyższeniem), stan obrazu
@@ -14,8 +14,19 @@
    (G-F). Nakładki filmu (plakietka G-L, przewyższenie z podziałką G-P, licznik G-S, tytuł rozdziału i stempel T-L,
    teza mitu, etykiety miejsc w polu S, napisy KinoKadr) liczone z tego samego zegara — nie z setTimeout ani przejść CSS.
    Interfejs (pasek, rząd rozdziałów z paskiem postępu, kursor) chowa KinoKadr.cisza po 3 s bezruchu; na pauzie i karcie
-   końcowej zostaje. Lektor i podkład — Task 9 (tu tylko stan „dźwięk wł./wył.” i karta „Odtwórz” przy starcie bez gestu).
-   Smoke (?smoke): zegar stoi na t z haka, bez karty „Odtwórz”, interfejs od razu schowany; Geologia.pomiar() i skok(). */
+   końcowej zostaje.
+   Lektor i podkład (Task 9, spec R6): przy wejściu pokaz pobiera <baza lektora>/czasy.json (baza i token z
+   zrodloLektora — zaproszenie, ruling 9-2; bez tokenu / 403 / 404: bez lektora, jedno „Geologia/uwaga:”), plan liczy się
+   z czasów aktualnych nagrań (GeologiaLektor.aktualne → Rozdzialy.plan({ czasy }) — obraz idzie za nagraniem, ruling 9-3),
+   więc rozdzial.lektor mówi, czy lektor jest (przycisk startu: „Odtwórz z lektorem” albo „Odtwórz” + „lektor na
+   zaproszenie” / „lektor w przygotowaniu”, ruling 9-4). Dźwięk startuje dopiero na gest (karta „Odtwórz” albo klik
+   zakładki): wspólny AudioContext dla lektora (geologia/lektor.js) i podkładu (geologia/dzwiek.js, gra dla wszystkich).
+   Gdy kontekst gra, ZEGAREM FILMU jest AudioContext (GeologiaLektor.zegar); bez kontekstu — klatki (dt). Pauza =
+   ctx.suspend(), powrót z pauzy i karty w tle gra od miejsca zatrzymania; przewinięcie = nowa kotwica 150 ms naprzód;
+   przejście do następnego rozdziału bez przerwy (przesun). Nagrania rozdziału (i następnego) dekodowane z wyprzedzeniem;
+   po skoku zegar czeka na zdekodowanie (≤ 3 s). M wycisza lektora i podkład razem (kontekst gra dalej — zegar też).
+   Smoke (?smoke): zegar stoi na t z haka, bez karty „Odtwórz”, bez AudioContext, interfejs od razu schowany;
+   Geologia.pomiar() i skok(). Plan w smoke liczy się z czasy.json tylko z hakiem `&lektor=lokalny`. */
 (function (root) {
   var RAD = Math.PI / 180;
   var FUNKCJE_ANIM = { a1: 'a1Powstanie', a2: 'a2Lawa1706', a3: 'a3Osuwisko', a4: 'a4MorzeChmur', a5: 'a5Noc' };
@@ -58,7 +69,8 @@
     var doc = document, korzen = c.korzen, smoke = c.smoke, zap = c.zap, el = c.el;
     var P = { aktywny: false, gotowy: false, budowa: 0, miejsce: null, plan: null, planKlucz: null, rz: null, sc: null, anim: null, siatka: null,
       ri: 0, t: 0, gra: false, pauza: false, koniec: false, dzwiek: true, karta: false, kadr: null, w: 0, h: 0, ostatnie: null,
-      stan: {}, animAkt: null, a2: null, obrys: null, ostatniPomiar: null, tlo: null };
+      stan: {}, animAkt: null, a2: null, obrys: null, ostatniPomiar: null, tlo: null,
+      czasyLektora: null, zrodlo: null, powodBezLektora: 'przygotowanie', audio: null, czeka: 0, akcenty: [], autoPauza: false };
     var ui = null, napisy = null, cisza = null;
     var kamera = null;
 
@@ -103,6 +115,8 @@
       ui.postepZnaczniki = el('div', 'ge-postep-znaczniki', null, ui.postep);
       ui.bDalej = c.guzik(ui.dol, '▶', 'Następny rozdział (→)', 'ge-pokaz-guzik'); ui.bDalej.removeAttribute('aria-pressed');
       ui.bDzwiek = c.guzik(ui.dol, 'Dźwięk', 'Dźwięk (M)', 'ge-pokaz-guzik');
+      ui.bezLektora = el('span', 'ge-bez-lektora', 'bez lektora', ui.dol); ui.bezLektora.hidden = true;
+      ui.bezLektora.title = 'Nagrania lektora niedostępne — film z napisami i podkładem';
       ui.bPelny = c.guzik(ui.dol, '⛶', 'Pełny ekran (F)', 'ge-pokaz-guzik'); ui.bPelny.removeAttribute('aria-pressed');
       ui.bPauza.addEventListener('click', function () { pauza(); });
       ui.bWstecz.addEventListener('click', function () { krokRozdzialu(-1); });
@@ -119,7 +133,8 @@
       ui.kartaStart.setAttribute('role', 'dialog'); ui.kartaStart.setAttribute('aria-label', 'Odtwórz film');
       ui.kartaStartTytul = el('p', 'ge-film-karta-tytul', null, ui.kartaStart);
       var gs = el('div', 'ge-film-karta-guziki', null, ui.kartaStart);
-      // napisy przycisków zależą od nagrań (odswiezLektora): bez nich „Odtwórz” + dopisek „lektor w przygotowaniu”
+      // napisy przycisków zależą od nagrań (odswiezLektora): bez nich „Odtwórz” + dopisek „lektor na zaproszenie” /
+      // „lektor w przygotowaniu” (ruling 9-4)
       ui.bStartGlos = c.guzik(gs, 'Odtwórz', 'Odtwórz film', 'ge-guzik-glowny'); ui.bStartGlos.removeAttribute('aria-pressed');
       ui.bStartCisza = c.guzik(gs, 'Odtwórz bez dźwięku', 'Film z napisami, bez dźwięku'); ui.bStartCisza.removeAttribute('aria-pressed');
       ui.kartaStartDopisek = el('p', 'ge-film-karta-dopisek', 'lektor w przygotowaniu', ui.kartaStart);
@@ -166,14 +181,61 @@
         bbox: { lonMin: b.lonMin, lonMax: b.lonMin + (b.lonMax - b.lonMin) * (w - 1) * k / (s.w - 1), latMax: b.latMax,
           latMin: b.latMax - (b.latMax - b.latMin) * (h - 1) * k / (s.h - 1) } };
     }
+    // czasy.json lektora z bazy zaproszenia (albo lokalnej z hakiem &lektor=lokalny); null = film bez lektora
+    function wczytajCzasy(miejsce, rozdzialId) {
+      var zr = c.zrodloLektora ? c.zrodloLektora(miejsce) : null;
+      P.zrodlo = zr;
+      if (!zr || !zr.baza) {
+        P.powodBezLektora = zr && (zr.powod === 'wygaslo' || zr.powod === 'host') ? zr.powod : 'zaproszenie';
+        var powod = { wygaslo: 'zaproszenie wygasło', host: 'lektor tylko na kodownik.co' }[P.powodBezLektora] || 'bez zaproszenia';
+        console.warn('Geologia/uwaga: lektor niedostępny (' + powod + ') — film z napisami i podkładem');
+        return Promise.resolve(null);
+      }
+      var ac = typeof AbortController === 'function' ? new AbortController() : null;
+      var zeg = ac ? setTimeout(function () { ac.abort(); }, 6000) : 0;
+      return fetch(zr.baza + 'czasy.json' + zr.zapytanie, { credentials: 'omit', cache: 'no-cache', signal: ac ? ac.signal : undefined }).then(function (r) {
+        if (!r.ok) { var e = new Error('czasy.json HTTP ' + r.status); e.status = r.status; throw e; }
+        return r.json();
+      }).then(function (cz) {
+        clearTimeout(zeg);
+        if (!cz || typeof cz.glos !== 'string' || !cz.wersy) throw new Error('czasy.json bez glos/wersy');
+        // próbka: pierwsze nagranie rozdziału startowego z tym samym tokenem — 403/404 na MP3 = bez lektora, zanim przycisk
+        // cokolwiek obieca (recenzja 9a M-1)
+        var O = root.GeologiaOpowiesc, w0 = O && O.wersy[rozdzialId] && O.wersy[rozdzialId][0], e0 = w0 && cz.wersy[w0.id];
+        if (!e0) return cz;
+        return fetch(zr.baza + e0.plik + zr.zapytanie, { credentials: 'omit' }).then(function (r) {
+          try { if (r.body && r.body.cancel) r.body.cancel(); } catch (_) { /* nic */ }
+          if (!r.ok) { var e = new Error(e0.plik + ' HTTP ' + r.status); e.status = r.status; throw e; }
+          return cz;
+        }, function (e) { throw new Error(e0.plik + ': ' + (e && e.message || e)); });
+      }, function (e) {
+        clearTimeout(zeg);
+        throw e;
+      }).then(null, function (e) {
+        P.powodBezLektora = e && e.status === 403 ? 'zaproszenie' : e && e.status === 404 ? 'przygotowanie' : 'zaproszenie';
+        console.warn('Geologia/uwaga: lektor niedostępny (' + (e && e.message || e) + ') — film z napisami i podkładem');
+        return null;
+      });
+    }
+    function wszystkieWersyRozdzialow() {
+      var O = root.GeologiaOpowiesc, out = [];
+      Object.keys(O.wersy).forEach(function (r) { out = out.concat(O.wersy[r]); });
+      return out;
+    }
     function zbudujScene(rz) {
-      var lod = c.lod(), D = root.GeologiaTeneryfa || {};
+      var lod = c.lod(), D = root.GeologiaTeneryfa || {}, GL = root.GeologiaLektor;
       if (!L.krzywe) throw new Error('brak krzywych kino.js (GeologiaLadowanie.krzywe)');
       var siatka = lod === 'lekki' ? lekka(rz.wyspa) : rz.wyspa;
-      var klucz = P.miejsce + '|' + lod;
+      // obraz idzie za nagraniem (ruling 9-3): plan z czasów AKTUALNYCH nagrań (skrot zgodny z tekstem czytanym)
+      var czasy = P.czasyLektora && GL ? GL.aktualne(wszystkieWersyRozdzialow(), P.czasyLektora) : null;
+      if (czasy && !Object.keys(czasy).length) {
+        console.warn('Geologia/uwaga: lektor niedostępny (nagrania nieaktualne wobec opowieści) — film z napisami i podkładem');
+        P.powodBezLektora = 'przygotowanie'; czasy = null;
+      }
+      var klucz = P.miejsce + '|' + lod + '|' + (czasy ? Object.keys(czasy).length : 0);
       if (P.planKlucz !== klucz) {
         P.plan = R.plan({ dane: D, opowiesc: root.GeologiaOpowiesc, siatka: siatka, poziomy: { archipelag: rz.archipelag, wstawki: rz.wstawki },
-          czasy: null, krzywe: L.krzywe });
+          czasy: czasy, krzywe: L.krzywe });
         P.planKlucz = klucz;
         if (ui) odswiezLektora();
       }
@@ -212,9 +274,13 @@
       P.miejsce = miejsce; P.gotowy = false;
       var moja = ++P.budowa;
       c.komunikat('Wczytuję film…', true);
+      var czasyP = wczytajCzasy(miejsce, L.ROZDZIALY[ri].id);
       c.wczytajRzezbe(miejsce).then(function (rz) {
-        if (moja !== P.budowa || !P.aktywny) return null;
-        return zbudujScene(rz);
+        return czasyP.then(function (cz) {
+          if (moja !== P.budowa || !P.aktywny) return null;
+          P.czasyLektora = cz;
+          return zbudujScene(rz);
+        });
       }).then(function () {
         if (moja !== P.budowa || !P.aktywny || !P.sc) return null;
         return zapewnijGlob(ri);
@@ -243,21 +309,107 @@
       if (P.sc) { P.sc.zwolnij(); P.sc = null; c.renderer.renderLists.dispose(); }
       c.renderer.toneMappingExposure = 1;
       kamera = null; P.stan = {}; P.animAkt = null;
+      zwolnijAudio();
+    }
+
+    /* ---------- dźwięk: AudioContext (zegar filmu), lektor, podkład ---------- */
+    // Tworzony dopiero na gest (start z karty, klik zakładki, M) i tylko z dźwiękiem; w smoke nigdy.
+    function zapewnijAudio() {
+      if (P.audio || smoke || !P.dzwiek || !P.plan) return P.audio;
+      var AC = root.AudioContext || root.webkitAudioContext;
+      if (!AC) { console.warn('Geologia/uwaga: lektor niedostępny (brak Web Audio) — film z napisami'); return null; }
+      var ctx;
+      try { ctx = new AC({ latencyHint: 'playback' }); } catch (e) { console.warn('Geologia/uwaga: lektor niedostępny (AudioContext: ' + (e && e.message || e) + ')'); return null; }
+      var dz = null;
+      try { if (root.GeologiaDzwiek) dz = root.GeologiaDzwiek.utworz(ctx); } catch (e) {
+        console.warn('Geologia/uwaga: podkład niedostępny (' + (e && e.message || e) + ') — film bez podkładu'); dz = null;
+      }
+      var zr = P.zrodlo, zLektorem = maLektora() && zr && zr.baza && root.GeologiaLektor;
+      var adres = zLektorem ? function (plik) { return zr.baza + plik + zr.zapytanie; } : '';
+      var lek = root.GeologiaLektor.utworz(adres, zLektorem ? P.czasyLektora : null, ctx, { wyjscie: dz ? dz.wejscie : null, cicho: !zLektorem });
+      P.audio = { ctx: ctx, dz: dz, lek: lek, zakotwiczony: false, wznawia: 0, wznowiono: 0 };
+      if (!P.dzwiek) { lek.cisza(true); if (dz) dz.cisza(true); }
+      wznowAudio();
+      return P.audio;
+    }
+    function zwolnijAudio() {
+      var A = P.audio;
+      if (!A) return;
+      P.audio = null;
+      try { A.lek.zwolnij(); } catch (_) { /* nic */ }
+      try { if (A.dz) A.dz.zwolnij(); } catch (_) { /* nic */ }
+      try { A.ctx.close(); } catch (_) { /* nic */ }
+    }
+    // nagrania rozdziału i następnego dekodowane z wyprzedzeniem (R6); `czekaj` = zegar stoi do gotowości (≤ 3 s)
+    function przygotujLektora(i, czekaj) {
+      var A = P.audio;
+      if (!A || !P.plan) return;
+      var ids = P.plan[i].wersy.map(function (w) { return w.id; });
+      if (P.plan[i + 1]) ids = ids.concat(P.plan[i + 1].wersy.map(function (w) { return w.id; }));
+      var nr = ++P.czeka;
+      var gotowe = function () { if (P.czeka === nr) { P.czeka = 0; if (P.audio) P.audio.zakotwiczony = false; } };
+      if (!czekaj) { P.czeka = 0; A.lek.przygotuj(ids); return; }
+      A.lek.przygotuj(P.plan[i].wersy.map(function (w) { return w.id; })).then(gotowe, gotowe);
+      setTimeout(gotowe, 3000);
+      A.lek.przygotuj(ids);
+    }
+    function stanLektora() {
+      if (smoke) return 'cisza';
+      if (!P.audio) return 'brak';
+      return P.audio.lek.stan();
+    }
+    // wznowienie kontekstu (po pauzie, karcie w tle, starcie): do rozstrzygnięcia obietnicy film stoi (najwyżej 3 s) —
+    // inaczej zegar klatek uciekłby dźwiękowi i wznowienie nie grałoby od miejsca zatrzymania (LEK-3)
+    function wznowAudio() {
+      var A = P.audio;
+      if (!A || A.ctx.state === 'closed') return;
+      A.wznawia = performance.now();
+      A.ctx.resume().then(function () { if (P.audio === A) A.wznawia = 0; }, function () { if (P.audio === A) A.wznawia = 0; });
+    }
+    // zegar filmu: AudioContext, gdy gra; wstrzymany kontekst (blokada autoplay, przerwanie) → zegar klatek
+    function krokZegara(r, dt) {
+      var A = P.audio;
+      if (!A) { P.t += Math.min(dt, 0.1); return 'klatki'; }
+      if (A.ctx.state === 'running') {
+        if (!A.zakotwiczony) { A.lek.kotwicz(P.t); A.zakotwiczony = true; }
+        var z = A.lek.zegar();
+        if (z !== null) P.t = z;
+        return 'audio';
+      }
+      var teraz = performance.now();
+      if (A.wznawia && teraz - A.wznawia < 3000) return 'czeka';
+      if (teraz - A.wznowiono > 1000) { A.wznowiono = teraz; A.ctx.resume().then(null, function () { /* blokada */ }); }
+      A.zakotwiczony = false;
+      P.t += Math.min(dt, 0.1);
+      return 'klatki';
     }
 
     /* ---------- sterowanie seansem ---------- */
-    function ustawRozdzial(i, t) {
+    // ciagle = naturalny koniec rozdziału (zegar dźwięku przesuwa się bez przerwy); inaczej skok = nowa kotwica
+    function ustawRozdzial(i, t, ciagle) {
       if (!P.plan) return;
+      var poprz = P.plan[P.ri];
       P.ri = Math.max(0, Math.min(P.plan.length - 1, i));
       P.t = Math.max(0, Math.min(P.plan[P.ri].czas - 1e-3, t || 0));
       P.koniec = false; P.brudny = true;
       if (ui) ui.kartaKoniec.hidden = true;
       P.stan.etykiety = null;
+      P.akcenty = root.GeologiaDzwiek ? root.GeologiaDzwiek.akcenty(P.plan[P.ri]) : [];
+      P.tAkcentu = P.t;
+      if (P.audio) {
+        if (ciagle && P.audio.zakotwiczony) P.audio.lek.przesun(poprz.czas);
+        // skok (←/→, pasek, znacznik — także z pauzy): wersy starego miejsca milkną od razu, nie po zdekodowaniu nowych
+        // (recenzja 9a I-4); nowa kotwica przychodzi po czekaniu na nagrania
+        else { P.audio.lek.zatrzymaj(); P.audio.zakotwiczony = false; }
+        przygotujLektora(P.ri, !ciagle);
+      }
       zapewnijGlob(P.ri);
       c.zmianaRozdzialu(P.plan[P.ri].id);
     }
     function grajDalej() {
       if (smoke) return;
+      if (P.dzwiek && !P.audio && zapewnijAudio()) przygotujLektora(P.ri, true);
+      if (P.audio) { P.audio.zakotwiczony = false; wznowAudio(); }
       P.gra = true; P.pauza = false;
       if (ui) ui.kartaStart.hidden = true;
       P.karta = false;
@@ -276,9 +428,18 @@
     function pauza(wl) {
       if (!P.gotowy || P.karta || P.koniec || smoke) return;
       P.pauza = wl == null ? !P.pauza : !!wl;
+      // pauza = ctx.suspend(): czas kontekstu stoi, więc wznowienie gra dźwięk i obraz od miejsca zatrzymania (LEK-3)
+      if (P.audio) { if (P.pauza) { P.audio.wznawia = 0; P.audio.lek.pauza(); } else wznowAudio(); }
       odswiezGuziki();
       if (cisza) cisza.wstrzymaj(P.pauza);
     }
+    // karta w tle: film i dźwięk stają, po powrocie grają od miejsca zatrzymania (spec R6)
+    function widocznosc() {
+      if (!P.aktywny || smoke) return;
+      if (doc.hidden) { if (P.gra && !P.pauza && !P.karta && !P.koniec) { P.autoPauza = true; pauza(true); } }
+      else if (P.autoPauza) { P.autoPauza = false; pauza(false); }
+    }
+    doc.addEventListener('visibilitychange', widocznosc);
     function krokRozdzialu(d) {
       if (!P.gotowy) return;
       var i = P.ri + d;
@@ -291,18 +452,33 @@
       for (var i = P.plan.length - 1; i >= 0; i--) if (s >= P.starty[i]) { ustawRozdzial(i, s - P.starty[i]); break; }
       if (!P.karta) grajDalej();
     }
-    function ustawDzwiek(wl) { P.dzwiek = !!wl; odswiezGuziki(); }
-    // Czy film ma lektora: jedno źródło — plan rozdziałów (Rozdzialy.plan → rozdzial.lektor, z czasów nagrań). Do Task 9
-    // nagrań nie ma (czasy: null), więc nic nie obiecuje dźwięku: start „Odtwórz” z dopiskiem, bez wyboru „bez dźwięku”,
-    // bez przycisku „Dźwięk” i klawisza M. Gdy nagrania dojdą, wszystko wraca samo.
+    // M i przycisk „Dźwięk” wyciszają lektora i podkład razem; włączenie to gest — tu powstaje AudioContext, gdy go nie było
+    function ustawDzwiek(wl) {
+      P.dzwiek = !!wl;
+      if (P.dzwiek && !P.audio && P.gra && zapewnijAudio()) przygotujLektora(P.ri, true);
+      if (P.audio) { P.audio.lek.cisza(!P.dzwiek); if (P.audio.dz) P.audio.dz.cisza(!P.dzwiek); }
+      odswiezGuziki();
+    }
+    // Czy film ma lektora: jedno źródło — plan rozdziałów (Rozdzialy.plan → rozdzial.lektor, z czasów aktualnych nagrań
+    // z czasy.json, który przychodzi tylko z zaproszeniem albo lokalnie). Bez nagrań przycisk nie obiecuje lektora:
+    // „Odtwórz” + dopisek „lektor na zaproszenie” (bez tokenu, 403, wygasłe) albo „lektor w przygotowaniu” (404, nieaktualne).
+    // Podkład gra dla wszystkich, więc „bez dźwięku”, przycisk „Dźwięk” i M są zawsze (ruling 9-2, 9-4).
     function maLektora() { return !!(P.plan && P.plan.some(function (r) { return r.lektor; })); }
+    // host bez lektora (voyager i inne, decyzja właściciela: lektor tylko na kodownik.co) → bez dopisku: strona dla całego
+    // świata nie obiecuje zaproszenia do klonu głosu, którego tam nie da się odtworzyć
+    function dopisekLektora() {
+      return P.powodBezLektora === 'host' ? null : P.powodBezLektora === 'przygotowanie' ? 'lektor w przygotowaniu' : 'lektor na zaproszenie';
+    }
     function odswiezLektora() {
-      var l = maLektora();
+      var l = maLektora(), d = dopisekLektora();
       ui.bStartGlos.textContent = l ? 'Odtwórz z lektorem' : 'Odtwórz';
-      ui.bStartGlos.title = l ? 'Film z lektorem i dźwiękiem' : 'Odtwórz film z napisami (lektor w przygotowaniu)';
-      ui.bStartCisza.hidden = !l;
-      ui.kartaStartDopisek.hidden = l;
-      ui.bDzwiek.hidden = !l;
+      ui.bStartGlos.title = l ? 'Film z lektorem i dźwiękiem' : 'Odtwórz film z napisami i podkładem dźwiękowym' + (d ? ' (' + d + ')' : '');
+      ui.bStartCisza.hidden = false;
+      if (ui.kartaStartDopisek.textContent !== (d || '')) ui.kartaStartDopisek.textContent = d || '';
+      ui.kartaStartDopisek.hidden = l || !d;
+      ui.bDzwiek.hidden = false;
+      // jedna ikona „bez lektora” (spec „Lektor”): nagrania obiecane planem, a odtwarzanie ich nie ma (błąd, blokada)
+      ui.bezLektora.hidden = !(l && P.dzwiek && P.audio && stanLektora() === 'brak');
     }
     function odswiezGuziki() {
       if (!ui) return;
@@ -314,6 +490,7 @@
     }
     function pokazKoniec() {
       P.koniec = true; P.gra = false;
+      if (P.audio) P.audio.lek.pauza();
       ui.kartaKoniecTytul.textContent = c.nazwaMiejsca(P.miejsce) + ' — koniec';
       ui.kartaKoniec.hidden = false;
       if (cisza) cisza.wstrzymaj(true);
@@ -324,7 +501,7 @@
       if (k === ' ') { if (P.karta) start(P.dzwiek); else pauza(); return true; }
       if (k === 'ArrowRight') { krokRozdzialu(1); return true; }
       if (k === 'ArrowLeft') { krokRozdzialu(-1); return true; }
-      if ((k === 'm' || k === 'M') && maLektora()) { ustawDzwiek(!P.dzwiek); return true; }
+      if (k === 'm' || k === 'M') { ustawDzwiek(!P.dzwiek); return true; }
       return false;
     }
 
@@ -732,20 +909,35 @@
       if (smoke && !P.brudny) return true;
       P.brudny = false;
       var r = P.plan[P.ri];
-      if (P.gra && !P.pauza && !P.koniec && !P.karta && !smoke) {
-        P.t += Math.min(dt, 0.1);
+      if (P.gra && !P.pauza && !P.koniec && !P.karta && !smoke && !P.czeka) {
+        P.zegar = krokZegara(r, dt);
         if (P.t >= r.czas) {
-          if (P.ri < P.plan.length - 1) { ustawRozdzial(P.ri + 1, P.t - r.czas); P.gra = true; r = P.plan[P.ri]; }
+          if (P.ri < P.plan.length - 1) { ustawRozdzial(P.ri + 1, P.t - r.czas, true); P.gra = true; r = P.plan[P.ri]; }
           else { P.t = r.czas - 1e-3; pokazKoniec(); }
         }
+        if (P.audio && P.gra) P.audio.lek.planuj(r.wersy, 2.5);
       }
       var o = zastosuj(r, P.t);
+      if (P.audio && P.audio.dz) podklad(r, o);
       // rozdział z kulą, która jeszcze się wczytuje (przeskok wstecz): czerń zamiast płaskiej sceny w miejscu globu
       if (potrzebaGlobu(r) && !P.sc.globGotowy()) { o.zaslona = [0, 0, 0, 1]; P.brudny = true; }
       P.ostatnie = { glob: o.glob, zaslona: o.zaslona };
       P.sc.kadr(P.ostatnie);
       nakladki(r, P.t, o);
       return true;
+    }
+    // podkład (geologia/dzwiek.js): poziomy warstw z ujęcia i wysokości kamery, akcenty w oddechach (odpalane w klatce,
+    // w której zegar je mija — opóźnienie ≤ 1 klatka)
+    function podklad(r, o) {
+      var u = o.u, f = (P.t - u.od) / Math.max(1e-6, u.do - u.od), A = P.audio;
+      var lv = root.GeologiaDzwiek.poziomy(u, f, { wys_km: P.poza ? P.poza.pozR[1] : undefined });
+      if (!P.gra || P.pauza || P.koniec) lv = { wiatr: 0, morze: 0, pomruk: 0, ton: 0 };
+      A.dz.ustaw(lv);
+      var t0 = P.tAkcentu == null ? P.t : P.tAkcentu;
+      if (P.gra && !P.pauza && P.t > t0 && P.t - t0 < 0.5) {
+        P.akcenty.forEach(function (a) { if (a.t > t0 && a.t <= P.t) A.dz.akcent(a.co, A.ctx.currentTime); });
+      }
+      P.tAkcentu = P.t;
     }
     // kadr kinowy z całego kontenera (R1): canvas = prostokąt kadru, pasy = tło kontenera; nakładki filmu w kadrze
     function dopasuj(w, h) {
@@ -857,6 +1049,9 @@
       var r = P.plan && P.plan[P.ri], ch = r ? R.chwila(r, P.t) : null;
       return { rozdzial: r ? r.id : null, ujecie: ch ? ch.ujecie : null, t: r ? P.t / r.czas : 0, czas_s: P.t, czasRozdzialu_s: r ? r.czas : null,
         gra: P.gra && !P.pauza, pauza: P.pauza, koniec: P.koniec, karta: P.karta ? 'odtworz' : P.koniec ? 'koniec' : null, dzwiek: P.dzwiek, lektor: maLektora(),
+        lektorStan: stanLektora(), bezLektora: maLektora() ? null : dopisekLektora(), zegar: P.audio && P.audio.ctx.state === 'running' && P.audio.zakotwiczony ? 'audio' : 'klatki',
+        audio: P.audio ? { ctx: P.audio.ctx.state, czas: P.audio.ctx.currentTime, zrodla: P.audio.lek.zrodla(), zdekodowane: P.audio.lek.zdekodowane(),
+          podklad: !!P.audio.dz } : null,
         kadr: P.kadr ? { x: P.kadr.x, y: P.kadr.y, w: P.kadr.w, h: P.kadr.h, tryb: P.kadr.tryb } : null,
         glob: P.ostatnie ? P.ostatnie.glob : 0, zaslona: P.ostatnie && P.ostatnie.zaslona ? P.ostatnie.zaslona[3] : 0, napis: P.napis || '' };
     }
@@ -864,6 +1059,7 @@
     return {
       wejdz: wejdz, wyjdz: wyjdz, klatka: klatka, dopasuj: dopasuj, klawisz: klawisz, pomiar: pomiar, skok: skok, stan: stan,
       gotowy: function () { return P.gotowy && P.aktywny; },
+      audio: function () { return P.audio ? 1 : 0; },
       plan: function () { return P.plan; },
       scena: function () { return P.sc; }
     };

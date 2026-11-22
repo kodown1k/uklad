@@ -243,7 +243,10 @@
   width: max-content; max-width: min(92vw, 560px); padding: 18px 22px; text-align: center; }
 .ge-film-karta-tytul { margin: 0; font-size: 15px; letter-spacing: .14em; text-transform: uppercase; }
 .ge-film-karta-guziki { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-.ge-film-karta-dopisek { margin: -4px 0 0; font-size: 12px; letter-spacing: .06em; color: var(--ge-atrament-2); }   /* „lektor w przygotowaniu” (do Task 9) */
+.ge-film-karta-dopisek { margin: -4px 0 0; font-size: 12px; letter-spacing: .06em; color: var(--ge-atrament-2); }   /* „lektor na zaproszenie” / „w przygotowaniu” (ruling 9-4) */
+/* ikona „bez lektora” (spec „Lektor”): nagrania obiecane planem, a odtwarzanie ich nie ma — obok przycisku „Dźwięk” */
+.ge-bez-lektora { align-self: center; padding: 2px 6px; border: 1px solid var(--ge-atrament-2); border-radius: 3px; font-size: 11px;
+  letter-spacing: .06em; color: var(--ge-atrament-2); white-space: nowrap; }
 .ge-guzik-glowny { color: #0b0e12; background: var(--ge-akcent); border-color: var(--ge-akcent); }
 .ge-do-makiety { margin-left: auto; }
 .ge-do-makiety:not([hidden]) + .ge-podmenu { margin-left: 0; }     /* w makiecie (przycisk ukryty) podmenu zostaje z prawej (7b) */

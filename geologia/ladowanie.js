@@ -5,6 +5,8 @@
    parsujZapytanieGeologii.
 
    Adresy:  #geologia | #geologia=<miejsce>[&rozdzial=<id>][&tryb=pokaz|makieta[&warstwa=<lista>]] → {miejsce, tryb, rozdzial[, warstwa]}
+            (+ `&zaproszenie=<expires>.<md5>` i `&lektor=<baza>|lokalny` w każdym trybie → pola `zaproszenie`, `lektor` — Task 9,
+            ruling 9-2: link-zaproszenie do lektora; strona zapamiętuje je w sessionStorage i wycina z paska adresu)
             (domyślnie pokaz, rozdział `polozenie`; makieta = bez rozdziału; `warstwa` tylko w makiecie: lista po przecinku
             z WARSTWY — `turystyka`, `wulkany`, `turystyka,wulkany`; nieznane pozycje odrzucane, kolejność jak WARSTWY, bez powtórzeń;
             pusta po odrzuceniu → bez pola);
@@ -18,7 +20,15 @@
             `&czas` = chwila geologiczna [mln lat] w makiecie; `&anim` + `&f` = animacja A1–A5 w kadrze ujęcia (f przycięte do 0..1, bez f → 1);
             `&przesuniecie` = linia przekroju przesunięta o km od Teide;
             `&geologiczna` = makieta w barwach jednostek; `&jakosc=pelna` = bez przejścia na lżejszą jakość przy niskim fps (G-L).
+            `&lektor=lokalny` (tylko na localhost) = nagrania lektora z repo (geologia/<miejsce>/lektor/) bez tokenu — smoke i sonda.
             Hash i hak działają też bez ?geologia.
+   Lektor (ruling 9-1, 9-2): nagrania (klon głosu) nigdy nie są publiczne. zrodloLektora({ miejsce, zaproszenie, lektor, host,
+            teraz_s }) → { baza, zapytanie, powod } — baza katalogu nagrań i zapytanie z tokenem nginx secure_link
+            (`?md5=<md5>&expires=<expires>`, jeden token na cały katalog); bez tokenu / po wygaśnięciu baza = null i powod
+            'zaproszenie' / 'wygaslo' (pokaz: „Odtwórz” + „lektor na zaproszenie”, podkład gra). Domyślna baza zaproszenia
+            BAZA_LEKTORA + <miejsce>/ (względem strony: kodownik.co/uklad/lektor/teneryfa/ — katalog poza webrootem, Task 9b);
+            tylko na hoście kodownik.co (na innych: baza null, powod 'host', zero żądań z tokenem; localhost — tylko hak
+            `&lektor=lokalny`); `&lektor=<https://kodownik.co/…/>` podmienia bazę (tylko https i dokładnie kodownik.co).
    Krzywe (ruling G-C): mysliwce/kino.js nadpisuje window.Kino — dlatego krzywe filmów Układu zapamiętujemy raz,
    przy wczytaniu tego pliku (jest za korzeniowym kino.js), i nigdy więcej nie czytamy window.Kino. */
 (function (root) {
@@ -34,11 +44,41 @@
   // Kolejność leniwego ładowania: tylko pliki, które istnieją. Kolejne zadania dopisują swoje PRZED widok.js —
   // widok.js jest ostatni, bo korzysta z reszty. Pliki konkretnego miejsca: GeologiaMiejsca.MIEJSCA[].pliki.
   var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/ewolucja.js', 'geologia/scena.js', 'geologia/gwiazdy.js', 'geologia/animacje.js',
-    'geologia/rozdzialy.js', 'geologia/turystyka-scena.js', 'geologia/wulkany-scena.js', 'geologia/pokaz.js', 'geologia/widok.js'];
+    'geologia/rozdzialy.js', 'geologia/turystyka-scena.js', 'geologia/wulkany-scena.js', 'geologia/lektor.js', 'geologia/dzwiek.js',
+    'geologia/pokaz.js', 'geologia/widok.js'];
   var KONTROLE = ['biel', 'czern'];
   var ANIMACJE = ['a1', 'a2', 'a3', 'a4', 'a5'];
   var WARSTWY = ['turystyka', 'wulkany'];
   var WIDOKI = ['poludnie', 'polnoc', 'gora'];    // ta sama lista co Kompas.WIDOKI (geologia/turystyka-scena.js)
+  // Lektor na zaproszenie (Task 9): token nginx secure_link = <expires: unix s>.<md5: base64url 22 zn.>
+  var ZAPROSZENIE = /^(\d{9,11})\.([A-Za-z0-9_-]{22})$/;
+  var BAZA_LEKTORA = 'lektor/';
+  // Decyzja właściciela (recenzja 9a I-3): lektor TYLKO na kodownik.co — voyager.kodownik.co (GitHub Pages, cały świat) i każdy
+  // inny host bez lektora, bez CORS i bez żadnego żądania z tokenem (token nie wychodzi do innej domeny).
+  var HOST_LEKTORA = 'kodownik.co';
+  var HOSTY_LOKALNE = ['localhost', '127.0.0.1', '[::1]', '::1'];
+  function lokalny(host) { return HOSTY_LOKALNE.indexOf(host) >= 0; }
+  function bazaLektora(v) {
+    if (typeof v !== 'string') return null;
+    if (v === 'lokalny') return v;
+    var m = /^https:\/\/([a-z0-9.-]+)(\/[A-Za-z0-9._~\/-]*)?$/.exec(v);
+    if (!m || m[1] !== HOST_LEKTORA) return null;
+    var b = v; if (b.charAt(b.length - 1) !== '/') b += '/';
+    return b;
+  }
+  function zrodloLektora(o) {
+    o = o || {};
+    var miejsce = o.miejsce || MIEJSCA_ID[0];
+    if (o.lektor === 'lokalny' && lokalny(o.host)) return { baza: 'geologia/' + miejsce + '/lektor/', zapytanie: '', powod: null };
+    // host bez lektora: powod 'host' — pokaz nie dopisuje „lektor na zaproszenie” (strona dla całego świata nie reklamuje
+    // klonu głosu, którego tam i tak nie da się odtworzyć); localhost bez haka zachowuje się jak kodownik.co bez tokenu
+    if (o.host !== HOST_LEKTORA) return { baza: null, zapytanie: '', powod: lokalny(o.host) ? 'zaproszenie' : 'host' };
+    var z = typeof o.zaproszenie === 'string' ? ZAPROSZENIE.exec(o.zaproszenie) : null;
+    if (!z) return { baza: null, zapytanie: '', powod: 'zaproszenie' };
+    if (isFinite(o.teraz_s) && +z[1] < o.teraz_s) return { baza: null, zapytanie: '', powod: 'wygaslo' };
+    var b = bazaLektora(o.lektor);
+    return { baza: (b && b !== 'lokalny' ? b : BAZA_LEKTORA) + miejsce + '/', zapytanie: '?md5=' + z[2] + '&expires=' + z[1], powod: null };
+  }
 
   function dekoduj(s) { try { return decodeURIComponent(s); } catch (_) { return s; } }
   function czyRozdzial(id) { return ROZDZIALY.some(function (r) { return r.id === id; }); }
@@ -69,6 +109,9 @@
       if (lw) wynik.warstwa = lw;
     } else if (r && czyRozdzial(r[1])) wynik.rozdzial = r[1];
     if (nieznane) wynik.nieznane = nieznane;
+    var zp = /&zaproszenie=([^&]*)/.exec(reszta), lk = /&lektor=([^&]*)/.exec(reszta);
+    if (zp && ZAPROSZENIE.test(dekoduj(zp[1]))) wynik.zaproszenie = dekoduj(zp[1]);
+    if (lk && bazaLektora(dekoduj(lk[1]))) wynik.lektor = bazaLektora(dekoduj(lk[1]));
     return wynik;
   }
 
@@ -90,12 +133,14 @@
       anim: ANIMACJE.indexOf(an) >= 0 ? an : null,
       f: ANIMACJE.indexOf(an) >= 0 ? (f === null ? 1 : Math.max(0, Math.min(1, f))) : null,
       warstwa: warstwy(wa),
-      widok: WIDOKI.indexOf(wi) >= 0 ? wi : null
+      widok: WIDOKI.indexOf(wi) >= 0 ? wi : null,
+      lektor: wart('lektor') === 'lokalny' ? 'lokalny' : null
     };
   }
 
   var api = { MIEJSCA_ID: MIEJSCA_ID, TRYBY: TRYBY, ROZDZIALY: ROZDZIALY, PLIKI: PLIKI, ANIMACJE: ANIMACJE, WARSTWY: WARSTWY, WIDOKI: WIDOKI,
-    parsujHashGeologii: parsujHashGeologii, parsujZapytanieGeologii: parsujZapytanieGeologii, warstwy: warstwy, krzywe: null };
+    BAZA_LEKTORA: BAZA_LEKTORA, HOST_LEKTORA: HOST_LEKTORA, parsujHashGeologii: parsujHashGeologii, parsujZapytanieGeologii: parsujZapytanieGeologii, warstwy: warstwy,
+    zrodloLektora: zrodloLektora, krzywe: null };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
   api.krzywe = root.Kino || null;              // G-C: jedyny odczyt window.Kino — przy wczytaniu
   root.GeologiaLadowanie = api;
@@ -106,6 +151,38 @@
   var ladowanie = null, miejscaZaladowane = {};
   if (!korzen || !root.Zakladki) { console.error('Geologia: brak #geologia albo zakladki.js — zakładka nieaktywna'); return; }
   if (przycisk && zap.widoczna) przycisk.hidden = false;
+
+  // Zaproszenie do lektora (ruling 9-2): token z linku → sessionStorage (tylko na czas karty), wycięty z paska adresu
+  // od razu po odczycie (zrzut ekranu ani skopiowany adres go nie niosą); widok i tak przepisuje hash po otwarciu.
+  var KLUCZ_ZAPROSZENIA = 'geologia-lektor';
+  function zapamietajZaproszenie(s) {
+    if (!s || (!s.zaproszenie && !s.lektor)) return;
+    // nowy link nadpisuje tylko to, co niesie (sama baza nie kasuje zapamiętanego tokenu)
+    // token zapamiętywany tylko na hoście lektora, hak `lokalny` tylko na localhost (recenzja 9a I-3, M-5) — poza nimi
+    // tylko wycięcie z paska adresu
+    var host = root.location.hostname, stare = zapamietane();
+    var nowy = { zaproszenie: host === HOST_LEKTORA && s.zaproszenie ? s.zaproszenie : stare.zaproszenie || null,
+      lektor: s.lektor && (s.lektor !== 'lokalny' || lokalny(host)) ? s.lektor : stare.lektor || null };
+    if (nowy.zaproszenie !== (stare.zaproszenie || null) || nowy.lektor !== (stare.lektor || null)) {
+      pamiec = nowy;
+      try { root.sessionStorage.setItem(KLUCZ_ZAPROSZENIA, JSON.stringify(pamiec)); } catch (_) { /* tryb prywatny */ }
+    }
+    var h = root.location.hash, czysty = h.replace(/&(zaproszenie|lektor)=[^&]*/g, '');
+    if (czysty !== h) { try { root.history.replaceState(null, '', root.location.pathname + root.location.search + czysty); } catch (_) { /* file:// */ } }
+  }
+  var pamiec = null;
+  function zapamietane() {
+    var z = pamiec;
+    if (!z) { try { z = JSON.parse(root.sessionStorage.getItem(KLUCZ_ZAPROSZENIA) || 'null'); } catch (_) { z = null; } }
+    return z || {};
+  }
+  function zrodloLektoraStrony(miejsce) {
+    var z = zapamietane();
+    return zrodloLektora({ miejsce: miejsce, zaproszenie: z.zaproszenie, lektor: zap.lektor || z.lektor, host: root.location.hostname,
+      teraz_s: Date.now() / 1000 });
+  }
+  api.zrodloLektoraStrony = zrodloLektoraStrony;
+  api.zapamietaneZaproszenie = zapamietane;   // hak sondy
 
   // Pasek nakładki istnieje od pierwszego `przelacz` (rejestr przenosi do niego #zakladki przed `otworz`).
   function pasek() {
@@ -151,6 +228,7 @@
 
   function otworz(stan) {
     var s = stan || parsujHashGeologii('#geologia');
+    zapamietajZaproszenie(s);
     korzen.hidden = false;
     if (przycisk) przycisk.hidden = false;
     pasek();
