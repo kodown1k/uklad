@@ -29,11 +29,22 @@
   var D = (typeof module !== 'undefined' && module.exports) ? require('./dane.js') : root.MysliwceDane;
   var IDS = D.MYSLIWCE.map(function (m) { return m.id; });
   var PROMIEN = 74, SKOS = 0.4, ODSTEP = 4;
-  var KAMERA = { wys: 21, cel: 0.5, fov: 34 };
+  // Kamera hangaru (recenzja kinowa r1, Ś1–Ś2; wariant H1 przyjęty przez właściciela 2026-11-21 — zmiana tylko tutaj):
+  //   wys, cel [m] — oko i wysokość punktu patrzenia na łuku: nisko (9 m zamiast 21 m) skraca pustą posadzkę (było ~45%
+  //   kadru) i wydłuża odbicia; fov [°] pionowy (pion telefonu: × do 1,9 w rozmiar());
+  //   katMaks [rad] — dolna granica przycięcia kąta kamery: kąt przycięty do ±max(katMaks, połowa łuku − 0,3 pola
+  //   poziomego) (rozmiar()): skrajna maszyna nie ląduje w środku pustego kadru, a stałe ±0,70 z recepty wypychało F-22A
+  //   za lewą krawędź na 16:9 (przycięcie 0,754 na 3440×1440, 0,83 na 16:9, 0,95 w pionie telefonu);
+  //   k [1/s²], vMaks [rad/s], aMaks [rad/s²] — obrót do fokusu z tłumieniem krytycznym i stanem prędkości (dojście
+  //   wykładnicze skakało w pierwszej klatce do 150–300°/s), sufit prędkości 80°/s i przyspieszenia ~345°/s².
+  var KAMERA = { wys: 9, cel: 3, fov: 30, katMaks: 0.70, k: 8, vMaks: 1.4, aMaks: 6.0 };
+  // tabliczki: płótno TAB [px], TAB_SZER [m] szerokość sprite'a w świecie, TAB_MIN_PX — próg wiersza kraju (niżej)
+  var TAB = { w: 640, h: 200 }, TAB_SZER = 12.5, TAB_MIN_PX = 11;
   var SUFIT = 26;                            // [m] wysokość lamp reflektorów
   var PRZEZROCZ_POSADZKI = 0.72, KOLOR_POSADZKI = 0x8a8d92;   // krycie żywicy nad odbiciem (1 − siła lustra)
   var SCIANA = { r: 165, wys: 46 };
   var PRZELOT_S = 1.8;
+  var SWIATLO_FOKUSU = 1.1;                  // reflektor punktowy nad maszyną w fokusie (1,7 — makieta o połowę jaśniejsza niż w pokazie)
   var KOLORY_KRAJOW = { USA: '#6fa3d6', Rosja: '#d98aa0', Chiny: '#d2ae52' };   // zapas, gdy CSS nie podaje zmiennych
 
   /* ---------- czyste ---------- */
@@ -86,6 +97,21 @@
       return { id: m.id, poz: p.poz, obrot: p.obrot, kat: k };
     });
   }
+  // Mnożnik szerokości tabliczki: większa na wąskim ekranie (clamp(1; 1,45 / proporcja; 1,9)), ale z sufitem z rozstawu
+  // sąsiadów — tabliczka (z uniesieniem fokusu ×1,08) ≤ 0,92 rozstawu, więc sąsiednie się nie nakładają (bez sufitu w pionie
+  // telefonu 225 px przy rozstawie ~200 px; recenzja kinowa r2, Ś-A). Kamera stoi w środku łuku, więc rozstaw na ekranie
+  // względem szerokości tabliczki jest najciaśniejszy w osi kadru: wystarczy cięciwa najbliższej pary [m].
+  // proporcja = szer./wys. kadru, rozstaw [m] = najmniejsza cięciwa między sąsiadami na łuku.
+  function mnoznikTabliczki(proporcja, rozstaw) {
+    var m = Math.max(1, Math.min(1.9, 1.45 / proporcja));
+    return rozstaw > 0 ? Math.min(m, 0.92 * rozstaw / TAB_SZER) : m;
+  }
+  // Najmniejsza cięciwa między sąsiadami ustawienia (ustawienie(): kąty rosnące) [m].
+  function rozstawLuku(uklad, promien) {
+    var r = promien || PROMIEN, k = uklad.map(function (u) { return u.kat; }).sort(function (a, b) { return a - b; }), min = Infinity;
+    for (var i = 1; i < k.length; i++) min = Math.min(min, 2 * r * Math.sin((k[i] - k[i - 1]) / 2));
+    return min;
+  }
   function nastepny(id, kierunek) {
     var i = IDS.indexOf(id), n = IDS.length;
     if (i < 0) return IDS[Math.floor(n / 2)];
@@ -94,7 +120,8 @@
 
   /* Jakość obrazu lekka/pełna (decyzja widoku, pomiar fps co sekundę). Stan: { jakosc (bieżąca), poza (wywalczona poza
      hangarem — pokaz i makieta), slabe, mocne [s], powrot (bieżąca pełna w hangarze to powrót z lekkiej), bezPowrotu }.
-     - fps < 30 przez 2 s przy pełnej → lekka; poza hangarem także `poza` = lekka (pokaz/makieta pamiętają ją na sesję);
+     - fps < 30 przez 2 s przy pełnej → lekka i `poza` = lekka (pokaz/makieta pamiętają ją na sesję) — także spadek
+       w samym hangarze: to lżejsza scena, więc skoro nie utrzymał pełnej, pokaz i makieta też nie utrzymają;
      - w hangarze lekka + ≥ 50 fps przez 5 s → pełna (powrot); spadek pełnej wywalczonej powrotem → bezPowrotu na sesję
        (bez huśtawki, bez okna czasowego);
      - wejście w pokaz/makietę → jakość `poza` (pełna z hangaru nie przechodzi na cięższą scenę);
@@ -107,7 +134,7 @@
     if (s.slabe >= 2 && s.jakosc === 'pelna') {
       s.jakosc = 'lekka'; s.slabe = 0;
       if (hangar && s.powrot) s.bezPowrotu = true;
-      if (!hangar) s.poza = 'lekka';
+      s.poza = 'lekka';
       s.powrot = false;
     } else if (s.mocne >= 5 && s.jakosc === 'lekka' && hangar && !s.bezPowrotu) {
       s.jakosc = 'pelna'; s.powrot = true; s.mocne = 0;
@@ -121,7 +148,8 @@
     return { stan: s, jakosc: s.jakosc };
   }
 
-  var api = { IDS: IDS, PROMIEN: PROMIEN, SKOS: SKOS, ustawienie: ustawienie, nastepny: nastepny,
+  var api = { IDS: IDS, PROMIEN: PROMIEN, SKOS: SKOS, TAB_SZER: TAB_SZER, ustawienie: ustawienie, nastepny: nastepny,
+    mnoznikTabliczki: mnoznikTabliczki, rozstawLuku: rozstawLuku,
     jakoscPoczatek: jakoscPoczatek, krokJakosci: krokJakosci, wejscieJakosci: wejscieJakosci };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
 
@@ -180,8 +208,9 @@
     return v || KOLORY_KRAJOW[kraj] || '#cfd6dd';
   }
   // Tabliczka: kraj (kolor państwa) · generacja nad nazwą; pasek koloru kraju z lewej; niesfotografowane — ramka przerywana.
-  var TAB = { w: 640, h: 200 }, TAB_SZER = 12.5;   // TAB_SZER [m] — szerokość sprite'a w świecie
-  function rysujTabliczke(c, m) {
+  // Szerokość tabliczki: TAB_SZER × mnoznikTabliczki (proporcja ekranu z sufitem z rozstawu sąsiadów); gdy wiersz
+  // „kraj · generacja” wyszedłby mniejszy niż TAB_MIN_PX, tabliczka jednowierszowa (sama nazwa, kraj — kolorem paska)
+  function rysujTabliczke(c, m, jednowierszowa) {
     var x = c.getContext('2d'), W = TAB.w, H = TAB.h, kol = kolorKraju(m.kraj);
     x.clearRect(0, 0, W, H);
     x.fillStyle = 'rgba(6,9,13,0.82)'; x.fillRect(4, 4, W - 8, H - 8);
@@ -190,15 +219,19 @@
     if (m.niesfotografowany) x.setLineDash([18, 12]);
     x.strokeRect(5.5, 5.5, W - 11, H - 11); x.setLineDash([]);
     x.textBaseline = 'alphabetic';
-    x.font = '600 34px "IBM Plex Mono", ui-monospace, monospace';
-    x.fillStyle = kol; x.fillText(m.kraj.toUpperCase(), 40, 62);
-    var wk = x.measureText(m.kraj.toUpperCase() + '  ').width;
-    x.fillStyle = 'rgba(210,220,230,0.8)'; x.fillText('· generacja ' + m.generacja, 40 + wk, 62);
-    x.font = '700 92px "Barlow Condensed", "Arial Narrow", sans-serif';
+    var yNazwy = 160;
+    if (jednowierszowa) yNazwy = 134;
+    else {
+      x.font = '600 34px "IBM Plex Mono", ui-monospace, monospace';
+      x.fillStyle = kol; x.fillText(m.kraj.toUpperCase(), 40, 62);
+      var wk = x.measureText(m.kraj.toUpperCase() + '  ').width;
+      x.fillStyle = 'rgba(210,220,230,0.8)'; x.fillText('· generacja ' + m.generacja, 40 + wk, 62);
+    }
+    x.font = (jednowierszowa ? '700 112px' : '700 92px') + ' "Barlow Condensed", "Arial Narrow", sans-serif';
     x.fillStyle = '#f2f5f8';
     var nazwa = m.nazwa.toUpperCase(), sz = x.measureText(nazwa).width, maks = W - 64;
-    if (sz > maks) { x.save(); x.translate(40, 160); x.scale(maks / sz, 1); x.fillText(nazwa, 0, 0); x.restore(); }
-    else x.fillText(nazwa, 40, 160);
+    if (sz > maks) { x.save(); x.translate(40, yNazwy); x.scale(maks / sz, 1); x.fillText(nazwa, 0, 0); x.restore(); }
+    else x.fillText(nazwa, 40, yNazwy);
   }
 
   /* ---------- przeglądarka: snop reflektora w mgle ---------- */
@@ -315,7 +348,7 @@
       var texTab = t(new T.CanvasTexture(c)); texTab.encoding = T.sRGBEncoding; texTab.anisotropy = 4;
       var matTab = m(new T.SpriteMaterial({ map: texTab, transparent: true, opacity: 0.78, fog: false, depthWrite: false }));
       var tab = new T.Sprite(matTab);
-      tab.scale.set(TAB_SZER, TAB_SZER * TAB.h / TAB.w, 1); tab.renderOrder = 4;
+      tab.scale.set(TAB_SZER, TAB_SZER * TAB.h / TAB.w, 1); tab.renderOrder = 4;   // skala ostateczna: zastosujSwiatla (× tabMn)
       var tabY = Math.max(wys, 4.6) + 3.6;
       tab.position.set(u.poz[0], tabY, u.poz[2]);
       grupa.add(tab);
@@ -339,7 +372,7 @@
       if (document.fonts && document.fonts.load) {
         Promise.all([document.fonts.load('700 92px "Barlow Condensed"'), document.fonts.load('600 34px "IBM Plex Mono"')]).then(function () {
           if (zwolniony) return;
-          stanowiska.forEach(function (s) { rysujTabliczke(s.plotno, s.dane); s.texTab.needsUpdate = true; });
+          stanowiska.forEach(function (s) { rysujTabliczke(s.plotno, s.dane, tabJedno); s.texTab.needsUpdate = true; });
         }, function () { /* zostają kroje zapasowe */ });
       }
     } catch (_) { /* brak FontFaceSet */ }
@@ -347,7 +380,10 @@
     /* ---------- kamera ---------- */
     var kamera = new T.PerspectiveCamera(KAMERA.fov, 16 / 9, 0.5, 700);
     var hoverId = null, fokusId = poId[ctx.fokus] ? ctx.fokus : null, lot = null, tOst = null;
-    var kat = { biez: fokusId ? poId[fokusId].u.kat : 0 };
+    var polLuku = Math.max.apply(null, uklad.map(function (u) { return Math.abs(u.kat); })), katMaks = KAMERA.katMaks;
+    var tabMn = 1, tabJedno = false, rozstaw = rozstawLuku(uklad), ekran = { w: 0, h: 0 }, wekT = new T.Vector3(), wekR = new T.Vector3();
+    function celKata(id) { var k = id && poId[id] ? poId[id].u.kat : 0; return Math.max(-katMaks, Math.min(katMaks, k)); }
+    var kat = { biez: celKata(fokusId), v: 0 };
     var wekP = new T.Vector3(), wekC = new T.Vector3();
     function pozaKamery(k, p, c) {
       p.set(0, KAMERA.wys, 0);
@@ -373,19 +409,51 @@
         x.plama.opacity = 0.16 + 0.22 * x.sila;
         x.matTab.opacity = (0.74 + 0.26 * x.sila) * zanik;
         x.tab.position.y = x.tabY + 1.1 * x.sila;
-        var sk = TAB_SZER * (1 + 0.08 * x.sila); x.tab.scale.set(sk, sk * TAB.h / TAB.w, 1);
+        var sk = TAB_SZER * tabMn * (1 + 0.08 * x.sila); x.tab.scale.set(sk, sk * TAB.h / TAB.w, 1);
       });
       s = poId[a];
       if (s) { punkt.position.set(s.u.poz[0], SUFIT, s.u.poz[2]); punkt.target.position.set(s.u.poz[0], 0, s.u.poz[2]); }
-      var celPkt = s ? 1.7 : 0;
+      var celPkt = s ? SWIATLO_FOKUSU : 0;
       punkt.intensity = dt == null ? celPkt : punkt.intensity + (celPkt - punkt.intensity) * Math.min(1, dt * 7);
     }
-    zastosujSwiatla();
+    // Układ tabliczek na ekranie: tabliczka w fokusie w całości w kadrze (≥ 8 px od krawędzi — skrajna maszyna w kadrze telefonu
+    // miała tabliczkę wystającą o 42 px), a sąsiednie odsuwane tak, żeby żadne dwie się nie nakładały (≥ 4 px odstępu).
+    // Przesunięcie przez kotwicę sprite'a (center.x), bez ruszania pozycji w świecie.
+    var ukl = [];                                   // robocza lista na klatkę; wpisy (x.uk) stałe — bez alokacji
+    stanowiska.forEach(function (x) { x.uk = { x: x, l0: 0, l: 0, szer: 0 }; });
+    var porownajL0 = function (p, q) { return p.l0 - q.l0; };
+    // zastosujSwiatla (skala, krycie) + układ z bieżącej pozy kamery — dla wołających po ustawieniu kamery
+    function odswiez(dt) { zastosujSwiatla(dt); ulozTabliczki(aktywny()); }
+    function ulozTabliczki(a) {
+      var i, j;
+      stanowiska.forEach(function (x) { x.tab.center.x = 0.5; });
+      if (!(ekran.w > 0)) return;
+      kamera.updateMatrixWorld();
+      wekR.setFromMatrixColumn(kamera.matrixWorld, 0);
+      ukl.length = 0;
+      stanowiska.forEach(function (x) {
+        wekT.copy(x.tab.position).project(kamera);
+        if (wekT.z > 1) return;
+        var xc = (wekT.x + 1) / 2 * ekran.w;
+        wekT.copy(wekR).multiplyScalar(x.tab.scale.x / 2).add(x.tab.position).project(kamera);
+        var pol = Math.abs((wekT.x + 1) / 2 * ekran.w - xc);
+        if (pol > 0) { var u = x.uk; u.l0 = u.l = xc - pol; u.szer = 2 * pol; ukl.push(u); }
+      });
+      ukl.sort(porownajL0);
+      var f = -1;
+      for (i = 0; i < ukl.length; i++) if (ukl[i].x.id === a) f = i;
+      if (f >= 0) { var t = ukl[f]; t.l = Math.max(8, Math.min(t.l, ekran.w - 8 - t.szer)); }
+      else f = 0;
+      for (i = f + 1; i < ukl.length; i++) ukl[i].l = Math.max(ukl[i].l0, ukl[i - 1].l + ukl[i - 1].szer + 4);
+      for (j = f - 1; j >= 0; j--) ukl[j].l = Math.min(ukl[j].l0, ukl[j + 1].l - 4 - ukl[j].szer);
+      ukl.forEach(function (u) { u.x.tab.center.x = 0.5 - (u.l - u.l0) / u.szer; });
+    }
+    odswiez();
 
     var h = {
       grupa: grupa, scena: scena, kamera: kamera,
-      hover: function (id) { hoverId = poId[id] ? id : null; if (smoke) zastosujSwiatla(); },
-      fokus: function (id) { fokusId = poId[id] ? id : null; postep = 0; if (smoke || !ruch) { kat.biez = fokusId ? poId[fokusId].u.kat : 0; pozaKamery(kat.biez, wekP, wekC); ustawKamere(wekP, wekC); zastosujSwiatla(); } },
+      hover: function (id) { hoverId = poId[id] ? id : null; if (smoke) odswiez(); },
+      fokus: function (id) { fokusId = poId[id] ? id : null; postep = 0; if (smoke || !ruch) { kat.biez = celKata(fokusId); kat.v = 0; pozaKamery(kat.biez, wekP, wekC); ustawKamere(wekP, wekC); odswiez(); } },
       // Przelot kamery do maszyny; Promise kończy się w ostatniej klatce przelotu (bez ruchu — od razu).
       wybierz: function (id) {
         var s = poId[id];
@@ -394,7 +462,7 @@
         fokusId = id;
         var p1 = new T.Vector3(), c1 = new T.Vector3();
         pozaBliska(s, p1, c1);
-        if (!ruch) { ustawKamere(p1, c1); zastosujSwiatla(); return Promise.resolve(id); }
+        if (!ruch) { ustawKamere(p1, c1); odswiez(); return Promise.resolve(id); }
         var c0 = new T.Vector3(); kamera.getWorldDirection(c0); c0.multiplyScalar(PROMIEN).add(kamera.position);
         lot = { id: id, u: 0, p0: kamera.position.clone(), c0: c0, p1: p1, c1: c1 };
         lot.obietnica = new Promise(function (ok) { lot.ok = ok; });
@@ -405,9 +473,9 @@
         var s = poId[id]; if (!s) return;
         fokusId = id;
         var p0 = new T.Vector3(), c0 = new T.Vector3(), p1 = new T.Vector3(), c1 = new T.Vector3();
-        pozaKamery(s.u.kat, p0, c0); pozaBliska(s, p1, c1);
+        pozaKamery(celKata(id), p0, c0); pozaBliska(s, p1, c1);
         krokPrzelotu({ p0: p0, c0: c0, p1: p1, c1: c1 }, u);
-        lot = null; postep = Math.max(0, Math.min(1, u)); zastosujSwiatla();
+        lot = null; postep = Math.max(0, Math.min(1, u)); odswiez();
       },
       trafienie: function (x, y) {
         ndc.set(x, y);
@@ -424,18 +492,39 @@
           lot.u = Math.min(1, lot.u + dt / PRZELOT_S);
           krokPrzelotu(lot, lot.u);
           postep = lot.u;
+          ulozTabliczki(aktywny());
           if (lot.u >= 1) { var l = lot; lot = null; postep = 0; l.ok(l.id); }
           return;
         }
         if (ruch) {
-          var cel = fokusId ? poId[fokusId].u.kat : 0;
-          kat.biez += (cel - kat.biez) * Math.min(1, dt * 2.4);
-          var oddech = Math.sin(czas * 0.23) * 0.004;     // ledwie widoczny dryf: hangar żyje
-          pozaKamery(kat.biez + oddech, wekP, wekC); ustawKamere(wekP, wekC);
+          // tłumienie krytyczne ze stanem prędkości: start i dojście bez skoku prędkości, sufit prędkości i przyspieszenia
+          var cel = celKata(fokusId), K = KAMERA, a = K.k * (cel - kat.biez) - 2 * Math.sqrt(K.k) * kat.v;
+          a = Math.max(-K.aMaks, Math.min(K.aMaks, a));
+          kat.v = Math.max(-K.vMaks, Math.min(K.vMaks, kat.v + a * dt));
+          kat.biez += kat.v * dt;
+          if (Math.abs(cel - kat.biez) < 1e-4 && Math.abs(kat.v) < 1e-3) { kat.biez = cel; kat.v = 0; }
+          // bez dryfu kamery w spoczynku: dryf przesuwał siatkę przez krawędź bryły widzenia, więc zestaw rysowanych siatek
+          // (i licznik geometrii GPU sondy) zależał od chwili
+          pozaKamery(kat.biez, wekP, wekC); ustawKamere(wekP, wekC);
         }
+        ulozTabliczki(aktywny());                 // po ruchu kamery: układ z pozy tej klatki
       },
       // ekran pionowy (telefon): szerszy kąt, żeby obok maszyny w fokusie było widać sąsiadów
-      rozmiar: function (w, hh) { kamera.aspect = w / hh; kamera.fov = KAMERA.fov * Math.max(1, Math.min(1.9, 1.45 / kamera.aspect)); kamera.updateProjectionMatrix(); },
+      // tabliczki większe na wąskim ekranie; jednowierszowe, gdy wiersz kraju wyszedłby < TAB_MIN_PX; przycięcie kąta kamery
+      rozmiar: function (w, hh) {
+        kamera.aspect = w / hh; kamera.fov = KAMERA.fov * Math.max(1, Math.min(1.9, 1.45 / kamera.aspect)); kamera.updateProjectionMatrix();
+        var tf = Math.tan(kamera.fov * Math.PI / 360), poziome = 2 * Math.atan(tf * kamera.aspect);
+        // przycięcie kąta: ±max(0,70; połowa łuku − 0,3 pola poziomego) — skrajna maszyna w kadrze na 16:9, a dolna granica
+        // 0,70 trzyma ją z dala od środka
+        katMaks = Math.max(KAMERA.katMaks, polLuku - 0.3 * poziome);
+        if (!lot && (smoke || !ruch)) { kat.biez = celKata(fokusId); pozaKamery(kat.biez, wekP, wekC); ustawKamere(wekP, wekC); }
+        tabMn = mnoznikTabliczki(kamera.aspect, rozstaw); ekran.w = w; ekran.h = hh;
+        var pxm = hh / (2 * Math.hypot(PROMIEN, SUFIT * 0.35 - KAMERA.wys) * tf);         // px na metr przy tabliczce
+        var jedno = TAB_SZER * tabMn * TAB.h / TAB.w * pxm * 34 / TAB.h < TAB_MIN_PX;
+        if (jedno !== tabJedno) { tabJedno = jedno; stanowiska.forEach(function (s) { rysujTabliczke(s.plotno, s.dane, tabJedno); s.texTab.needsUpdate = true; }); }
+        stanowiska.forEach(function (x) { var sk = TAB_SZER * tabMn * (1 + 0.08 * x.sila); x.tab.scale.set(sk, sk * TAB.h / TAB.w, 1); });
+        ulozTabliczki(aktywny());                 // także bez animuj (smoke): układ zgodny z nowym rozmiarem
+      },
       // pełna: odbicie lustrzane kopiami siatek; lekka: posadzka nieprzezroczysta, odbicie tylko z env (o połowę mniej rysowania)
       jakosc: function (j) {
         var pelna = j !== 'lekka';
@@ -445,8 +534,8 @@
         matPosadzki.color.setHex(KOLOR_POSADZKI).multiplyScalar(pelna ? 1 : PRZEZROCZ_POSADZKI);
       },
       stan: function () {
-        return { hover: hoverId, fokus: fokusId, przelot: !!lot, lustro: lustro.visible, maszyny: stanowiska.length, kat: kat.biez,
-          podswietlona: aktywny() };
+        return { hover: hoverId, fokus: fokusId, przelot: !!lot, przelotU: lot ? lot.u : null, przelotS: PRZELOT_S, lustro: lustro.visible,
+          maszyny: stanowiska.length, kat: kat.biez, katV: kat.v, katMaks: katMaks, tabJedno: tabJedno, podswietlona: aktywny() };
       },
       // pozycja tabliczki na ekranie (sonda) i środek maszyny w NDC
       rzut: function (id) {

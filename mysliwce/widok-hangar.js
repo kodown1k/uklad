@@ -10,7 +10,11 @@
   function utworz(w) {
     var D = w.D, ui = w.ui, doc = document, L = window.MysliwceLadowanie;
 
+    // Zwolnienie hangaru zdejmuje zasłonę przejścia — chyba że to nasze przejście do pokazu (budowa pod czernią): nawigacja
+    // w końcówce przelotu (Wstecz, zmiana adresu) nie może zostawić makiety ani pokazu pod czernią.
+    var wPrzejsciu = false;
     function zwolnij() {
+      if (!wPrzejsciu) zaslona(0);
       if (!w.hg) return;
       w.hg.zwolnij(); w.hg = null;
       w.gl.renderer.renderLists.dispose();
@@ -20,6 +24,7 @@
     // Zwraca false, gdy hangar się nie zbudował: pokaz i makieta są już zwolnione, więc zamiast czarnej nakładki —
     // powrót do Układu z komunikatem w pasku zakładek (#zakInfo; komunikat nakładki zniknąłby razem z nią).
     function wejdz(fokus) {
+      zaslona(0);
       w.trybPokazu.zwolnij();
       if (w.sc) w.zwolnijScene();
       w.ustawSilniki(false);
@@ -74,17 +79,37 @@
       if (!(r.width > 0)) return null;
       return w.hg.trafienie((x - r.left) / r.width * 2 - 1, -(y - r.top) / r.height * 2 + 1);
     }
+    // Zasłona przejścia: w ostatnich ZACIEMNIENIE.wyjscie s przelotu ekran schodzi do czerni (klatka), świat pokazu buduje się
+    // pod czernią (stopklatka budowy znika), rozruch wchodzi z czerni w ZACIEMNIENIE.wejscie s (skok jasności hangar → niebo
+    // staje się wejściem). Smoke i ograniczony ruch — bez zasłony.
+    var ZACIEMNIENIE = { wyjscie: 0.35, wejscie: 0.6 };
+    function zaslona(a, czas) {
+      var z = ui.zaslona;
+      if (!z) return;
+      z.style.transition = czas > 0 ? 'opacity ' + czas + 's ease-out' : 'none';
+      z.style.opacity = String(a);
+    }
     // Wybór maszyny w hangarze: przelot kamery, potem pokaz (wyjście albo zmiana trybu w trakcie przelotu — bez pokazu).
     function wybierz(id) {
       var h0 = w.hg;
       if (!h0 || h0.stan().przelot || !D.mysliwiec(id)) return;
       w.zapamietaj(id); oznacz(id);
       h0.hover(null); ui.canvas.style.cursor = '';
+      var zZaslona = !w.smoke && !w.ograniczonyRuch();
       h0.wybierz(id).then(function (wynik) {
-        if (wynik == null || w.hg !== h0 || !w.aktywny || w.tryb !== 'hangar') return;
-        w.trybPokazu.wejdz(id);
-        w.ustawAdres(id, true);
-      }, function (e) { console.error('Myśliwce: przelot hangaru — ' + (e && e.message || e)); });
+        if (wynik == null || w.hg !== h0 || !w.aktywny || w.tryb !== 'hangar') { zaslona(0); return; }
+        var wejdzPokaz = function () {
+          if (w.hg !== h0 || !w.aktywny || w.tryb !== 'hangar') { zaslona(0); return; }
+          wPrzejsciu = true;
+          try { w.trybPokazu.wejdz(id); } finally { wPrzejsciu = false; }
+          w.ustawAdres(id, true);
+          if (zZaslona) requestAnimationFrame(function () { zaslona(0, ZACIEMNIENIE.wejscie); });
+        };
+        if (!zZaslona) { wejdzPokaz(); return; }
+        zaslona(1);
+        // dwie klatki: czerń musi dojść na ekran, zanim budowa świata zablokuje wątek
+        requestAnimationFrame(function () { requestAnimationFrame(wejdzPokaz); });
+      }, function (e) { zaslona(0); console.error('Myśliwce: przelot hangaru — ' + (e && e.message || e)); });
     }
     function krok(d) {
       var hg = w.hg;
@@ -101,6 +126,11 @@
     function klatka(teraz) {
       var hg = w.hg, t = w.czasSceny(teraz), wsk = w.wskaznik;
       hg.animuj(t);
+      var sh = hg.stan();
+      if (sh.przelotU != null && !w.smoke && !w.ograniczonyRuch()) {
+        var u0 = 1 - ZACIEMNIENIE.wyjscie / sh.przelotS;
+        zaslona(Math.max(0, Math.min(1, (sh.przelotU - u0) / (1 - u0))));
+      }
       if (wsk && !hg.stan().przelot) {
         var id = trafienie(wsk.x, wsk.y);
         hg.hover(id); ui.canvas.style.cursor = id ? 'pointer' : '';

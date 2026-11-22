@@ -5,6 +5,7 @@
    Dzwiek.mieszanka(ciag) → poziomy warstw silnika.
    Przeglądarkowe: Dzwiek.silnik({ ctx? }) → { ctx, turbina(ciag), dopalacz(ciag), przelot(params), grom(kiedy?),
      ambient(nazwa|null), glosnosc(v), pauza(), wznow(), stan(), poziom(), zaplanujDo(t), zwolnij() } albo null bez Web Audio.
+     przelot i grom zwracają uchwyt { koniec, zatrzymaj() }; stan().glosy = ile takich głosów jeszcze gra albo czeka.
      Kontekst tworzy wywołanie silnik() — widok woła je dopiero w geście użytkownika (polityka autoplay).
    Ciąg c (wspólny z ogien.js): 0 = silnik stoi, ~0,15 bieg jałowy, 0,6 = pełna moc bez dopalacza, > 0,6 dopalacz.
    Brzmienie (żeby odrzutowiec, nie syrena): szerokopasmowy szum dominuje, gwizd turbiny jest cichą, NIEharmoniczną
@@ -93,6 +94,14 @@
     var ctx = opcje.ctx || new AC(), offline = !!(root.OfflineAudioContext && ctx instanceof root.OfflineAudioContext);
     var zrodla = [], wezly = [], zaplanowane = new Set(), zegar = 0, wyslane = {}, ciagT = 0, ciagA = 0;
     var glos = 1, pauzowany = false, zwolniony = false, analiza = null, bufAn = null, rampaOd = null;
+    // głosy jednorazowe (przelot, grom) jeszcze grające albo zaplanowane — zatrzymanie albo koniec zdejmuje głos raz
+    var glosy = 0;
+    function glosJednorazowy(zrGlosu) {
+      var zywy = true;
+      glosy++;
+      function koniec() { if (zywy) { zywy = false; glosy--; } }
+      return { koniec: koniec, zatrzymaj: function () { zrGlosu.forEach(function (s) { try { s.stop(); } catch (_) { /* już stoi */ } }); koniec(); } };
+    }
     function w(n) { wezly.push(n); return n; }
     function wzm(v, dokad) { var g = w(ctx.createGain()); g.gain.value = v; if (dokad) g.connect(dokad); return g; }
     function filtr(typ, f, q, dokad) { var b = w(ctx.createBiquadFilter()); b.type = typ; b.frequency.value = f; if (q != null) b.Q.value = q; if (dokad) b.connect(dokad); return b; }
@@ -286,15 +295,15 @@
         obw.gain.setValueCurveAtTime(kG, t0, dl);
         lp.frequency.setValueCurveAtTime(kL, t0, dl);
         if (pan) pan.pan.setValueCurveAtTime(kP, t0, dl);
-        var koniec = t0 + dl;
+        var koniec = t0 + dl, g = glosJednorazowy(zr);
         zr.forEach(function (s, j) {
           s.start(t0); s.stop(koniec + 0.05); zaplanowane.add(s);
           s.onended = function () {
             zaplanowane.delete(s);
-            if (j === 0) nowe.concat(zr).forEach(function (n2) { try { n2.disconnect(); } catch (_) { /* */ } });
+            if (j === 0) { g.koniec(); nowe.concat(zr).forEach(function (n2) { try { n2.disconnect(); } catch (_) { /* */ } }); }
           };
         });
-        return { koniec: koniec, zatrzymaj: function () { zr.forEach(function (s) { try { s.stop(); } catch (_) { /* */ } }); } };
+        return { koniec: koniec, zatrzymaj: g.zatrzymaj };
       },
       // Grom dźwiękowy: fala N (skok +, liniowy spadek do −, skok do 0; 0,12 s) i dudnienie echa (szum brązowy ~1,5 s).
       grom: function (kiedy) {
@@ -310,6 +319,9 @@
         eG.gain.setValueAtTime(0, kiedy); eG.gain.linearRampToValueAtTime(0.5, kiedy + 0.05); eG.gain.setTargetAtTime(0, kiedy + 0.15, 0.45);
         start(s, kiedy, 0, 0.3, [lp, g]);
         start(e, kiedy, Math.random() * 1.2, 1.8, [eLp, eG]);
+        var gl = glosJednorazowy([s, e]), poEchu = e.onended;
+        e.onended = function () { gl.koniec(); poEchu(); };
+        return { koniec: kiedy + 1.8, zatrzymaj: gl.zatrzymaj };
       },
       glosnosc: function (v) {
         glos = przytnij(+v, 0, 1);
@@ -341,7 +353,7 @@
       stan: function () {
         // t / rampaOd: czas kontekstu i początek ostatniej rampy wznowienia (sonda porównuje master z krzywą)
         return { kontekst: ctx.state, pauza: pauzowany, master: master.gain.value, t: ctx.currentTime, rampaOd: rampaOd, glosnosc: glos, ciag: ciagT, dopalacz: ciagA,
-          zaplanowane: zaplanowane.size, wezly: wezly.length };
+          zaplanowane: zaplanowane.size, wezly: wezly.length, glosy: glosy };
       },
       // poziom RMS wyjścia (diagnostyka sondy: czy coś gra); analizator podpinany leniwie, obok ścieżki
       poziom: function () {

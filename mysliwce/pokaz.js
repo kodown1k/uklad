@@ -12,7 +12,9 @@
        2–4 × część (dojazd do kotwicy, wzrok na niej; komory się otwierają) → rozkład (zawis w chmurach, rozłożenie 0→1→0) →
        radar (fala z nadajnika, odbicia od fasetek, echo maleje do szklanej kulki) → final (kadr z kartą danych).
        Ujęcia sceny lotu (rozruch…części) łączą się bez cięcia: ostatni klucz kamery ujęcia = pierwszy klucz następnego,
-       oddech 0 na granicach. Cięcia tylko przed rozkładem, radarem i finałem.
+       oddech 0 na granicach, klucze-widma sąsiadów (`widmo: true`, poza [0, czas]) — prędkość kamery ciągła przez granicę.
+       Cięcia tylko przed rozkładem, radarem i finałem. Wersy opowieści na ujęcia po treści (pole `ujecie` w dane.js).
+     Pokaz.kameraKadru(kp, plan, n, t, w, h) — poprawka kadru dla telefonu w pionie (szerzej i dalej dla całej maszyny).
      Pokaz.krzywa(klucze [[u, v]], u, domyślna?) — liniowo po kluczach; Pokaz.pozycja(plan, tGlob) → { n, t };
      Pokaz.droga(plan, n, t) [m] (przesunięcie świata, prędkość narasta w 2 s w obrębie sceny), Pokaz.wysokosc(plan, n, t).
    Przeglądarkowe: Pokaz.uruchom(ctx, ujecia) → { idz(n), pauza(bool), t(), zwolnij(), krok(dt), ustaw(n, t), stan(),
@@ -31,6 +33,7 @@
   var NAPISY = { tempo: 15, min: 2.2, przerwa: 0.6 };
   var WEJSCIE = 0.9, WEJSCIE_ROZRUCHU = 5.2, OGON = 1.4;    // [s] napis po starcie ujęcia (rozruch: po planszy tytułu), cisza na końcu
   var MIN = { rozruch: 10, przelot: 11, okrazenie: 14, czesc: 8.5, rozklad: 12, radar: 14, final: 12 };
+  var MIN_RADARU_BEZ_WERSU = 10;                            // [s] radar bez napisu (żaden wers opowieści nie mówi o echu)
   var LOT = {
     rozruch: { v: 150, tor: 'mgla', wysokosc: 520 }, przelot: { v: 360, tor: 'niski', wysokosc: 70 },
     okrazenie: { v: 230, tor: 'prosty', wysokosc: 480 }, czesc: { v: 230, tor: 'prosty', wysokosc: 480 },
@@ -38,20 +41,34 @@
     final: { v: 240, tor: 'prosty', wysokosc: 760 },
   };
   var RAMPA_V = 2, RAMPA_H = 4;                             // [s] dojście prędkości i wysokości w obrębie sceny
-  // Rozdział opowieści (po wersie 1 w rozruchu) między ujęcia — wagi długości tekstu.
+  // Rozdział opowieści (po wersie 1 w rozruchu) między ujęcia: po treści — pole `ujecie` wersu w dane.js. Wagi długości
+  // tekstu to tylko zapas dla opowieści bez żadnego pola (kosze po długości rozjeżdżały wers z obrazem o jedno ujęcie).
   var KOSZE = [['przelot', 0.2], ['okrazenie', 0.26], ['rozklad', 0.16], ['radar', 0.2], ['final', 0.18]];
   // Części wyróżniające sylwetkę (pierwsze w kolejce do ujęć), potem reszta po kolei.
   var RESZTA = ['dysze', 'wloty', 'kabina', 'nos', 'sensory', 'skrzydla', 'usterzenie', 'kadlub', 'podwozie'];
   // Widok części: [azymut, elewacja, odległość × długość maszyny]
+  // dysze: z boku-tyłu (122°), nie w osi strugi — w osi struga wychodziła poza kadr, a mgła płomienia zasłaniała część kadru
   var WIDOK = {
     nos: [35, 6, 0.3], kabina: [62, 24, 0.24], wloty: [42, -4, 0.28], skrzydla: [105, 38, 0.36], usterzenie: [140, 22, 0.32],
-    kaczka: [55, 16, 0.28], levcon: [50, 18, 0.28], dysze: [146, 14, 0.36], komory: [62, -52, 0.5], sensory: [30, -10, 0.24],
+    kaczka: [55, 16, 0.28], levcon: [50, 18, 0.28], dysze: [122, 8, 0.55], komory: [62, -52, 0.5], sensory: [30, -10, 0.24],
     podwozie: [95, -32, 0.32], kadlub: [90, 12, 0.4],
   };
+  var CEL_DYSZ = 0.3;                                       // [× długość płomienia] cel kamery dysz za wylotami — w kadrze cała struga
+  // Telefon w pionie (kadr pełny, h > w): ujęcia całej maszyny szerzej i dalej (klucze liczone dla 2.39:1 dawały maszynę
+  // w 1–33% kadru). Ujęcia części z połową mnożnika (`czesc`), radar z celem bliżej maszyny (`celRadaru`) — kameraKadru.
+  var PION = { tanFov: 1.6, odleglosc: 1.9, czesc: 0.5, celRadaru: 0.6 };
+  var CALA_MASZYNA = { rozruch: 1, przelot: 1, okrazenie: 1, rozklad: 1, radar: 1, final: 1 };
+  // Niepewność w radarze: wyjaśnienie, a na ostatnim impulsie (echo = szklana kulka) osobne, krótkie zdanie SYMULACJA.
   var NIEPEWNOSC = {
-    niska: 'Patrzysz na symulację, nie na pomiar. Ile echa naprawdę wraca od tej maszyny, wiedzą tylko ci, którzy ją zbudowali.',
-    'bardzo-niska': 'Patrzysz na symulację, nie na pomiar. Nikt spoza fabryki nie zmierzył tego echa — nawet kształt, od którego się odbija, to rekonstrukcja ze zdjęć.',
+    niska: 'Ile echa naprawdę wraca od tej maszyny, wiedzą tylko ci, którzy ją zbudowali.',
+    'bardzo-niska': 'Nikt spoza fabryki nie zmierzył tego echa — nawet kształt, od którego się odbija, to rekonstrukcja ze zdjęć.',
   };
+  var SYMULACJA = 'Patrzysz na symulację, nie na pomiar.';
+  var OKRES_RADARU = 2.6, PIERWSZY_IMPULS = 0.6;           // [s]
+  // Światło radaru (granat nocy): maszyna czytelna — to ona jest bohaterem dowodu
+  var SWIATLO_RADARU = { slonce: 0.9, polsfera: 0.35 };
+  var ODBITE = 0.8;                                         // światło odbite od ziemi (od dołu, barwa pól)
+  var KARTA_WASKI = 900;                                    // [px] kadr węższy → karta finału jako arkusz od dołu
 
   /* ---------- czyste pomocnicze ---------- */
   function przytnij(x, a, b) { return x < a ? a : x > b ? b : x; }
@@ -72,7 +89,7 @@
   }
   function przeniesKlucz(k, t) { return klucz(t, k.azymut, k.elewacja, k.odleglosc, k.cel, k.fov, 0); }
 
-  // Opowieść (bez wersu 1) na kosze: kolejność zachowana, granice z wag długości, każdy kosz co najmniej jeden wers.
+  // Zapas: opowieść (bez wersu 1) na kosze — kolejność zachowana, granice z wag długości, każdy kosz co najmniej jeden wers.
   function rozdziel(wersy, wagi) {
     var n = wersy.length, k = wagi.length, kosze = wagi.map(function () { return []; });
     var dl = wersy.map(function (w) { return w.tekst.length; }), suma = dl.reduce(function (a, b) { return a + b; }, 0) || 1;
@@ -82,6 +99,27 @@
       kosze[b].push(wersy[i]); cum += dl[i];
     }
     return kosze;
+  }
+  // Opowieść (bez wersu 1, który otwiera rozruch) na ujęcia po treści: wers z polem `ujecie` idzie tam, gdzie każe dane.js,
+  // wers bez pola — tam, gdzie poprzedni. 'czesc/<rodzaj>' bez takiego ujęcia w planie → okrążenie (ostatnie ujęcie
+  // przed częściami: kolejność opowieści zostaje). Opowieść bez żadnego pola → kosze z wag długości (KOSZE).
+  // → { przelot: [], okrazenie: [], rozklad: [], radar: [], final: [], czesc: { <rodzaj>: [] } }
+  function przypisz(wersy, rodzajeCzesci) {
+    var wynik = { czesc: {} };
+    KOSZE.forEach(function (k) { wynik[k[0]] = []; });
+    if (!wersy.some(function (w) { return w.ujecie; })) {
+      var kosze = rozdziel(wersy, KOSZE.map(function (k) { return k[1]; }));
+      KOSZE.forEach(function (k, i) { wynik[k[0]] = kosze[i]; });
+      return wynik;
+    }
+    var biez = 'przelot';
+    wersy.forEach(function (w) {
+      if (w.ujecie && w.ujecie !== 'rozruch') biez = w.ujecie;
+      var m = /^czesc\/(.+)$/.exec(biez);
+      if (m && rodzajeCzesci.indexOf(m[1]) >= 0) (wynik.czesc[m[1]] = wynik.czesc[m[1]] || []).push(w);
+      else (wynik[m ? 'okrazenie' : biez] || wynik.final).push(w);
+    });
+    return wynik;
   }
 
   function grzbietowy(wloty) {
@@ -111,15 +149,24 @@
     var wyl = (bryla.czesci.dysze && bryla.czesci.dysze.wyloty) || [];
     var T = wyl.length ? [0, 1, 2].map(function (a) { return wyl.reduce(function (s, w) { return s + w.punkt[a]; }, 0) / wyl.length; }) : [o.min[0], 0, 0];
     T[2] = 0;                                                    // środek wylotów na osi (pary dysz)
-    var op = m.opowiesc || [], kosze = rozdziel(op.slice(1), KOSZE.map(function (k) { return k[1]; }));
-    var wersyKosza = {}; KOSZE.forEach(function (k, i) { wersyKosza[k[0]] = kosze[i]; });
+    var op = m.opowiesc || [];
+    var wybrane = wybierzCzesci(czesci, bryla).map(function (r) {
+      var kot = bryla.czesci[r].kotwica.slice(), w = widokCzesci(r, kot, bryla);
+      if (r === 'dysze') {                                       // cel za wylotami: w kadrze cała struga, nie sam wylot
+        var w0 = bryla.czesci.dysze.wyloty && bryla.czesci.dysze.wyloty[0];
+        if (w0) { kot = T.slice(); kot[0] -= CEL_DYSZ * dlPlomienia(w0); }
+      }
+      return { rodzaj: r, kotwica: kot, w: w, c: czesci.filter(function (c) { return c.rodzaj === r; })[0] };
+    }).sort(function (a, b) { return a.w[0] - b.w[0]; });
+    var wersyKosza = przypisz(op.slice(1), wybrane.map(function (x) { return x.rodzaj; }));
     var ujecia = [];
 
     function harmon(wersy, start) { return K.harmonogram(wersy, { start: start, tempo: NAPISY.tempo, min: NAPISY.min, przerwa: NAPISY.przerwa }); }
     // Ujęcie o czasie z napisów (nie krócej niż MIN typu); klucze kamery w ułamkach czasu (u) przeliczane na sekundy.
     function dodaj(typ, id, wersy, klucze, efekty, extra) {
       var start = typ === 'rozruch' ? WEJSCIE_ROZRUCHU : WEJSCIE, h = harmon(wersy, start);
-      var czas = zaokr(Math.max(MIN[typ], h.length ? h[h.length - 1].koniec + OGON : 0));
+      var min = typ === 'radar' && !wersy.length ? MIN_RADARU_BEZ_WERSU : MIN[typ];
+      var czas = zaokr(Math.max(min, h.length ? h[h.length - 1].koniec + OGON : 0));
       var poprz = ujecia[ujecia.length - 1];
       var kam = klucze.map(function (k) { return klucz(k[0] * czas, k[1], k[2], k[3], k[4], k[5], k[6]); });
       if (poprz && !CIECIA[typ]) kam[0] = przeniesKlucz(poprz.kamera[poprz.kamera.length - 1], 0);   // ciągłość sceny
@@ -139,45 +186,76 @@
       [0.78, 96, 4, 1.3 * R, C, 32, 0.4],
       [1, 28, -5, 1.8 * R, lerp3(C, N, 0.3), 32, 0],
     ], { ciag: [[0, 0.15], [0.3, 0.15], [0.62, 1], [1, 1]], mgla: [[0, 1], [0.35, 0.55], [0.7, 0.12], [1, 0.04]], tytul: [0.8, 4.6] });
-    // przelot: kamera ucieka przed nos, maszyna ją mija (najbliżej przy azymucie ~90°), kamera siada na ogonie
+    // przelot: kamera ucieka przed nos, maszyna ją mija (najbliżej przy azymucie ~90°), kamera siada na ogonie; zawrót
+    // azymutu (158° → 140°) jeszcze w przelocie — okrążenie idzie dalej w tę samą stronę (140° → 100° → 22° → −35°), więc
+    // kamera nie staje na granicy ujęć
     dodaj('przelot', null, wersyKosza.przelot, [
       [0, 0, 0, 1, C, 30], [0.2, 12, -4, 3.2 * R, C, 26, 0.3], [0.44, 78, -2, 0.85 * R, C, 34, 0.2],
-      [0.6, 150, 4, 1.15 * R, lerp3(C, T, 0.4), 32, 0.4], [1, 172, 7, 1.35 * R, lerp3(C, T, 0.3), 32, 0],
+      [0.6, 158, 4, 1.15 * R, lerp3(C, T, 0.4), 32, 0.4], [1, 140, 7, 1.35 * R, lerp3(C, T, 0.3), 32, 0],
     ], { ciag: [[0, 1], [1, 1]] });
     // okrążenie wokół lecącej maszyny: tył z ogniem → bok → pod nosem → nad grzbietem
     dodaj('okrazenie', null, wersyKosza.okrazenie, [
       [0, 0, 0, 1, C, 30], [0.25, 100, 4, 1.15 * R, C, 32, 0.5], [0.55, 22, -24, 0.95 * R, lerp3(C, N, 0.4), 32, 0.5],
       [1, -35, 52, 1.15 * R, C, 32, 0],
     ], { ciag: [[0, 1], [1, 1]] });
-    // części: dojazd do kotwicy (u = 0,38), wzrok trzymany na niej do końca ujęcia; kolejność po azymucie widoku (płynny objazd)
-    var wybrane = wybierzCzesci(czesci, bryla).map(function (r) {
-      var kot = bryla.czesci[r].kotwica.slice(), w = widokCzesci(r, kot, bryla);
-      return { rodzaj: r, kotwica: kot, w: w, c: czesci.filter(function (c) { return c.rodzaj === r; })[0] };
-    }).sort(function (a, b) { return a.w[0] - b.w[0]; });
+    // części: dojazd do kotwicy (u = 0,38), wzrok trzymany na niej do końca ujęcia; kolejność po azymucie widoku (płynny objazd).
+    // Napis: wers części; wers opowieści przypisany do tej części (ten sam fakt) go zastępuje.
     wybrane.forEach(function (x) {
       var d = x.w[2] * L, ef = { ciag: [[0, 1], [1, 1]] };
       if (x.rodzaj === 'komory') ef.komory = [[0, 0], [0.3, 0], [0.48, 1], [0.8, 1], [0.97, 0], [1, 0]];
-      dodaj('czesc', null, [x.c.wers], [
+      dodaj('czesc', null, wersyKosza.czesc[x.rodzaj] || [x.c.wers], [
         [0, 0, 0, 1, C, 30], [0.38, x.w[0], x.w[1], d, x.kotwica, 30, 0.35], [1, x.w[0] + 7, x.w[1] + 2, d * 0.92, x.kotwica, 29, 0],
       ], ef, { czesc: x.rodzaj });
     });
     // rozkład: cięcie — zawis w chmurach, części odsuwają się i wracają
     dodaj('rozklad', null, wersyKosza.rozklad, [
-      [0, 38, 20, 1.6 * R, C, 32, 0], [0.5, 48, 23, 1.52 * R, C, 32, 0.6], [1, 58, 26, 1.45 * R, C, 32, 0],
+      // wolny obrót wokół zawisu (50° na ujęcie)
+      [0, 30, 18, 1.65 * R, C, 32, 0], [0.5, 55, 23, 1.52 * R, C, 32, 0.6], [1, 80, 28, 1.4 * R, C, 32, 0],
     ], { ciag: [[0, 0.35], [1, 0.35]], rozloz: [[0, 0], [0.22, 0], [0.45, 1], [0.72, 1], [0.92, 0], [1, 0]] });
-    // radar: nadajnik z przodu z lewej, kamera z prawej (oba w szerokim kadrze); fala, odbicia od fasetek, echo maleje
+    // radar: nadajnik z przodu z lewej, kamera z prawej; fala, odbicia od fasetek, echo maleje. Kamera dojeżdża do maszyny
+    // (2,5 R → 1,7 R, cel z drogi fali na maszynę) — ruch umotywowany malejącym echem; maszyna jest bohaterem dowodu.
     var nad = [2.6 * R * Math.cos(-0.14) * Math.cos(-0.7), 2.6 * R * Math.sin(-0.14), 2.6 * R * Math.cos(-0.14) * Math.sin(-0.7)];
     var mr = lerp3(C, nad, 0.38);
-    var wersyRadaru = wersyKosza.radar.slice();
-    if (NIEPEWNOSC[m.pewnosc && m.pewnosc.poziom]) wersyRadaru.push({ id: m.id + '/radar/niepewnosc', tekst: NIEPEWNOSC[m.pewnosc.poziom] });
-    dodaj('radar', null, wersyRadaru, [
-      [0, 46, 34, 2.5 * R, mr, 34, 0], [0.5, 54, 32, 2.45 * R, mr, 34, 0.4], [1, 62, 30, 2.4 * R, mr, 34, 0],
-    ], { ciag: [[0, 0.6], [1, 0.6]], radar: { nadajnik: nad, okres: 3.6, pierwszy: 0.6, droga: 1.8, echo: [0.6 * R, 0.1] } });
+    var wersyRadaru = wersyKosza.radar.slice(), poziom = m.pewnosc && m.pewnosc.poziom;
+    if (NIEPEWNOSC[poziom]) {
+      wersyRadaru.push({ id: m.id + '/radar/niepewnosc', tekst: NIEPEWNOSC[poziom] });
+      wersyRadaru.push({ id: m.id + '/radar/symulacja', tekst: SYMULACJA });
+    }
+    var ur = dodaj('radar', null, wersyRadaru, [
+      [0, 46, 34, 2.5 * R, mr, 34, 0], [0.5, 54, 32, 2.1 * R, lerp3(mr, C, 0.55), 34, 0.4], [1, 62, 30, 1.7 * R, C, 33, 0],
+    ], { ciag: [[0, 0.6], [1, 0.6]], radar: { nadajnik: nad, okres: OKRES_RADARU, pierwszy: PIERWSZY_IMPULS, droga: 1.8, echo: [0.6 * R, 0.1] } });
+    // impuls startuje razem z ostatnim wersem radaru — zdaniem o symulacji (echo jest już szklaną kulką — radarKlatka)
+    if (NIEPEWNOSC[poziom] && ur.napisy.length) {
+      var sOst = ur.napisy[ur.napisy.length - 1].start, p0 = sOst % OKRES_RADARU;
+      ur.efekty.radar.pierwszy = p0 < 0.45 ? p0 + OKRES_RADARU : p0;
+    }
     // final: cięcie — maszyna w słońcu, karta danych obok
     dodaj('final', null, wersyKosza.final, [
-      [0, 36, 5, 1.3 * R, C, 30, 0], [0.5, 43, 7, 1.25 * R, C, 30, 0.5], [1, 50, 9, 1.2 * R, C, 30, 0],
+      [0, 30, 4, 1.35 * R, C, 30, 0], [0.5, 42, 7, 1.26 * R, C, 30, 0.5], [1, 54, 10, 1.18 * R, C, 30, 0],
     ], { ciag: [[0, 0.8], [1, 0.8]], karta: true });
+    kluczeWidma(ujecia);
     return ujecia;
+  }
+  // Klucze-widma na granicach ujęć tej samej sceny: dwa ostatnie klucze (przed końcowym) poprzedniego ujęcia przed t = 0
+  // i dwa klucze (po pierwszym) następnego po końcu. Styczna na granicy liczona z tych samych sąsiadów po obu stronach
+  // (Kino.kameraPoscigu: ograniczenie stycznych niezależne od kolejności) — prędkość kamery przechodzi przez
+  // cięcie-bez-cięcia, zamiast spadać do zera (zerowe styczne na końcach każdego zestawu kluczy). Kadr w [0, czas] dalej
+  // przechodzi przez te same klucze. Zatrzymanie zostaje przed cięciem (rozkład, radar, finał) i tam, gdzie tor zawraca.
+  function kluczeWidma(ujecia) {
+    var wlasne = ujecia.map(function (u) { return u.kamera.slice(); });
+    function widmo(k, t) { return Object.assign(przeniesKlucz(k, t), { oddech: k.oddech, widmo: true }); }
+    for (var i = 0; i + 1 < ujecia.length; i++) {
+      var a = ujecia[i], b = ujecia[i + 1], ka = wlasne[i], kb = wlasne[i + 1];
+      if (CIECIA[b.typ] || ka.length < 2 || kb.length < 2) continue;
+      for (var j = 1; j <= 2 && j < kb.length; j++) a.kamera.push(widmo(kb[j], a.czas + kb[j].t));
+      for (j = 2; j <= 3 && j <= ka.length; j++) b.kamera.unshift(widmo(ka[ka.length - j], ka[ka.length - j].t - a.czas));
+    }
+  }
+  // długość płomienia przy pełnym ciągu (jak Ogien.wymiary(w, 1).dl — bez zależności od ogien.js)
+  function dlPlomienia(w) {
+    var okr = w.typ === 'okragla' || w.typ === '3D-TVC', pz = w.szer / 2 * 0.84, py = (w.wys || w.szer) / 2 * 0.84;
+    if (okr) pz = py = (pz + py) / 2;
+    return 8.5 * 2 * Math.sqrt(pz * py);
   }
 
   /* ---------- czas pokazu ---------- */
@@ -208,8 +286,35 @@
     return hp + (hn - hp) * gladko(t / r);
   }
 
+  // Kamera w kadrze o proporcji w/h: telefon w pionie (h > w) — ujęcia całej maszyny szerzej (tan fov × PION.tanFov)
+  // i dalej (odległość × PION.odleglosc); ujęcia części z połową mnożnika (dysze F-22A: maszyna 10% obwiedni w kadrze),
+  // pierwsza część dochodzi z pełnego mnożnika do połowy w drodze do kotwicy (bez skoku na granicy). Radar w pionie: cel
+  // (i kamera razem z nim) przesunięty o 0,6 drogi do środka maszyny (0,5 z recepty dawało J-36 0,93) — start ujęcia celuje w drogę fali i maszyna
+  // wychodziła za krawędź (0,57 obwiedni w kadrze). kp = Kino.kameraPoscigu(...) (zmieniany w miejscu), pl = plan,
+  // n = ujęcie, t [s] → kp.
+  function kameraKadru(kp, pl, n, t, w, h) {
+    if (!(h > w)) return kp;
+    var u = pl[n], s = 0, i;
+    if (CALA_MASZYNA[u.typ]) s = 1;
+    else if (u.typ === 'czesc') {
+      s = PION.czesc;
+      if (n > 0 && CALA_MASZYNA[pl[n - 1].typ]) {
+        var kot = u.kamera.filter(function (k) { return !k.widmo; })[1];
+        s = PION.czesc + (1 - PION.czesc) * (1 - gladko(kot && kot.t > 0 ? t / kot.t : 1));
+      }
+    }
+    if (u.typ === 'radar') for (i = 0; i < 3; i++) { var d = kp.cel[i] * PION.celRadaru; kp.cel[i] -= d; kp.poz[i] -= d; }
+    if (!(s > 0)) return kp;
+    var mn = 1 + (PION.odleglosc - 1) * s, tf = 1 + (PION.tanFov - 1) * s;
+    for (i = 0; i < 3; i++) kp.poz[i] = kp.cel[i] + (kp.poz[i] - kp.cel[i]) * mn;
+    kp.odleglosc *= mn;
+    kp.fov = 2 * Math.atan(tf * Math.tan(kp.fov * Math.PI / 360)) * 180 / Math.PI;
+    return kp;
+  }
+
   var Pokaz = { plan: plan, krzywa: krzywa, pozycja: pozycja, droga: droga, wysokosc: wysokosc, startUjecia: startUjecia,
-    CIECIA: CIECIA, LOT: LOT, NIEPEWNOSC: NIEPEWNOSC, uruchom: null };
+    kameraKadru: kameraKadru, CIECIA: CIECIA, LOT: LOT, NIEPEWNOSC: NIEPEWNOSC, SYMULACJA: SYMULACJA, PION: PION, CEL_DYSZ: CEL_DYSZ,
+    dlPlomienia: dlPlomienia, uruchom: null };
 
   /* =====================================================================================================================
      Przeglądarka
@@ -281,7 +386,9 @@
     '  #include <tonemapping_fragment>',
     '  #include <encodings_fragment>',
     '  gl_FragColor.rgb = mix(gl_FragColor.rgb, uMglaKol, uMgla);',
-    '  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.012, 0.02, 0.035), uRadar);',
+    // radar: granatowa noc (jaśniej przy horyzoncie, niżej ciemniej) — nie czerń: śr. L kadru 5–9 przy 0,012–0,035
+    '  vec3 noc = h > 0.0 ? mix(vec3(0.10, 0.13, 0.18), vec3(0.03, 0.045, 0.08), pow(h, 0.5)) : mix(vec3(0.10, 0.13, 0.18), vec3(0.05, 0.065, 0.095), clamp(-h * 2.5, 0.0, 1.0));',
+    '  gl_FragColor.rgb = mix(gl_FragColor.rgb, noc, uRadar);',
     '}',
   ].join('\n');
   // Fala radaru: powłoka kuli — fresnel (pierścień na obrysie) + słaba wypełniająca, gaśnie z promieniem.
@@ -347,9 +454,13 @@
     })();
     zb.env = env;
 
-    // światła: słońce z cieniem (ramka wokół maszyny), półsfera
+    // światła: słońce z cieniem (ramka wokół maszyny), półsfera, światło odbite od ziemi (kierunkowe od dołu w barwie pól,
+    // bez cienia — półsfera 0,75 dawała brzuchowi w cieniu L ≈ 18; istnieje od budowy sceny: liczba świateł jest w kluczu
+    // programu, w radarze ma moc 0)
     var slonce = new T.DirectionalLight(0xfff0dc, 2.3), polsfera = new T.HemisphereLight(0x9db8d8, 0x6a6150, 0.75);
-    scena.add(slonce); scena.add(slonce.target); scena.add(polsfera); zb.slonce = slonce;
+    var odbite = new T.DirectionalLight(0xc8c39a, ODBITE);
+    odbite.position.set(0, -1, 0.15); odbite.target.position.set(0, 0, 0);
+    scena.add(slonce); scena.add(slonce.target); scena.add(polsfera); scena.add(odbite); scena.add(odbite.target); zb.slonce = slonce;
     slonce.castShadow = jakosc === 'pelna';
     slonce.shadow.mapSize.set(2048, 2048); slonce.shadow.bias = -0.0005; slonce.shadow.normalBias = 0.03;
 
@@ -361,7 +472,8 @@
     var sc = slonce.shadow.camera; sc.left = sc.bottom = -0.7 * R; sc.right = sc.top = 0.7 * R; sc.near = 1; sc.far = 4 * R; sc.updateProjectionMatrix();
     var nosnik = new T.Group(); nosnik.name = 'pokaz:maszyna';
     nosnik.add(mk.grupa); mk.grupa.position.set(0, 0, 0); scena.add(nosnik);
-    var sil = zb.sil = root.Silniki.utworz(T, { scena: scena, wyloty: mk.wyloty, rodzic: mk.czesci.dysze, dzwiek: dzwiek, jakosc: jakosc });
+    var sil = zb.sil = root.Silniki.utworz(T, Object.assign({ scena: scena, wyloty: mk.wyloty, rodzic: mk.czesci.dysze, dzwiek: dzwiek, jakosc: jakosc },
+      root.Ogien.opcjeMaszyny(ctx.mysliwiec, true)));               // dzień; hologram ⇔ niesfotografowany (jak makieta)
 
     // ziemia daleko w dole
     var texZiemi = tx(teksturaZiemi(T)), KAFEL = 1600, BOK = 90000;
@@ -403,10 +515,16 @@
     var matEcha = m(new T.ShaderMaterial({ uniforms: { uKolor: { value: ZIELEN }, uSila: { value: 0 }, uSzklo: { value: 0 } }, vertexShader: FALA_W,
       fragmentShader: ECHO_F, transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
     var echo = new T.Mesh(g(new T.SphereGeometry(1, 40, 20)), matEcha); radar.add(echo);
+    // programy fali, promieni i echa kompilowane przy budowie, nie na cięciu do radaru (zacięcie 32–61 ms w pierwszej klatce)
+    if (renderer.compile) {
+      radar.visible = true; fala.visible = echo.visible = true; promienie.forEach(function (p) { p.visible = true; });
+      try { renderer.compile(scena, kamera); } catch (_) { /* kompilacja przy pierwszej klatce radaru */ }
+      radar.visible = false;
+    }
 
     /* ---------- stan odtwarzania ---------- */
     var stan = { n: 0, t: 0, pauza: false, koniec: false }, pokazanyWers = null, pokazanyTytul = null, kartaWl = null, etykietaWl = false;
-    var przelotZagrany = -1, wek = new T.Vector3(), nadajnik = new T.Vector3(), q = new T.Quaternion(), eu = new T.Euler(0, 0, 0, 'YXZ'), w = 2.39, h = 1;
+    var przelotZagrany = -1, glosyUjecia = [], wek = new T.Vector3(), nadajnik = new T.Vector3(), q = new T.Quaternion(), eu = new T.Euler(0, 0, 0, 'YXZ'), w = 2.39, h = 1;
     var nazwyCzesci = {};
     (ctx.czesci || []).forEach(function (c) { nazwyCzesci[c.rodzaj] = c.nazwa; });
 
@@ -443,11 +561,13 @@
       });
       scena.fog.density = radarWl ? 0 : 0.00009 + 0.06 * mg * mg;
       uNieba.uMgla.value = Math.min(1, mg * 2.2); uNieba.uRadar.value = radarWl ? 1 : 0;
-      slonce.intensity = radarWl ? 0.35 : 2.3; polsfera.intensity = radarWl ? 0.12 : 0.75;
+      slonce.intensity = radarWl ? SWIATLO_RADARU.slonce : 2.3; polsfera.intensity = radarWl ? SWIATLO_RADARU.polsfera : 0.75;
+      odbite.intensity = radarWl ? 0 : ODBITE;
       radar.visible = radarWl;
       if (radarWl) radarKlatka(ef.radar, t);
-      // kamera: klucze w układzie samolotu → świat
-      var kp = K.kameraPoscigu(t, u.kamera), pw = K.doSwiata(poza.poz, poza.q, kp.poz), cw = K.doSwiata(poza.poz, poza.q, kp.cel);
+      // kamera: klucze w układzie samolotu → świat (telefon w pionie: szerzej i dalej — Pokaz.kameraKadru)
+      var kp = kameraKadru(K.kameraPoscigu(t, u.kamera), ujecia, stan.n, t, w, h);
+      var pw = K.doSwiata(poza.poz, poza.q, kp.poz), cw = K.doSwiata(poza.poz, poza.q, kp.cel);
       kamera.position.fromArray(pw); kamera.lookAt(cw[0], cw[1], cw[2]);
       kamera.fov = kp.fov; kamera.aspect = w / h;
       var off = ef.karta && ctx.przesuniecieKarty ? ctx.przesuniecieKarty() : 0;
@@ -460,7 +580,8 @@
       if (ctx.napisy && (wers && wers.id) !== pokazanyWers) { pokazanyWers = wers && wers.id; ctx.napisy.pokaz(wers); }
       var tyt = ef.tytul && t >= ef.tytul[0] && t < ef.tytul[1] ? ctx.mysliwiec.nazwa : null;
       if (ctx.napisy && tyt !== pokazanyTytul) { pokazanyTytul = tyt; ctx.napisy.tytul(tyt); }
-      var karta = !!ef.karta;
+      // karta finału: na wąskim ekranie (arkusz od dołu, mysliwce.css) dopiero po ostatnim wersie — nie leży na napisie
+      var karta = !!ef.karta && (w >= KARTA_WASKI || !u.napisy.length || t >= u.napisy[u.napisy.length - 1].koniec);
       if (karta !== kartaWl && ctx.karta) { kartaWl = karta; ctx.karta(karta); }
       etykieta(u, f);
     }
@@ -502,6 +623,10 @@
     function renderuj() {
       ctx.post.renderuj(scena, kamera, { czas: Pokaz.startUjecia(ujecia, stan.n) + stan.t, zrodlaGoraca: sil.zrodlaGoraca() });
     }
+    // Głosy ujęcia (przelot, grom) gasną przy zmianie ujęcia (→/←, idz, ustaw), odpięciu dźwięku i zwolnieniu pokazu —
+    // inaczej grały po wyjściu z ujęcia, a powrót ← na przelot kładł drugi głos na pierwszy. Naturalne przejście do
+    // następnego ujęcia (krok) ich nie ucina: przelot kończy się z ujęciem, grom wybrzmiewa.
+    function ucisz() { for (var i = 0; i < glosyUjecia.length; i++) glosyUjecia[i].zatrzymaj(); glosyUjecia.length = 0; }
     // dźwięk ujęcia: przelot z Dopplerem (najbliżej w chwili minimalnej odległości kamery) i grom, gdy przelot naddźwiękowy
     function dzwiekUjecia() {
       var u = ujecia[stan.n];
@@ -511,12 +636,12 @@
       for (var t = 0; t <= u.czas; t += 0.05) { var kp = K.kameraPoscigu(t, u.kamera), d = Math.hypot(kp.poz[0], kp.poz[1], kp.poz[2]); if (d < dMin) { dMin = d; tMin = t; } }
       if (tMin <= stan.t) return;
       var dt = tMin - stan.t, c0 = dzwiek.ctx.currentTime;
-      dzwiek.przelot({ v: 190, odleglosc: Math.max(8, dMin), tMin: dt, czas: Math.max(1, u.czas - stan.t), ciag: 1, strona: -1, kiedy: c0 });
-      if (u.lot.v > 343) dzwiek.grom(c0 + dt + 0.12);
+      glosyUjecia.push(dzwiek.przelot({ v: 190, odleglosc: Math.max(8, dMin), tMin: dt, czas: Math.max(1, u.czas - stan.t), ciag: 1, strona: -1, kiedy: c0 }));
+      if (u.lot.v > 343) glosyUjecia.push(dzwiek.grom(c0 + dt + 0.12));
     }
     function ustaw(n, t) {
       n = przytnij(Math.floor(+n || 0), 0, ujecia.length - 1);
-      if (n !== stan.n) przelotZagrany = -1;
+      if (n !== stan.n) { przelotZagrany = -1; ucisz(); }
       stan.n = n; stan.t = przytnij(+t || 0, 0, ujecia[n].czas); stan.koniec = false;
       zastosuj();
     }
@@ -548,8 +673,9 @@
       stan: function () { var u = ujecia[stan.n]; return { ujecie: stan.n, id: u.id, typ: u.typ, t: stan.t, czas: u.czas, pauza: stan.pauza, koniec: stan.koniec, ujec: ujecia.length }; },
       rozmiar: function (sz, wy) { if (sz > 0 && wy > 0) { w = sz; h = wy; } },
       jakosc: function (j) { jakosc = j === 'lekka' ? 'lekka' : 'pelna'; sil.jakosc(jakosc); slonce.castShadow = jakosc === 'pelna'; },
-      dzwiek: function (d) { dzwiek = d || null; sil.dzwiek(dzwiek); if (dzwiek) { dzwiek.ambient('niebo'); przelotZagrany = -1; dzwiekUjecia(); } },
+      dzwiek: function (d) { if ((d || null) !== dzwiek) ucisz(); dzwiek = d || null; sil.dzwiek(dzwiek); if (dzwiek) { dzwiek.ambient('niebo'); przelotZagrany = -1; dzwiekUjecia(); } },
       zwolnij: function () {
+        ucisz();
         sil.zwolnij();
         if (ctx.napisy) { ctx.napisy.pokaz(null); ctx.napisy.tytul(null); }
         if (ctx.etykieta) ctx.etykieta(null);

@@ -4,7 +4,8 @@
      Ogien.kolor(ciag) → [r,g,b] liniowe 0..1 (niebieskawy bez dopalacza → różowofioletowy zapłon → pomarańcz),
      Ogien.wymiary(wylot, ciag) → { pol:[z,y] półwymiary przekroju u wylotu [m], rozrost:[z,y] [m/m], wykladnik (superelipsa
      przekroju: 2 = koło), dl (długość płomienia przy tym ciągu), dlMax, deq (średnica równoważna) }.
-   Przeglądarkowe: Ogien.utworz(THREE, wylot | wyloty[≤3], rodzic, { jakosc? }) → { korzen, strugi, ustaw(ciag), animuj(t), moc() → { moc, kolor }, jakosc('pelna'|'lekka'),
+   Czyste też: Ogien.opcjeMaszyny(mysliwiec, dzien) → { dzien, hologram }, Ogien.ustawienia(opcje) → tryb, emisja, barwa….
+   Przeglądarkowe: Ogien.utworz(THREE, wylot | wyloty[≤3], rodzic, { jakosc?, dzien?, hologram? }) → { korzen, strugi, ustaw(ciag), animuj(t), moc() → { moc, kolor }, jakosc('pelna'|'lekka'),
      zrodlaGoraca() → [{ poz:[x,y,z] (świat), kierunek:[x,y,z] (świat, z prądem strumienia), sila 0..1, dl [m, świat] }]
      (po strudze; dl = długość płomienia przy bieżącym ciągu — obrys iskry i stożek falowania w Kino.post),
      zwolnij() }.
@@ -16,7 +17,8 @@
    Płomień to OBJĘTOŚĆ, nie karton: pudło-pośrednik w układzie wylotu, w nim marsz promienia (40 kroków, lekka 20) przez pole emisji
    — płaszcz (gauss w przekroju superelipsy, turbulencja fbm unoszona z prądem), stożek rdzenia, diamenty (romby w przekroju
    podłużnym, dyski z tyłu). Przekrój z typu dyszy: 2D-TVC spłaszczony (superelipsa k=4 przechodząca w koło), rynna J-36
-   szeroki i płaski (rośnie w bok, nie w górę, nie schodzi pod podłogę rynny), okrągła/3D-TVC koło. Mieszanie addytywne,
+   szeroki i płaski (rośnie w bok, nie w górę, nie schodzi pod podłogę rynny), okrągła/3D-TVC koło. Mieszanie addytywne
+   (studio; `dzien: true` w pokazie — nad tłem, Ogien.TRYBY), barwa w Ogien.BARWA,
    miękkie nasycenie luminancji (1 − e^(−1,2·Y))/(1,2·Y), potem ton i kodowanie wyjścia jak w materiałach sceny. Tarcza żaru
    w gardzieli (widać ją tylko od tyłu, ścianki dyszy ją zasłaniają) i migotanie jasności światła zbiorczego (moc()) na kadłubie i posadzce.
    Kamera wewnątrz pudła → rysowane ściany tylne (onBeforeRender), więc płomień nie znika przy zbliżeniu. */
@@ -26,8 +28,36 @@
   var MAKS_STRUG = 3;               // dysz na maszynę (J-36: 3) — jedno pudło, pętla po strugach
   var MAKS_KROKOW = 40;             // marsz promienia: 40 w pełnej jakości, 20 w lekkiej
   var APERTURA = 0.84;              // światło wylotu / obrys dyszy (pierścień wewnętrzny w platowiec.js: 0,82–0,86)
+  // Dwa tryby światła płomienia. Studio i makieta (ciemne tło, L ≈ 20): kolor DODAWANY (ONE, ONE), emisja strojona na
+  // ciemno. Pokaz (dzienne niebo, L 130–200): mieszanie „nad tłem” (ONE, ONE_MINUS_SRC_ALPHA) z alfą = gęstość × 2,2
+  // i emisją płaszcza obniżoną — dodawanie na jasnym niebie nasycało oś strugi. EMISJA = wagi płaszcza, rdzenia i diamentów; ALFA = mnożnik gęstości w alfie fragmentu.
+  // Trzeci tryb — hologram (maszyny `niesfotografowany`, flaga z dane.js, ta sama, z której makieta.js robi nakładkę
+  // hologramu): w makiecie i w pokazie kolor dodawany jak materiał hologramu (AdditiveBlending), barwa cyjan, pasma skanu
+  // płynące ze strugą (SKAN = siła pasm), bez diamentów Macha i bez iskry postu (ISKRA = false) — patrz Ogien.ustawienia.
+  var TRYBY = {
+    studio: { emisja: [1.1, 2.4, 7.0], alfa: 1.6, nadTlem: false, skan: 0, iskra: true },
+    dzien: { emisja: [0.4, 1.2, 12.0], alfa: 2.2, nadTlem: true, skan: 0, iskra: true },
+    hologram: { emisja: [0.5, 0.8, 0], alfa: 1.2, nadTlem: false, skan: 0.6, iskra: false },
+  };
+  // Barwa płomienia w jednym miejscu (liniowe RGB 0..1). plaszcz: barwa płaszcza przy pełnym dopalaczu (null = Ogien.kolor:
+  // [1; 0,5; 0,16]); poniżej pełnego dopalacza miesza się z Ogien.kolor(ciąg) wagą udziału dopalacza (hologram: zawsze
+  // swoja). rdzen: barwa rdzenia (null = z ciągu). diamenty: barwa diamentów Macha. Dzień: płaszcz „gorętszy” —
+  // Hologram: cyjan nakładki hologramu makiety (#52e8ff w sRGB).
+  var BARWA = {
+    studio: { plaszcz: null, rdzen: null, diamenty: [1.0, 0.72, 0.42] },
+    dzien: { plaszcz: [1.0, 0.62, 0.30], rdzen: null, diamenty: [1.0, 0.72, 0.42] },
+    hologram: { plaszcz: [0.085, 0.8, 1.0], rdzen: [0.55, 0.95, 1.0], diamenty: [0.085, 0.8, 1.0] },
+  };
 
   function przytnij(x, a, b) { return x < a ? a : x > b ? b : x; }
+  // Opcje płomienia z danych maszyny: hologram ⇔ `niesfotografowany` (to samo pole, z którego makieta.js robi hologram).
+  function opcjeMaszyny(mysliwiec, dzien) { return { dzien: !!dzien, hologram: !!(mysliwiec && mysliwiec.niesfotografowany) }; }
+  // Ustawienia światła płomienia z opcji { dzien?, hologram? } → { tryb, emisja, alfa, nadTlem, skan, iskra, barwa }.
+  function ustawienia(o) {
+    o = o || {};
+    var tryb = o.hologram ? 'hologram' : o.dzien ? 'dzien' : 'studio', t = TRYBY[tryb];
+    return { tryb: tryb, emisja: t.emisja, alfa: t.alfa, nadTlem: t.nadTlem, skan: t.skan, iskra: t.iskra, barwa: BARWA[tryb] };
+  }
   function gladko(a, b, x) { var u = przytnij((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); }
 
   // Diamenty: 3 przy zapłonie → 6 przy pełnym dopalaczu; pierwszy 0,09 dl za wylotem, odstęp 0,125 dl malejący o 7%
@@ -73,10 +103,11 @@
   var GLSL_SUPEREL = 'float superel(vec2 a, float k) { a = abs(a) + 1e-5; return pow(pow(a.x, k) + pow(a.y, k), 1.0 / k); }';
   var W_PLOMIEN = 'varying vec3 vPoz;\nvoid main() { vPoz = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
   var F_PLOMIEN = [
-    'uniform float uCzas, uAb, uDl, uSila, uWyk;',
+    'uniform float uCzas, uAb, uDl, uSila, uWyk, uSkan;',
     'uniform int uKroki, uN;',
     'uniform vec2 uPol, uRoz;',
-    'uniform vec3 uKolor, uRdzen, uKolDiam, uKam, uMin, uMax;',
+    'uniform vec3 uKolor, uRdzen, uKolDiam, uKam, uMin, uMax, uEmisja;',
+    'uniform float uAlfa;',
     'uniform vec3 uDiam[' + MAKS_DIAM + '];',
     'uniform vec3 uStrugi[' + MAKS_STRUG + '];',                            // środki wylotów w układzie pudła
     'varying vec3 vPoz;',
@@ -104,8 +135,10 @@
     '    float rr = 1.0 - smoothstep(0.0, 1.0, r);',
     '    dm += d.z * (rr * rr + 0.05 * exp(-r * r * 2.0));',              // ostry romb + słaba poświata
     '  }',
-    '  vec3 c = uKolor * plaszcz * 1.1 + uRdzen * rdzen * 2.4 + uKolDiam * dm * 7.0;',
-    '  return c * uSila * (0.8 + 0.4 * n2);',
+    '  vec3 c = uKolor * plaszcz * uEmisja.x + uRdzen * rdzen * uEmisja.y + uKolDiam * dm * uEmisja.z;',
+    // hologram: pasma skanu w poprzek strugi, płynące z prądem (jak linie skanu nakładki hologramu makiety)
+    '  float skan = 1.0 - uSkan * smoothstep(0.18, 0.42, abs(fract(q * 2.4 - uCzas * 1.6) - 0.5));',
+    '  return c * uSila * (0.8 + 0.4 * n2) * skan;',
     '}',
     'void main() {',
     '  vec3 ro = uKam, rd = normalize(vPoz - uKam);',
@@ -125,8 +158,9 @@
     '  vec3 c = suma * dt; float Y = dot(c, vec3(0.2126, 0.7152, 0.0722));',
     '  c *= (1.0 - exp(-1.2 * Y)) / max(1.2 * Y, 1e-4);',
     // alfa = gęstość płomienia: blending zapisuje w kanale alfa celu a·(1 − alfa) — maska płomienia z poprawnym
-    // zasłanianiem (test głębi) dla iskry postu kina (Kino.post); kolor dodawany jak dotąd (ONE, ONE)
-    '  gl_FragColor = vec4(c, clamp(1.6 * (1.0 - exp(-1.2 * Y)) / 1.2, 0.0, 1.0));',
+    // zasłanianiem (test głębi) dla iskry postu kina (Kino.post); kolor: studio dodawany (ONE, ONE), dzień nad tłem
+    // (ONE, ONE_MINUS_SRC_ALPHA — ta sama alfa przyciemnia niebo za gęstym płomieniem)
+    '  gl_FragColor = vec4(c, clamp(uAlfa * (1.0 - exp(-1.2 * Y)) / 1.2, 0.0, 1.0));',
     '  #include <tonemapping_fragment>',
     '  #include <encodings_fragment>',
     '}',
@@ -156,6 +190,7 @@
   // Światła płomień nie ma: jedno światło zbiorcze maszyny trzyma mysliwce/silniki.js (moc i kolor z `moc()`).
   function utworz(T, wylot, rodzic, opcje) {
     opcje = opcje || {};
+    var US = ustawienia(opcje), holo = US.tryb === 'hologram', kp = [0, 0, 0];   // kp: robocza barwa płaszcza (bez alokacji w ustaw)
     var strugi = (Array.isArray(wylot) ? wylot : [wylot]).slice(0, MAKS_STRUG), w0 = strugi[0];
     var wym = wymiary(w0, 1), pol = wym.pol, roz = wym.rozrost, dlMax = wym.dlMax, rynna = w0.typ === 'rynna';
     var korzen = new T.Group(); korzen.name = 'ogien';
@@ -182,12 +217,15 @@
       uKolor: { value: new T.Color() }, uRdzen: { value: new T.Color() } };
     var mPlomien = new T.ShaderMaterial({
       vertexShader: W_PLOMIEN, fragmentShader: F_PLOMIEN, transparent: true, depthWrite: false,
-      // = AdditiveBlending dla koloru (alfa nie skaluje światła), alfa celu × (1 − alfa płomienia) = maska dla postu
-      blending: T.CustomBlending, blendEquation: T.AddEquation, blendSrc: T.OneFactor, blendDst: T.OneFactor,
+      // kolor: studio = AdditiveBlending (alfa nie skaluje światła), dzień = premnożone „nad tłem”;
+      // alfa celu × (1 − alfa płomienia) = maska dla postu (oba tryby)
+      blending: T.CustomBlending, blendEquation: T.AddEquation, blendSrc: T.OneFactor, blendDst: US.nadTlem ? T.OneMinusSrcAlphaFactor : T.OneFactor,
       blendSrcAlpha: T.ZeroFactor, blendDstAlpha: T.OneMinusSrcAlphaFactor,
       uniforms: Object.assign({}, wspolne, {
         uDl: { value: dlMax }, uPol: { value: new T.Vector2(pol[0], pol[1]) }, uRoz: { value: new T.Vector2(roz[0], roz[1]) },
-        uKolDiam: { value: new T.Color(1.0, 0.72, 0.42) }, uKam: { value: new T.Vector3() }, uMin: { value: uMin }, uMax: { value: uMax },
+        uKolDiam: { value: new T.Color() },             // barwa z BARWA w ustaw()
+        uKam: { value: new T.Vector3() }, uMin: { value: uMin }, uMax: { value: uMax },
+        uEmisja: { value: new T.Vector3().fromArray(US.emisja) }, uAlfa: { value: US.alfa }, uSkan: { value: US.skan },
         uDiam: { value: diam }, uStrugi: { value: uStrugi }, uN: { value: srodki.length },
         uKroki: { value: opcje.jakosc === 'lekka' ? MAKS_KROKOW / 2 : MAKS_KROKOW },
       }),
@@ -224,16 +262,19 @@
         var w = wymiary(w0, ciag), ab = ciag >= PROG_AB ? (ciag - PROG_AB) / (1 - PROG_AB) : 0;
         // bez dopalacza: słaby niebieski stożek od 0,3; zapłon dopalacza = skok jasności (tak jak w rzeczywistości)
         sila = ciag < PROG_AB ? 0.22 * gladko(0.3, PROG_AB, ciag) : 0.5 + 0.5 * ab;
-        var k = kolor(ciag);
-        wspolne.uKolor.value.setRGB(k[0], k[1], k[2]);
+        var k = kolor(ciag), b = US.barwa, j, wp = holo ? 1 : ab;
+        for (j = 0; j < 3; j++) kp[j] = b.plaszcz ? k[j] + (b.plaszcz[j] - k[j]) * wp : k[j];
+        wspolne.uKolor.value.setRGB(kp[0], kp[1], kp[2]);
+        mPlomien.uniforms.uKolDiam.value.setRGB(b.diamenty[0], b.diamenty[1], b.diamenty[2]);
         if (ciag < PROG_AB) wspolne.uRdzen.value.setRGB(0.45, 0.6, 1.0);
         else wspolne.uRdzen.value.setRGB(0.5 + 0.5 * ab, 0.62 + 0.16 * ab, 1.0 - 0.5 * ab);
+        if (b.rdzen) wspolne.uRdzen.value.setRGB(b.rdzen[0], b.rdzen[1], b.rdzen[2]);
         wspolne.uAb.value = ab; wspolne.uSila.value = sila;
         mPlomien.uniforms.uDl.value = w.dl;
         var d = diamenty(ciag, w.dl);
-        for (var j = 0; j < MAKS_DIAM; j++) { if (d[j]) diam[j].set(d[j].x, d[j].promien, d[j].jasnosc); else diam[j].set(0, 1, 0); }
+        for (j = 0; j < MAKS_DIAM; j++) { if (d[j]) diam[j].set(d[j].x, d[j].promien, d[j].jasnosc); else diam[j].set(0, 1, 0); }
         widoczny(sila > 0.002);
-        kolSw = [k[0], k[1] * 0.85 + 0.1, k[2] * 0.6];
+        kolSw = holo ? [kp[0] + 0.25, kp[1], kp[2]] : [k[0], k[1] * 0.85 + 0.1, k[2] * 0.6];
         bazaSwiatla = srodki.length * (ciag < PROG_AB ? 0.15 * gladko(0.3, PROG_AB, ciag) : 0.5 + 1.1 * ab);
       },
       animuj: function (t) {
@@ -249,7 +290,7 @@
         korzen.updateWorldMatrix(true, false);
         var o = new T.Vector3(-1, 0, 0).transformDirection(korzen.matrixWorld).toArray(), s2 = plomien.visible ? ciag : 0;
         var dl = wymiary(w0, ciag).dl * korzen.matrixWorld.getMaxScaleOnAxis();
-        return srodki.map(function (c) { return { poz: korzen.localToWorld(pomoc.copy(c).add(new T.Vector3(-0.25 * wym.deq, 0, 0))).toArray(), kierunek: o, sila: s2, dl: dl }; });
+        return srodki.map(function (c) { return { poz: korzen.localToWorld(pomoc.copy(c).add(new T.Vector3(-0.25 * wym.deq, 0, 0))).toArray(), kierunek: o, sila: s2, dl: dl, iskra: US.iskra }; });
       },
       zwolnij: function () {
         if (korzen.parent) korzen.parent.remove(korzen);
@@ -260,7 +301,8 @@
     return api;
   }
 
-  var Ogien = { diamenty: diamenty, kolor: kolor, wymiary: wymiary, utworz: utworz, PROG_AB: PROG_AB, MAKS_DIAM: MAKS_DIAM, MAKS_STRUG: MAKS_STRUG };
+  var Ogien = { diamenty: diamenty, kolor: kolor, wymiary: wymiary, utworz: utworz, PROG_AB: PROG_AB, MAKS_DIAM: MAKS_DIAM, MAKS_STRUG: MAKS_STRUG,
+    TRYBY: TRYBY, BARWA: BARWA, ustawienia: ustawienia, opcjeMaszyny: opcjeMaszyny };
   if (typeof module !== 'undefined' && module.exports) module.exports = Ogien;
   else root.Ogien = Ogien;
 })(typeof window !== 'undefined' ? window : globalThis);

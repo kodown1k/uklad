@@ -42,6 +42,12 @@
   width: max-content; max-width: min(300px, calc(100vw - 32px)); }
 #zakInfo:empty { display: none; }
 #zakladki .zak-kr { display: none; }
+/* telefon: w pasku Układu (#topbar) krótkie etykiety — trzy pełne (z Myśliwcami) mają 362 px i nie mieszczą się w 360.
+   W paskach nakładek węzeł nie siedzi w #topbar, tam krótkie etykiety włączają własne reguły (zjawiska.css, mysliwce.css). */
+@media (max-width: 420px) {
+  #topbar #zakladki .zak-dl { display: none; }
+  #topbar #zakladki .zak-kr { display: inline; }
+}
 
 /* w widoku zjawisk zakładki siedzą w pasku nakładki (widok.js przenosi węzeł): zakładki Depeszy, kanciaste */
 .zj-pasek #zakladki { background: none; border: 1px solid var(--linia); border-radius: 0; padding: 0; gap: 0; backdrop-filter: none; margin-right: auto; }

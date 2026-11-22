@@ -67,13 +67,37 @@
 /* pokaz: kanwa w kadrze 2.39:1 (pozycja i wymiar z Kino.kadrKinowy w widok.js), pasy w kolorze tła nakładki */
 .my-tryb-pokaz { background: #000; }
 .my-tryb-pokaz .my-canvas { cursor: default; }
-/* napis pokazu mieści się w dolnym pasie kadru: szerszy wiersz = najwyżej dwie linie przy wersach do ~140 znaków */
-.my-tryb-pokaz .my-kino-wers { max-width: min(88ch, 92%); }
+/* pokaz: pasek zakładki nad obrazem, nie nad nim w siatce — scena ma całe okno (3440×1440 = kadr 2.39:1 bez pasów
+   bocznych); pasek i kursor znikają po 3 s bezruchu (KinoKadr.cisza, klasa .my-cisza; pauza i koniec — pasek widoczny) */
+#mysliwce.my-pokaz { grid-template-rows: minmax(0, 1fr); }
+#mysliwce.my-pokaz > .my-pasek { position: absolute; left: 0; right: 0; top: 0; transition: opacity .5s ease; }
+#mysliwce.my-pokaz.my-cisza > .my-pasek { opacity: 0; pointer-events: none; }
+#mysliwce.my-pokaz.my-cisza, #mysliwce.my-pokaz.my-cisza * { cursor: none !important; }
+/* napis pokazu: najwyżej dwie linie przy wersach do ~140 znaków (maks. znaków w linii z KinoKadr.ukladNapisow) */
+.my-tryb-pokaz .my-kino-wers { font-size: var(--my-kino-rozmiar, 21px); max-width: min(calc(var(--my-kino-maks-znakow, 72) * 1.12ch), 92%); }
+/* karta finału skaluje się z ekranem; na wąskim ekranie arkusz od dołu (pokaz.js pokazuje go po ostatnim wersie) */
+.my-tryb-pokaz .my-dane { width: clamp(370px, 22vw, 560px); top: calc(var(--my-kino-y, 0px) + 16px); bottom: calc(var(--my-kino-pas-dol, 0px) + 16px);
+  font-size: clamp(13px, calc(var(--my-kino-h, 800px) * .011), 18px); }
+.my-tryb-pokaz .my-dane .my-akapit, .my-tryb-pokaz .my-dane .my-rola { font-size: 1em; }
+.my-tryb-pokaz .my-dane .my-tabela dd, .my-tryb-pokaz .my-dane .my-uzytkownicy li { font-size: .96em; }
+.my-tryb-pokaz .my-dane .my-tabela dt, .my-tryb-pokaz .my-dane .my-h3 { font-size: .94em; }
+.my-tryb-pokaz .my-dane .my-nazwa { font-size: 2.9em; }
+@media (max-width: 899px) {
+  .my-tryb-pokaz .my-dane { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 34%; font-size: 13px; }
+}
+/* telefon poziomo: arkusz od dołu miał 133 px (tytuł i jeden wiersz) — karta po prawej na całą wysokość */
+@media (max-width: 899px) and (orientation: landscape) {
+  .my-tryb-pokaz .my-dane { left: auto; right: 0; top: 0; bottom: 0; width: min(46%, 380px); max-height: none; }
+}
+/* podpis części w pokazie rośnie z kadrem (1,9% wysokości kadru) */
+.my-tryb-pokaz .my-etykieta { font-size: clamp(14px, calc(var(--my-kino-h, 740px) * .019), 30px); }
 .my-ladowanie, .my-komunikat { position: absolute; left: 50%; transform: translateX(-50%); z-index: 4; font: 500 13px/1.4 var(--my-kroj-mono);
   letter-spacing: .06em; color: var(--my-atrament); background: var(--my-szklo); border: 1px solid var(--my-linia-2); padding: 9px 16px; }
 .my-ladowanie { top: 45%; }
 .my-komunikat { top: 18px; border-color: var(--my-akcent); }
 
+/* zasłona przejścia hangar → pokaz (widok-hangar.js: zejście do czerni w końcówce przelotu, wejście rozruchu z czerni) */
+.my-zaslona { position: absolute; inset: 0; z-index: 6; background: #000; opacity: 0; pointer-events: none; }
 .my-etykieta { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; padding: 5px 10px 5px 9px; white-space: nowrap;
   font: 600 14px/1.1 var(--my-kroj-nag); letter-spacing: .1em; text-transform: uppercase; color: #fff;
   background: rgba(5, 9, 13, .86); border-left: 2px solid var(--my-podsw); box-shadow: 0 0 22px rgba(127, 230, 255, .18); }
@@ -139,11 +163,21 @@
    bez pasa (telefon w pionie) — nad dolną krawędzią. Pojawienie = krótkie wejście (pokazanie po [hidden] restartuje animację). */
 .my-kino { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
 .my-kino-wers { position: absolute; left: 50%; transform: translateX(-50%); width: max-content; max-width: min(62ch, 88%); text-align: center;
-  bottom: max(18px, calc(var(--my-kino-pas-dol, 0px) / 2 - .75em)); animation: my-kino-wejscie .45s ease-out both; }
-.my-kino-wers-tekst { margin: 0; font: 400 clamp(15px, 1.3vw, 21px)/1.45 var(--my-kroj); letter-spacing: .01em; color: var(--my-atrament);
+  bottom: var(--my-kino-dol, max(18px, calc(var(--my-kino-pas-dol, 0px) / 2 - .75em))); animation: my-kino-wejscie .45s ease-out both; }
+.my-kino-wers-tekst { margin: 0; font: 400 var(--my-kino-rozmiar, clamp(15px, 1.3vw, 21px))/1.45 var(--my-kroj); letter-spacing: .01em; color: var(--my-atrament);
   text-shadow: 0 1px 2px rgba(0, 0, 0, .9), 0 0 14px rgba(0, 0, 0, .65); }
-.my-kino-tytul { position: absolute; left: 50%; top: calc(var(--my-kino-y, 0px) + var(--my-kino-h, 100%) / 2); transform: translate(-50%, -50%);
-  text-align: center; animation: my-kino-wejscie .8s ease-out both; }
+/* bez dolnego pasa (ultrawide 3440×1440, telefon): napis w kadrze na podkładzie — gradient od dołu kadru, gdy pada wers,
+   i przyciemnienie pod liniami tekstu (kontrast liter ≥ 4,5:1 także na chmurze i ogniu; bez podkładu mediana 3,9:1) */
+.my-kino-bezpasa::before { content: ""; position: absolute; left: var(--my-kino-x, 0px); width: var(--my-kino-w, 100%);
+  bottom: var(--my-kino-pas-dol, 0px); height: var(--my-kino-podklad-h, 24%); pointer-events: none; opacity: 0; transition: opacity .45s ease-out;
+  background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, .3) 45%, rgba(0, 0, 0, .62)); }
+.my-kino-bezpasa.my-kino-mowi::before { opacity: 1; }
+.my-kino-bezpasa .my-kino-wers-tekst { display: inline; padding: .06em .42em; background: rgba(3, 5, 8, .62);
+  -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+/* plansza tytułu nisko w kadrze (72% wysokości): w środku leżała na sylwetce maszyny */
+.my-kino-tytul { position: absolute; left: 50%; top: calc(var(--my-kino-y, 0px) + var(--my-kino-h, 100%) * .72); transform: translate(-50%, -50%);
+  text-align: center; animation: my-kino-wejscie .8s ease-out both; padding: .55em 1.6em;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, .62), rgba(0, 0, 0, .5) 55%, rgba(0, 0, 0, 0)); }
 .my-kino-tytul-tekst { margin: 0; font: 600 clamp(28px, 4.2vw, 64px)/1 var(--my-kroj-nag); letter-spacing: .22em; text-transform: uppercase; color: #fff;
   text-shadow: 0 0 28px rgba(0, 0, 0, .75); white-space: nowrap; }
 .my-kino-tytul::after { content: ""; display: block; margin: 14px auto 0; width: 46%; height: 1px; opacity: .7;

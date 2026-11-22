@@ -94,7 +94,7 @@
     // osi kadłuba). Sprawdzone zrzutem w fałszywych kolorach: na kadłubie oś długości to oś y płótna (x = obwód), więc
     // ząbkowane są krawędzie poziome. Podziałka ~30 px, amplituda 0,55 podziałki (boki zębów ~±48° do krawędzi).
     // Rowek 6 px w kolorze i wysokości; taśma RAM tylko w mapie szorstkości (18 px, 150/255), w kolorze ≤ 4/255.
-    var kandydaci = panele.filter(function (q) { return q[2] >= 150 && q[3] >= 110; });
+    var kandydaci = panele.filter(function (q) { return q[2] >= 150 && q[3] >= 110; }), drzwiUV = null;
     if (drzwi && kandydaci.length) {
       var q = kandydaci[Math.floor(los() * kandydaci.length)], P = 28 + los() * 4, Az = 0.55 * P;
       var nzb = Math.max(2, Math.floor((q[2] - 20) / P)), x0 = q[0] + 10, y0d = q[1] + 10, y1d = q[1] + q[3] - 10, pts = [], j;
@@ -109,12 +109,14 @@
       obrys(a, szary(172), 6);       // rowek
       obrys(b, szary(232), 6);
       obrys(h, szary(70), 6);
+      // prostokąt drzwiczek w UV kafla (u = x/N, v = 1 − y/N: tekstura z flipY), z zapasem na taśmę — dla małych wysp
+      drzwiUV = [(q[0]) / N, 1 - (q[1] + q[3]) / N, (q[0] + q[2]) / N, 1 - q[1] / N];
     }
     // drobny szum (ziarno powłoki)
     var img = a.getImageData(0, 0, px, px), px2 = img.data;
     for (var k = 0; k < px2.length; k += 4) { var sz2 = (los() - 0.5) * 6; px2[k] += sz2; px2[k + 1] += sz2; px2[k + 2] += sz2; }
     a.putImageData(img, 0, 0);
-    return { kolor: A, szorstkosc: B, normalne: normalneSobel(H, px) };
+    return { kolor: A, szorstkosc: B, normalne: normalneSobel(H, px), drzwi: drzwiUV };
   }
   // Mapa normalnych z płótna wysokości (Sobel, zawijanie na brzegach kafla). Płótno ma y w dół, tekstura v w górę
   // (flipY), stąd znak składowej y. Wynik zapisany w tym samym płótnie.
@@ -138,42 +140,105 @@
   }
 
   /* ---------- geometria ---------- */
-  // UV z platowiec.js są w ułamkach siatki (stacja, faseta); przeskalowanie do metrów/KAFEL daje stałą gęstość
-  // paneli. Skala liczona PER WIERZCHOŁEK = średnia (ważona polem) długości kolumn jakobianu UV→świat trójkątów,
-  // które go używają — czapki i małe dodatki (garb DSI, czujniki) mają własne wierzchołki i własną skalę, więc
-  // tekstura nie ściska się na nich w prążki (skala wspólna dla całej siatki tak robiła).
-  function uvWMetrach(poz, ind, uv, przes) {
-    var n = uv.length / 2, su = new Float64Array(n), sv = new Float64Array(n), w = new Float64Array(n), t, k;
-    for (t = 0; t < ind.length; t += 3) {
-      var a = ind[t], b = ind[t + 1], c = ind[t + 2];
-      var e1x = poz[b * 3] - poz[a * 3], e1y = poz[b * 3 + 1] - poz[a * 3 + 1], e1z = poz[b * 3 + 2] - poz[a * 3 + 2];
-      var e2x = poz[c * 3] - poz[a * 3], e2y = poz[c * 3 + 1] - poz[a * 3 + 1], e2z = poz[c * 3 + 2] - poz[a * 3 + 2];
-      var d1u = uv[b * 2] - uv[a * 2], d1v = uv[b * 2 + 1] - uv[a * 2 + 1], d2u = uv[c * 2] - uv[a * 2], d2v = uv[c * 2 + 1] - uv[a * 2 + 1];
-      var det = d1u * d2v - d2u * d1v;
-      if (Math.abs(det) < 1e-12) continue;
-      var pole = 0.5 * Math.hypot(e1y * e2z - e1z * e2y, e1z * e2x - e1x * e2z, e1x * e2y - e1y * e2x);
-      var ju = Math.hypot(e1x * d2v - e2x * d1v, e1y * d2v - e2y * d1v, e1z * d2v - e2z * d1v) / Math.abs(det);
-      var jv = Math.hypot(e2x * d1u - e1x * d2u, e2y * d1u - e1y * d2u, e2z * d1u - e1z * d2u) / Math.abs(det);
-      if (!isFinite(ju) || !isFinite(jv) || !(pole > 0)) continue;
-      [a, b, c].forEach(function (v) { su[v] += ju * pole; sv[v] += jv * pole; w[v] += pole; });
+  // UV w metrach (/KAFEL) liczone z geometrii, ciągłe — bez mnożenia UV przez skalę lokalną (skala per wierzchołek
+  // mnożona przez UV niezaczepione w zerze łamała w trójkącie odwzorowanie afiniczne: proste linie paneli wychodziły
+  // w łuki i schody; recenzja kinowa r1, Ś3). Wyspa = składowa spójna siatki po wspólnych wierzchołkach:
+  //   • siatka prostokątna w UV z platowiec.js (loft: stacja × punkt obwodu, płyta: stacja rozpiętości × punkt profilu,
+  //     faseta loftu = pasek dwóch kolumn) → długości łuku: u = droga wzdłuż kolumny, v = droga po obwodzie stacji;
+  //     wyspa zaczynająca się w środku zakresu UV (faseta, odcinek loftu) przesunięta o średnią drogę, żeby sąsiednie
+  //     wyspy szły dalej, a nie od zera;
+  //   • reszta (czapki, garb DSI, czujniki, bryły bez siatki UV) → rzut płaski na płaszczyznę wyspy (normalna = kierunek
+  //     najmniejszego rozrzutu), u wzdłuż osi kadłuba; mała wyspa (< ½ kafla) przesunięta poza drzwiczki kafla — ząbki
+  //     drzwi zostają na kadłubie, nie na garbie.
+  function uvWMetrach(poz, ind, uv, przes, drzwi) {
+    var n = uv.length / 2, out = new Float32Array(uv.length), i, k;
+    var rodzic = new Int32Array(n), uzyty = new Uint8Array(n);
+    for (i = 0; i < n; i++) rodzic[i] = i;
+    function szukaj(x) { while (rodzic[x] !== x) { rodzic[x] = rodzic[rodzic[x]]; x = rodzic[x]; } return x; }
+    function polacz(a, b) { a = szukaj(a); b = szukaj(b); if (a !== b) rodzic[b] = a; }
+    for (k = 0; k < ind.length; k += 3) { polacz(ind[k], ind[k + 1]); polacz(ind[k], ind[k + 2]); uzyty[ind[k]] = uzyty[ind[k + 1]] = uzyty[ind[k + 2]] = 1; }
+    var wyspy = {};
+    for (i = 0; i < n; i++) { var r = szukaj(i); (wyspy[r] = wyspy[r] || []).push(i); }
+    var d3 = function (a, b) { return Math.hypot(poz[a * 3] - poz[b * 3], poz[a * 3 + 1] - poz[b * 3 + 1], poz[a * 3 + 2] - poz[b * 3 + 2]); };
+    Object.keys(wyspy).forEach(function (klucz) {
+      var w = wyspy[klucz];
+      if (!siatkaLukow(w)) rzutPlaski(w);
+    });
+    return out;
+
+    function siatkaLukow(w) {
+      var ku = {}, kv = {}, para = {}, j;
+      for (j = 0; j < w.length; j++) {
+        var a = Math.round(uv[w[j] * 2] * 1e6), b = Math.round(uv[w[j] * 2 + 1] * 1e6), kl = a + ',' + b;
+        if (para[kl] != null) return false;                       // dwa wierzchołki w jednym punkcie UV — nie siatka
+        para[kl] = w[j]; ku[a] = 1; kv[b] = 1;
+      }
+      var U = Object.keys(ku).map(Number).sort(function (x, y) { return x - y; }), V = Object.keys(kv).map(Number).sort(function (x, y) { return x - y; });
+      if (U.length < 2 || V.length < 2 || U.length * V.length !== w.length) return false;
+      var nu = U.length, nv = V.length, idx = new Int32Array(nu * nv), su = new Float64Array(nu * nv), sv = new Float64Array(nu * nv), r, c;
+      for (r = 0; r < nu; r++) for (c = 0; c < nv; c++) idx[r * nv + c] = para[U[r] + ',' + V[c]];
+      var dlU = 0, dlV = 0;
+      for (c = 0; c < nv; c++) { for (r = 1; r < nu; r++) su[r * nv + c] = su[(r - 1) * nv + c] + d3(idx[r * nv + c], idx[(r - 1) * nv + c]); dlU += su[(nu - 1) * nv + c] / nv; }
+      for (r = 0; r < nu; r++) { for (c = 1; c < nv; c++) sv[r * nv + c] = sv[r * nv + c - 1] + d3(idx[r * nv + c], idx[r * nv + c - 1]); dlV += sv[r * nv + nv - 1] / nu; }
+      // wyspa od środka zakresu UV (faseta loftu, odcinek): przesunięcie = jej początek × średnia droga na jednostkę UV
+      var zakrU = (U[nu - 1] - U[0]) / 1e6, zakrV = (V[nv - 1] - V[0]) / 1e6;
+      var offU = zakrU > 0 ? U[0] / 1e6 / zakrU * dlU : 0, offV = zakrV > 0 ? V[0] / 1e6 / zakrV * dlV : 0;
+      for (r = 0; r < nu * nv; r++) {
+        out[idx[r] * 2] = (offU + su[r]) / KAFEL + przes[0];
+        out[idx[r] * 2 + 1] = (offV + sv[r]) / KAFEL + przes[1];
+      }
+      return true;
     }
-    var out = new Float32Array(uv.length);
-    for (k = 0; k < n; k++) {
-      if (w[k] > 0) {
-        out[k * 2] = uv[k * 2] * su[k] / w[k] / KAFEL + przes[0]; out[k * 2 + 1] = uv[k * 2 + 1] * sv[k] / w[k] / KAFEL + przes[1];
-      } else {
-        // wierzchołek tylko w trójkątach ze zdegenerowanym UV (np. garb DSI: cała podstawa w jednym punkcie UV) —
-        // rzut płaski z położenia; płaszczyzna wg osi o najmniejszym rozrzucie nie jest znana per wierzchołek,
-        // więc rzut boczny (x, y+z): na małych bryłach daje równe linie zamiast koncentrycznych prążków
-        out[k * 2] = poz[k * 3] / KAFEL + przes[0]; out[k * 2 + 1] = (poz[k * 3 + 1] + poz[k * 3 + 2]) / KAFEL + przes[1];
+    function rzutPlaski(w) {
+      var sr = [0, 0, 0], j, a, b;
+      for (j = 0; j < w.length; j++) for (a = 0; a < 3; a++) sr[a] += poz[w[j] * 3 + a] / w.length;
+      var cv = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+      for (j = 0; j < w.length; j++) for (a = 0; a < 3; a++) for (b = 0; b < 3; b++) cv[a][b] += (poz[w[j] * 3 + a] - sr[a]) * (poz[w[j] * 3 + b] - sr[b]);
+      var nrm = najmniejszyKierunek(cv);
+      var t1 = osNaPlaszczyznie([1, 0, 0], nrm) || osNaPlaszczyznie([0, 0, 1], nrm), t2 = [nrm[1] * t1[2] - nrm[2] * t1[1], nrm[2] * t1[0] - nrm[0] * t1[2], nrm[0] * t1[1] - nrm[1] * t1[0]];
+      var u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+      for (j = 0; j < w.length; j++) {
+        var q = w[j] * 3, u = (poz[q] * t1[0] + poz[q + 1] * t1[1] + poz[q + 2] * t1[2]) / KAFEL + przes[0], v = (poz[q] * t2[0] + poz[q + 1] * t2[1] + poz[q + 2] * t2[2]) / KAFEL + przes[1];
+        out[w[j] * 2] = u; out[w[j] * 2 + 1] = v;
+        u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v);
+      }
+      if (!drzwi || u1 - u0 > 0.5 || v1 - v0 > 0.5) return;
+      // mała wyspa: przesunięcie (krok ¼ kafla) do pierwszego miejsca bez drzwiczek
+      for (var p = 0; p < 16; p++) {
+        var du = (p % 4) * 0.25, dv = Math.floor(p / 4) * 0.25;
+        if (!naDrzwiach(u0 + du, u1 + du, v0 + dv, v1 + dv, drzwi)) {
+          if (du || dv) for (j = 0; j < w.length; j++) { out[w[j] * 2] += du; out[w[j] * 2 + 1] += dv; }
+          return;
+        }
       }
     }
-    return out;
   }
-  function geometria(T, s, los) {
+  // prostokąt [u0,u1]×[v0,v1] (UV w kaflach) nachodzi na drzwiczki kafla (prostokąt w ułamkach kafla, powtarzany co 1)
+  function naDrzwiach(u0, u1, v0, v1, d) {
+    for (var iu = Math.floor(u0 - d[2]); iu <= Math.ceil(u1); iu++) for (var iv = Math.floor(v0 - d[3]); iv <= Math.ceil(v1); iv++) {
+      if (u0 < iu + d[2] && u1 > iu + d[0] && v0 < iv + d[3] && v1 > iv + d[1]) return true;
+    }
+    return false;
+  }
+  function osNaPlaszczyznie(o, nrm) {
+    var d = o[0] * nrm[0] + o[1] * nrm[1] + o[2] * nrm[2], t = [o[0] - d * nrm[0], o[1] - d * nrm[1], o[2] - d * nrm[2]], l = Math.hypot(t[0], t[1], t[2]);
+    return l > 0.3 ? [t[0] / l, t[1] / l, t[2] / l] : null;
+  }
+  // kierunek najmniejszego rozrzutu (wektor własny symetrycznej 3×3 do najmniejszej wartości): iteracja potęgowa na
+  // (ślad·I − C) — najmniejsza wartość C staje się największą
+  function najmniejszyKierunek(cv) {
+    var tr = cv[0][0] + cv[1][1] + cv[2][2] + 1e-9, M = [0, 1, 2].map(function (a) { return [0, 1, 2].map(function (b) { return (a === b ? tr : 0) - cv[a][b]; }); });
+    var v = [0.31, 0.54, 0.78];
+    for (var it = 0; it < 40; it++) {
+      var x = [0, 1, 2].map(function (a) { return M[a][0] * v[0] + M[a][1] * v[1] + M[a][2] * v[2]; }), l = Math.hypot(x[0], x[1], x[2]) || 1;
+      v = [x[0] / l, x[1] / l, x[2] / l];
+    }
+    return v;
+  }
+  function geometria(T, s, los, drzwi) {
     var g = new T.BufferGeometry();
     g.setAttribute('position', new T.BufferAttribute(s.pozycje, 3));
-    g.setAttribute('uv', new T.BufferAttribute(uvWMetrach(s.pozycje, s.indeksy, s.uv, [los(), los()]), 2));
+    g.setAttribute('uv', new T.BufferAttribute(uvWMetrach(s.pozycje, s.indeksy, s.uv, [los(), los()], drzwi), 2));
     g.setIndex(new T.BufferAttribute(s.indeksy, 1));
     g.computeVertexNormals();
     g.computeBoundingSphere();
@@ -398,7 +463,7 @@
       return t;
     };
     var px = (opcje.lod || 'pelny') === 'lekki' ? PX_LEKKI : PX;
-    var tex = tekstury(maluj(los, null, px));
+    var plotnaKadluba = maluj(los, null, px), tex = tekstury(plotnaKadluba);
     tex.plat = tekstury(maluj(generator(ziarnoZ(id + '/plat')), { drzwi: 0 }, px));
     var niesf = !!dane.niesfotografowany;
     var fabryka = materialy(T, opcje, tex, niesf);
@@ -436,7 +501,7 @@
       (cz.zawiasy || []).forEach(function (z) { zawiasy[z.siatka] = z; });
       var PLATY = { skrzydla: 1, usterzenie: 2, kaczka: 3, levcon: 3 };
       cz.siatki.forEach(function (s, i) {
-        var g = geometria(T, s, los);
+        var g = geometria(T, s, los, s.material === 'ram' && PLATY[rodzaj] ? null : plotnaKadluba.drzwi);
         var nazwaMat = s.material === 'wnetrze' && rodzaj === 'wloty' ? 'kanal' : s.material;
         if (nazwaMat === 'metal' && rodzaj === 'dysze') { nazwaMat = 'dysza'; koloryDyszy(T, g); }
         if (nazwaMat === 'szklo') wygladzNormalne(g);

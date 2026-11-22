@@ -88,6 +88,8 @@
     ui.etykieta = el('div', 'my-etykieta', null, ui.scena); ui.etykieta.hidden = true;
     ui.komunikat = el('div', 'my-komunikat', null, ui.scena); ui.komunikat.setAttribute('role', 'status'); ui.komunikat.hidden = true;
     ui.napisy = window.MysliwceKino.napisy(ui.scena);
+    // zasłona przejścia hangar → pokaz (czerń nad sceną: budowa świata pokazu pod nią, rozruch wchodzi z czerni)
+    ui.zaslona = el('div', 'my-zaslona', null, ui.scena); ui.zaslona.setAttribute('aria-hidden', 'true');
 
     ui.dane = el('aside', 'my-panel my-dane', null, ui.scena); ui.dane.setAttribute('aria-label', 'Karta danych maszyny');
     ui.czesc = el('aside', 'my-panel my-czesc', null, ui.scena); ui.czesc.setAttribute('aria-label', 'Karta części'); ui.czesc.hidden = true;
@@ -147,7 +149,7 @@
     get idBiez() { return idBiez; }, set idBiez(v) { idBiez = v; },
     get ostatnia() { return ostatnia; },
     get gl() { return gl; }, get sc() { return sc; }, get jakosc() { return jakosc; }, get kadrK() { return kadrK; },
-    get mk() { return mk; }, set mk(v) { mk = v; },
+    get mk() { return mk; }, set mk(v) { mk = v; }, korzen: korzen,
     get hg() { return hg; }, set hg(v) { hg = v; },
     get pk() { return pk; }, set pk(v) { pk = v; },
     get dzwiek() { return dzwiek; }, get dzwiekWl() { return dzwiekWl; },
@@ -184,7 +186,7 @@
       var k = kadrK = window.MysliwceKino.kadrKinowy(w, h), st = ui.canvas.style;
       st.left = k.x + 'px'; st.top = k.y + 'px'; st.width = k.w + 'px'; st.height = k.h + 'px'; st.right = 'auto'; st.bottom = 'auto';
       gl.renderer.setSize(k.w, k.h, false);
-      ui.napisy.kadr(k);
+      ui.napisy.kadr(k, w, h);
       if (pk) pk.rozmiar(k.w, k.h);
       return;
     }
@@ -264,7 +266,8 @@
     idBiez = id; hover = null; wybrana = null; zapamietaj(id);
     mk.rozloz(wart.rozloz); mk.komory(wart.komory); if (planWl) mk.plan(true);
     // silniki nowej maszyny przejmują bieżący ciąg (zmiana maszyny na dopalaczu nie gasi i nie rozkręca od zera)
-    sil = window.Silniki.utworz(T, { scena: sc.scena, wyloty: mk.wyloty, rodzic: mk.czesci.dysze, dzwiek: dzwiekWl ? dzwiek : null, jakosc: jakosc });
+    sil = window.Silniki.utworz(T, Object.assign({ scena: sc.scena, wyloty: mk.wyloty, rodzic: mk.czesci.dysze, dzwiek: dzwiekWl ? dzwiek : null, jakosc: jakosc },
+      window.Ogien.opcjeMaszyny(dane, false)));             // płomień hologramu ⇔ niesfotografowany — ta sama flaga co nakładka makiety
     if (ciagPrzed > 0) sil.ustaw(ciagPrzed, true);
     sil.ustaw(silnikiWl ? ciagSuwaka() : 0, smoke);
     ustawKadr();
@@ -559,6 +562,7 @@
     else if (pk) pk.krok(dt);
     else klatkaMakiety(teraz, dt);
     klasaPostu();
+    if (smoke || wymusPelna) sprawdzBufor();
     if (gotowosc) { console.log('MYSLIWCE_READY ' + gotowosc); gotowosc = null; }
   }
   // Makieta: tween rozłożenia i komór, silniki, przelot i przesunięcie kadru, hover pod kursorem, render przez post.
@@ -578,6 +582,18 @@
     if (wskaznik) { var w = wskaznik; ustawHover(trafienie(w.x, w.y), w.x, w.y); }
     mk.aktualizuj(smoke ? 0 : (teraz - czasStartu) / 1000);
     gl.post.renderuj(sc.scena, sc.kamera, { czas: czasSceny(teraz), zrodlaGoraca: sil ? sil.zrodlaGoraca() : [] });
+  }
+  // Haki testowe (smoke, sonda): bufor rysowania mniejszy niż kanwa = kadr nieważny. Przy pełnej pamięci karty WebGL po cichu
+  // zmniejsza bufor (3440×1440 → 860×360) i gubi tekstury, bez błędu — zrzut wyglądał na OK (recenzja kinowa r2, sekcja 5).
+  // Błąd z prefiksem „Myśliwce: ” odrzuca przebieg smoke i sondy. Co klatkę (tylko odczyt dwóch pól); ten sam błąd zgłaszany raz.
+  var buforZgloszony = '';
+  function sprawdzBufor() {
+    if (!gl) return;
+    var c = ui.canvas, k = c.width + '×' + c.height, g = gl.renderer.getContext(), b = g.drawingBufferWidth + '×' + g.drawingBufferHeight;
+    if (b === k) { buforZgloszony = ''; return; }
+    if (buforZgloszony === b + k) return;
+    buforZgloszony = b + k;
+    console.error('Myśliwce: bufor rysowania ' + b + ' ≠ kanwa ' + k + ' — kadr nieważny (karta graficzna bez pamięci?)');
   }
   // winieta jedna: gdy post działa (ma własną), CSS-owa nad kanwą znika; po powrocie do zwykłego renderu wraca
   function klasaPostu() { ui.scena.classList.toggle('my-post', !!(gl && gl.post.stan().aktywny)); }
@@ -610,6 +626,7 @@
     ui.doHangaru.hidden = hn;
     ui.dol.hidden = p;
     ui.scena.classList.toggle('my-tryb-pokaz', p);
+    korzen.classList.toggle('my-pokaz', p);                    // pasek nad obrazem, chowany po bezruchu (widok-pokaz.js)
     ui.zamknij.title = hn ? 'Wróć do Układu Słonecznego (Esc)' : 'Wróć do Układu Słonecznego';
     ui.doHangaru.title = tryb === 'makieta' ? 'Wróć do hangaru (Esc)' : 'Wróć do hangaru';
     ui.canvas.setAttribute('aria-label', p ? 'Pokaz kinowy maszyny — spacja pauza, strzałki zmieniają ujęcie, Esc otwiera makietę'
@@ -709,7 +726,12 @@
     trybPokazu.zwolnij();
     zwolnijScene();
     trybHangaru.zwolnij();
-    tryb = null; ui.scena.classList.remove('my-tryb-pokaz'); ui.canvas.style.cssText = '';
+    // Kanwa i cele postu (scena z MSAA ×4 i głębią, blask, poświata) nie leżą w pamięci karty po wyjściu z zakładki.
+    // Następne wejście odbudowuje rozmiary samo: gl.w = 0 → dopasuj() przy budowie trybu, a post idzie za buforem
+    // rysowania przy pierwszym renderze (MysliwceKino.post: rozmiar() przy niezgodności).
+    if (gl) { gl.post.rozmiar(1, 1); gl.renderer.setSize(1, 1, false); gl.w = gl.h = 0; }
+    tryb = null; ui.scena.classList.remove('my-tryb-pokaz'); korzen.classList.remove('my-pokaz', 'my-cisza'); ui.canvas.style.cssText = '';
+    ui.zaslona.style.transition = 'none'; ui.zaslona.style.opacity = '0';
     idBiez = null;
   }
 

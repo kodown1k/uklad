@@ -37,9 +37,14 @@
        z testem głębi); bez strug z iskrą jej przebiegi są pomijane. Poświata mieszana ekranem (nie wybiela wylotów).
        Bezpieczny powrót: błąd budowy, wyjątek w klatce albo program postu, który się nie skompilował → zwykły
        renderer.render i JEDNO console.warn('Myśliwce: post wyłączony (…)'); dalej już tylko zwykły render.
-     Kino.napisy(kontener) → { pokaz(wers | tekst | null), tytul(tekst | null), kadr(kadrKinowy), zwolnij() } — wersy
-       i plansza tytułu w DOM wyłącznie przez textContent; styl .my-kino* w mysliwce/mysliwce.css. */
+     Kino.napisy(kontener) → { pokaz(wers | tekst | null), tytul(tekst | null), kadr(kadrKinowy, w?, h?), zwolnij() } — wersy
+       i plansza tytułu w DOM wyłącznie przez textContent; styl .my-kino* w mysliwce/mysliwce.css. Układ napisu
+       (KinoKadr.ukladNapisow): rozmiar pisma z kadru (clamp(15, min(2,4% wys., 5,2% szer.), 36) px); w dolnym pasie,
+       gdy pas mieści dwie linie; inaczej (ultrawide bez pasa, telefon) klasa .my-kino-bezpasa — napis w kadrze, 6% (pion 9%)
+       nad dołem, na podkładzie (gradient od dołu kadru + przyciemnienie pod liniami). */
 (function (root) {
+  // układ napisów wspólny z innymi zakładkami (kino-kadr.js w korzeniu: ukladNapisow — spec R1)
+  var KK = (typeof module !== 'undefined' && module.exports) ? require('../kino-kadr.js') : root.KinoKadr;
   var PROPORCJA = 2.39;
   var MAKS_ZRODEL = 6;
   var DL_GORACA = 6.5;        // [m] długość płomienia, gdy źródło nie podaje `dl` (pełny dopalacz: F-47 4,5 … Su-75 8,6 m; F-22 5,75)
@@ -82,17 +87,20 @@
 
   /* ---------- kamera pościgowa ---------- */
   // Styczne Catmull-Rom w czasie (niejednorodnym) × napięcie, ograniczone Fritschem-Carlsonem: ekstremum lokalne klucza
-  // = styczna 0, |α|² + |β|² ≤ 9 na odcinku → krzywa monotoniczna między kluczami (bez przestrzeleń).
+  // = styczna 0, |α|² + |β|² ≤ 9 na odcinku → krzywa monotoniczna między kluczami (bez przestrzeleń). Ograniczenie
+  // niezależne od kolejności: styczna klucza × min(τ) z dwóch sąsiednich odcinków — styczna zależy tylko od sąsiadów,
+  // więc dwa zestawy kluczy z tymi samymi sąsiadami granicy (klucze-widma pokazu) dają na niej tę samą prędkość.
   function styczne(ts, ps, napiecie) {
-    var n = ps.length, m = new Array(n), d = [], i;
+    var n = ps.length, m = new Array(n), d = [], tau = [], i;
     for (i = 0; i < n - 1; i++) d.push(ts[i + 1] > ts[i] ? (ps[i + 1] - ps[i]) / (ts[i + 1] - ts[i]) : 0);
     m[0] = 0; m[n - 1] = 0;
     for (i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : napiecie * (ps[i + 1] - ps[i - 1]) / (ts[i + 1] - ts[i - 1]);
     for (i = 0; i < n - 1; i++) {
-      if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+      if (d[i] === 0) { tau.push(0); continue; }
       var a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
-      if (s > 9) { var tau = 3 / Math.sqrt(s); m[i] = tau * a * d[i]; m[i + 1] = tau * b * d[i]; }
+      tau.push(s > 9 ? 3 / Math.sqrt(s) : 1);
     }
+    for (i = 0; i < n; i++) m[i] *= Math.min(i > 0 ? tau[i - 1] : 1, i < n - 1 ? tau[i] : 1);
     return m;
   }
   function hermite(p0, p1, m0, m1, h, s) {
@@ -176,7 +184,8 @@
     }
     function ekran(p) { var c = mnoz4(rzut, p); return [0.5 + 0.5 * c[0] / c[3], 0.5 + 0.5 * c[1] / c[3]]; }
     return { a: ekran(A), b: ekran(B), ra: R0_GORACA * rzut[5] / (-2 * A[2]), rb: rb0 * rzut[5] / (-2 * B[2]), sila: przytnij(z.sila, 0, 1),
-      iskra: przyciety ? 0 : iskra };                                // koniec stożka za kamerą: obrys na pół ekranu — bez iskry
+      // koniec stożka za kamerą: obrys na pół ekranu — bez iskry; źródło z `iskra: false` (płomień hologramu) — bez iskry
+      iskra: przyciety || z.iskra === false ? 0 : iskra };
   }
 
   /* ---------- post obrazu (przeglądarka; THREE i renderer w argumentach) ---------- */
@@ -342,6 +351,9 @@
       rtI.setSize(pw, ph); rtB.setSize(pw, ph); rtB2.setSize(pw, ph); rtW.setSize(cw, ch); rtW2.setSize(cw, ch);
       mKon.uniforms.uRozm.value.set(w, h); uZr.uAsp.value = w / h;
       rp[0] = pw; rp[1] = ph; rc[0] = cw; rc[1] = ch;
+      // setSize zmienionego celu zwalnia jego teksturę: pierwsza klatka po zmianie znów przechodzi przez iskrę i blask,
+      // żeby ich cele powstały od razu (po wyjściu z zakładki — rozmiar(1, 1) — i po resize), a nie przy pierwszym płomieniu
+      rozgrzany = false;
     }
     function zrodla(kamera, lista) {
       var n = 0, zIskra = 0;
@@ -458,14 +470,24 @@
       pokaz: function (w) {
         var t = w == null ? '' : typeof w === 'string' ? w : String(w.tekst || '');
         wersTekst.textContent = t; wers.hidden = !t;
+        if (warstwa.classList) warstwa.classList.toggle('my-kino-mowi', !!t);           // podkład napisu (bez pasa) tylko, gdy pada wers
       },
       tytul: function (t) { t = t == null ? '' : String(t); tytulTekst.textContent = t; tytul.hidden = !t; },
-      // geometria kadru (Kino.kadrKinowy) → zmienne CSS: napisy w dolnym pasie, plansza na środku kadru
-      kadr: function (k) {
+      // geometria kadru (Kino.kadrKinowy) → zmienne CSS: napis w dolnym pasie albo w kadrze na podkładzie, plansza
+      // tytułu w dolnej części kadru; w, h = rozmiar kontenera (domyślnie z kadru i pasów)
+      kadr: function (k, w, h) {
         if (!k || !kontener.style || !kontener.style.setProperty) return;
-        var s = kontener.style;
-        s.setProperty('--my-kino-y', k.y + 'px'); s.setProperty('--my-kino-h', k.h + 'px');
+        var s = kontener.style, cw = w > 0 ? w : k.x * 2 + k.w, ch = h > 0 ? h : k.y + k.h + k.pasDol;
+        s.setProperty('--my-kino-y', k.y + 'px'); s.setProperty('--my-kino-h', k.h + 'px'); s.setProperty('--my-kino-w', k.w + 'px');
+        s.setProperty('--my-kino-x', k.x + 'px');
         s.setProperty('--my-kino-pas-dol', k.pasDol + 'px');
+        var u = KK && KK.ukladNapisow ? KK.ukladNapisow(k, cw, ch) : null;
+        if (!u) return;
+        var pion = ch > cw;
+        s.setProperty('--my-kino-rozmiar', u.rozmiar_px + 'px'); s.setProperty('--my-kino-dol', u.dol_px + 'px');
+        s.setProperty('--my-kino-maks-znakow', String(u.maksZnakowWLinii));
+        s.setProperty('--my-kino-podklad-h', (u.podklad ? Math.round(k.h * (pion ? 0.30 : 0.24)) : 0) + 'px');
+        if (warstwa.classList) warstwa.classList.toggle('my-kino-bezpasa', u.tryb === 'w-kadrze');
       },
       zwolnij: function () { if (warstwa.parentNode) warstwa.parentNode.removeChild(warstwa); },
     };

@@ -10,9 +10,20 @@
   var PEWNOSC = ['wysoka', 'srednia', 'niska', 'bardzo-niska'];
   var KRAJE = { USA: { kolor: '--us' }, Rosja: { kolor: '--ru' }, Chiny: { kolor: '--cn' } };
 
-  // Wersy opowieści: id nadawane automatycznie '<maszyna>/opowiesc/<n>' (n od 1).
+  // Wersy opowieści: id nadawane automatycznie '<maszyna>/opowiesc/<n>' (n od 1). Wpis = tekst albo [ujecie, tekst]:
+  // `ujecie` mówi, pod którym obrazem pokazu (mysliwce/pokaz.js) pada wers — przypisanie po treści, nie po długości:
+  // 'rozruch' | 'przelot' | 'okrazenie' | 'rozklad' | 'radar' | 'final' | 'czesc/<rodzaj>' (wers zastępuje w ujęciu
+  // części jej własny wers z czesci.js, gdy oba mówią o tym samym fakcie — np. trzy silniki J-36).
+  var UJECIA = ['rozruch', 'przelot', 'okrazenie', 'rozklad', 'radar', 'final'];
   function wersy(id, teksty) {
-    return teksty.map(function (t, i) { return { id: id + '/opowiesc/' + (i + 1), tekst: t }; });
+    return teksty.map(function (t, i) {
+      var w = { id: id + '/opowiesc/' + (i + 1), tekst: Array.isArray(t) ? t[1] : t };
+      if (Array.isArray(t)) {
+        if (UJECIA.indexOf(t[0]) < 0 && !/^czesc\/[a-z]+$/.test(t[0])) throw new Error('dane.js: nieznane ujęcie ' + t[0] + ' (' + w.id + ')');
+        w.ujecie = t[0];
+      }
+      return w;
+    });
   }
 
   var MYSLIWCE = [
@@ -39,15 +50,15 @@
       ],
       pewnosc: { poziom: 'wysoka', skad: 'Budżety, zapisy ustawowe i raporty GAO są jawne. Dane o sygnaturze radarowej — nie.' },
       opowiesc: wersy('f-22a', [
-        'Stoisz przy radarze. Na ekranie jest ptak.',
-        'Mały, spokojny punkt, jakich w nocy przelatują setki. Operator nawet nie podnosi głowy.',
-        'Ten ptak waży dziewiętnaście ton i ma w środku człowieka.',
-        'F-22 nie jest niewidzialny. On jest nieciekawy.',
-        'Każdą jego krawędź ustawiono pod takim kątem, żeby fala radaru odbiła się w bok — gdziekolwiek, byle nie z powrotem do nadajnika.',
-        'Do operatora wraca echo wielkości szklanej kulki. Komputer uznaje je za śmieć i wymazuje z ekranu.',
-        'Zbudowano go 195 razy i nigdy więcej. Fabryki nie ma od 2011 roku.',
-        'Nie da się zamówić kolejnego — za żadne pieniądze.',
-        'Dlatego Amerykanie ich nie kasują. Oni je remontują, żeby te same płatowce latały jeszcze wtedy, gdy ty będziesz miał wnuki.',
+        ['rozruch', 'Stoisz przy radarze. Na ekranie jest ptak.'],
+        ['przelot', 'Mały, spokojny punkt, jakich w nocy przelatują setki. Operator nawet nie podnosi głowy.'],
+        ['przelot', 'Ten ptak waży dziewiętnaście ton i ma w środku człowieka.'],
+        ['okrazenie', 'F-22 nie jest niewidzialny. On jest nieciekawy.'],
+        ['okrazenie', 'Każdą jego krawędź ustawiono pod takim kątem, żeby fala radaru odbiła się w bok — gdziekolwiek, byle nie z powrotem do nadajnika.'],
+        ['radar', 'Do operatora wraca echo wielkości szklanej kulki. Komputer uznaje je za śmieć i wymazuje z ekranu.'],
+        ['rozklad', 'Zbudowano go 195 razy i nigdy więcej. Fabryki nie ma od 2011 roku.'],
+        ['rozklad', 'Nie da się zamówić kolejnego — za żadne pieniądze.'],
+        ['final', 'Dlatego Amerykanie ich nie kasują. Oni je remontują, żeby te same płatowce latały jeszcze wtedy, gdy ty będziesz miał wnuki.'],
       ]),
       ciekawostki: [
         { tytul: 'Jedyne zestrzelenie w historii tego typu to balon', tekst: '4 lutego 2023 F-22 strącił chiński balon szpiegowski jednym pociskiem AIM-9X, z pułapu 58 000 stóp — balon leciał wyżej od myśliwca. Znak wywoławczy brzmiał „FRANK", na cześć Franka Luke\'a Jr., asa I wojny światowej, który zestrzelił 14 niemieckich balonów obserwacyjnych i przeszedł do historii jako „Arizona Balloon Buster".' },
@@ -86,15 +97,15 @@
       ],
       pewnosc: { poziom: 'wysoka', skad: 'GAO, DOT&E i sprawozdania kwartalne Lockheeda dają twarde liczby produkcyjne i harmonogramowe. Skuteczność bojowa i sygnatura pozostają niejawne.' },
       opowiesc: wersy('f-35a', [
-        'Pilot patrzy w dół. Pod nogami ma metalową podłogę.',
-        'I mimo to widzi ziemię.',
-        'Widzi też, co dzieje się za jego plecami. I nad głową.',
-        'I pod skrzydłem, którego nie da się zobaczyć z kabiny.',
-        'Sześć kamer wtopionych w kadłub patrzy we wszystkie strony jednocześnie, a obraz z nich trafia prosto na szybkę jego hełmu.',
-        'Kadłub przestał zasłaniać. Samolot przestał być czymś, w czym się siedzi — stał się czymś, czym się patrzy.',
-        'Ten hełm kosztuje tyle, co mieszkanie. Robi się go osobno dla każdej głowy.',
-        'A 22 maja 2026 trzy takie maszyny wylądowały w Łasku pod Łodzią.',
-        'Ten sposób patrzenia jest od tego dnia również polski.',
+        ['rozruch', 'Pilot patrzy w dół. Pod nogami ma metalową podłogę.'],
+        ['przelot', 'I mimo to widzi ziemię.'],
+        ['przelot', 'Widzi też, co dzieje się za jego plecami. I nad głową.'],
+        ['przelot', 'I pod skrzydłem, którego nie da się zobaczyć z kabiny.'],
+        ['okrazenie', 'Sześć kamer wtopionych w kadłub patrzy we wszystkie strony jednocześnie, a obraz z nich trafia prosto na szybkę jego hełmu.'],
+        ['rozklad', 'Kadłub przestał zasłaniać. Samolot przestał być czymś, w czym się siedzi — stał się czymś, czym się patrzy.'],
+        ['rozklad', 'Ten hełm kosztuje tyle, co mieszkanie. Robi się go osobno dla każdej głowy.'],
+        ['final', 'A 22 maja 2026 trzy takie maszyny wylądowały w Łasku pod Łodzią.'],
+        ['final', 'Ten sposób patrzenia jest od tego dnia również polski.'],
       ]),
       ciekawostki: [
         { tytul: '„Husarz" wygrał w internetowym głosowaniu', tekst: 'Polską nazwę wyłoniono w kwietniu 2024. Zgłoszono prawie 800 propozycji, do finału weszły: Halny, Husarz, Harpia, Duch i — całkiem serio — Dracarys, z „Gry o tron". Wygrał Husarz.' },
@@ -124,16 +135,16 @@
       ],
       pewnosc: { poziom: 'srednia', skad: 'Budżet i harmonogram są jawne, płatowiec nie. Publiczna jest wyłącznie stylizowana grafika USAF — sylwetka obok to jej interpretacja, nie obrys ze zdjęcia. Dlatego narysowano ją linią przerywaną.' },
       opowiesc: wersy('f-47', [
-        'Wchodzisz do hali. Stoi w niej samolot, którego nikt na świecie jeszcze nie widział na zdjęciu.',
-        'Jest prawie gotowy.',
-        'Brakuje mu jednej rzeczy. Serca.',
-        'Silnik, pod który go zaprojektowano, będzie gotowy dopiero w 2031 roku.',
-        'A oni i tak każą mu polecieć w 2028.',
-        'Włożą w środek napęd zastępczy — słabszy, tymczasowy, nie ten właściwy —',
-        'tylko po to, żeby sprawdzić, czy skrzydła i komputery robią to, co obiecano na papierze.',
-        'To trochę tak, jakbyś uczył się biegać, zanim dostaniesz swoje docelowe nogi.',
-        'Nie widziałeś jego fotografii i długo nie zobaczysz.',
-        'Wszystko, co ludzkość o nim wie, mieści się w jednym rysunku reklamowym i w cenie: trzysta milionów dolarów za sztukę.',
+        ['rozruch', 'Wchodzisz do hali. Stoi w niej samolot, którego nikt na świecie jeszcze nie widział na zdjęciu.'],
+        ['przelot', 'Jest prawie gotowy.'],
+        ['okrazenie', 'Brakuje mu jednej rzeczy. Serca.'],
+        ['czesc/dysze', 'Silnik, pod który go zaprojektowano, będzie gotowy dopiero w 2031 roku.'],
+        ['czesc/dysze', 'A oni i tak każą mu polecieć w 2028.'],
+        ['rozklad', 'Włożą w środek napęd zastępczy — słabszy, tymczasowy, nie ten właściwy —'],
+        ['rozklad', 'tylko po to, żeby sprawdzić, czy skrzydła i komputery robią to, co obiecano na papierze.'],
+        ['rozklad', 'To trochę tak, jakbyś uczył się biegać, zanim dostaniesz swoje docelowe nogi.'],
+        ['radar', 'Nie widziałeś jego fotografii i długo nie zobaczysz.'],
+        ['final', 'Wszystko, co ludzkość o nim wie, mieści się w jednym rysunku reklamowym i w cenie: trzysta milionów dolarów za sztukę.'],
       ]),
       ciekawostki: [
         { tytul: 'Nazwa honoruje trzy rzeczy naraz — a kolejność jest sporna', tekst: 'Oficjalnie „47" odsyła do myśliwca P-47 Thunderbolt, do roku powstania USAF (1947) i do 47. prezydenta USA. Maile wewnętrzne ujawnione w trybie dostępu do informacji publicznej sugerują, że uzasadnienie historyczne dorobiono po fakcie.' },
@@ -165,16 +176,16 @@
       ],
       pewnosc: { poziom: 'srednia', skad: 'Liczby produkcyjne pochodzą z OSINT i zdjęć satelitarnych — są szacunkiem z widełkami. Osiągi znamy wyłącznie z deklaracji producenta i nic ich nie potwierdza.' },
       opowiesc: wersy('su-57', [
-        'Wyobraź sobie samolot zbudowany po to, żeby wejść tam, gdzie nikt inny nie da rady wejść.',
-        'A teraz wyobraź sobie, że on tam nie wchodzi.',
-        'Su-57 lata nad Ukrainą od 2022 roku i prawie zawsze robi to samo:',
-        'zostaje po swojej stronie granicy, wypuszcza pocisk z bezpiecznej odległości i zawraca do domu.',
-        'Ani razu nie stoczył pojedynku w powietrzu.',
-        'Nikogo nie zestrzelił. Nikt nie zestrzelił jego — w powietrzu.',
-        'Za to kilka sztuk uszkodzono albo stracono inaczej: na ziemi, na lotnisku, w drodze.',
-        'Ostatni spadł pod Moskwą w lipcu 2026 i do dziś nie wiadomo, kto go strącił.',
-        'Zbudowano ich czterdzieści cztery przez szesnaście lat.',
-        'Amerykanie w samym 2025 roku wypuścili sto dziewięćdziesiąt jeden F-35.',
+        ['rozruch', 'Wyobraź sobie samolot zbudowany po to, żeby wejść tam, gdzie nikt inny nie da rady wejść.'],
+        ['przelot', 'A teraz wyobraź sobie, że on tam nie wchodzi.'],
+        ['okrazenie', 'Su-57 lata nad Ukrainą od 2022 roku i prawie zawsze robi to samo:'],
+        ['okrazenie', 'zostaje po swojej stronie granicy, wypuszcza pocisk z bezpiecznej odległości i zawraca do domu.'],
+        ['rozklad', 'Ani razu nie stoczył pojedynku w powietrzu.'],
+        ['rozklad', 'Nikogo nie zestrzelił. Nikt nie zestrzelił jego — w powietrzu.'],
+        ['rozklad', 'Za to kilka sztuk uszkodzono albo stracono inaczej: na ziemi, na lotnisku, w drodze.'],
+        ['rozklad', 'Ostatni spadł pod Moskwą w lipcu 2026 i do dziś nie wiadomo, kto go strącił.'],
+        ['final', 'Zbudowano ich czterdzieści cztery przez szesnaście lat.'],
+        ['final', 'Amerykanie w samym 2025 roku wypuścili sto dziewięćdziesiąt jeden F-35.'],
       ]),
       ciekawostki: [
         { tytul: 'Dostał na własnym lotnisku', tekst: '9 czerwca 2024 ukraiński atak uszkodził Su-57 stojącego w Achtubinsku. To było pierwsze potwierdzone satelitarnie uszkodzenie rosyjskiego stealtha — samolot zbudowany po to, by go nie znaleziono, znaleziono na płycie postojowej.' },
@@ -204,16 +215,16 @@
       ],
       pewnosc: { poziom: 'niska', skad: 'Wszystko pochodzi z komunikatów producenta i materiałów targowych. Sylwetka obok opiera się na makiecie, nie na latającym egzemplarzu — stąd linia przerywana.' },
       opowiesc: wersy('su-75', [
-        'Idziesz przez halę wystawową. Pod reflektorami stoi myśliwiec.',
-        'Ludzie robią zdjęcia, dziennikarze piszą, że oto przyszłość.',
-        'Był rok 2021.',
-        'On nigdy nie wzniósł się w powietrze.',
-        'To była atrapa — pełnowymiarowy model bez wnętrza, zrobiony po to, żeby go pokazać.',
-        'Prawdziwy egzemplarz obiecywano na 2023 rok. Potem na 2024.',
-        'Potem na 2025. Dziś mówi się o 2026.',
-        'W fabryce nad rzeką Amur rzeczywiście coś powstaje: dwa kadłuby.',
-        'Jeden do łamania na ziemi, drugi do latania.',
-        'Minęło pięć lat od tamtego reflektora i nikt na całym świecie nie zamówił ani jednej sztuki.',
+        ['rozruch', 'Idziesz przez halę wystawową. Pod reflektorami stoi myśliwiec.'],
+        ['przelot', 'Ludzie robią zdjęcia, dziennikarze piszą, że oto przyszłość.'],
+        ['przelot', 'Był rok 2021.'],
+        ['przelot', 'On nigdy nie wzniósł się w powietrze.'],
+        ['okrazenie', 'To była atrapa — pełnowymiarowy model bez wnętrza, zrobiony po to, żeby go pokazać.'],
+        ['okrazenie', 'Prawdziwy egzemplarz obiecywano na 2023 rok. Potem na 2024.'],
+        ['rozklad', 'Potem na 2025. Dziś mówi się o 2026.'],
+        ['rozklad', 'W fabryce nad rzeką Amur rzeczywiście coś powstaje: dwa kadłuby.'],
+        ['rozklad', 'Jeden do łamania na ziemi, drugi do latania.'],
+        ['final', 'Minęło pięć lat od tamtego reflektora i nikt na całym świecie nie zamówił ani jednej sztuki.'],
       ]),
       ciekawostki: [
         { tytul: 'Teaser z pilotami z krajów, które nic nie kupiły', tekst: 'Przed premierą w 2021 puszczono filmik, w którym piloci z Indii, Argentyny, Wietnamu i Zjednoczonych Emiratów podnoszą wzrok ku niebu. Żaden z tych krajów nie zamówił ani jednej sztuki.' },
@@ -243,15 +254,15 @@
       ],
       pewnosc: { poziom: 'srednia', skad: 'Liczebność i warianty rekonstruowane z OSINT, defilad i zdjęć spotterskich. Osiągi niemal wyłącznie szacowane; Chiny nie publikują danych technicznych.' },
       opowiesc: wersy('j-20a', [
-        'Patrzysz w niebo nad Chinami. Przelatuje klucz myśliwców — długich, kanciastych, z dodatkową parą małych skrzydełek z przodu.',
-        'Wyglądają jak z filmu, który jeszcze nie powstał.',
-        'Przez piętnaście lat ich największy sekret siedział w środku: miały cudzy silnik.',
-        'Chiny umiały zbudować samolot, ale nie umiały zbudować dla niego serca.',
-        'Więc zrobiły rzecz, na którą Zachód by się nie odważył. Zbudowały trzysta sztuk mimo to.',
-        'Na silnikach zastępczych. Wiedząc, że są za słabe.',
-        'Dopiero w 2026 roku wjechał do nich własny, docelowy silnik.',
-        'Czyli: najpierw postawili całą armię, a dopiero potem ją dokończyli.',
-        'I ta niedokończona armia jest dziś liczniejsza niż wszystkie amerykańskie F-22 razem wzięte.',
+        ['rozruch', 'Patrzysz w niebo nad Chinami. Przelatuje klucz myśliwców — długich, kanciastych, z dodatkową parą małych skrzydełek z przodu.'],
+        ['przelot', 'Wyglądają jak z filmu, który jeszcze nie powstał.'],
+        ['okrazenie', 'Przez piętnaście lat ich największy sekret siedział w środku: miały cudzy silnik.'],
+        ['czesc/dysze', 'Chiny umiały zbudować samolot, ale nie umiały zbudować dla niego serca.'],
+        ['rozklad', 'Więc zrobiły rzecz, na którą Zachód by się nie odważył. Zbudowały trzysta sztuk mimo to.'],
+        ['rozklad', 'Na silnikach zastępczych. Wiedząc, że są za słabe.'],
+        ['rozklad', 'Dopiero w 2026 roku wjechał do nich własny, docelowy silnik.'],
+        ['final', 'Czyli: najpierw postawili całą armię, a dopiero potem ją dokończyli.'],
+        ['final', 'I ta niedokończona armia jest dziś liczniejsza niż wszystkie amerykańskie F-22 razem wzięte.'],
       ]),
       ciekawostki: [
         { tytul: 'Jedyny stealth świata z kaczkami', tekst: 'Przednie stateczniki uchodziły na Zachodzie za sprzeczne z niewidzialnością — każda ruchoma powierzchnia to dodatkowe odbicie. Chińczycy uznali, że zwrotność i nośność są warte tej ceny. Nikt inny tak nie zrobił.' },
@@ -283,15 +294,15 @@
       ],
       pewnosc: { poziom: 'niska', skad: 'Najsłabiej udokumentowana z maszyn seryjnych w tym zestawieniu. Dużo doniesień prasowych o sprzecznych liczbach, mało materiału weryfikowalnego.' },
       opowiesc: wersy('j-35a', [
-        'Stoisz na pokładzie lotniskowca. W metalowej podłodze przed tobą biegnie szyna.',
-        'Nie ma pary. Nie ma buchającego kotła, nie ma syku.',
-        'Jest prąd.',
-        'Samolot rusza z miejsca i po dwóch sekundach nie ma go już nad pokładem.',
-        'Elektromagnes cisnął nim jak kamieniem z procy — z zera do prędkości autostradowej razy trzy, w czasie krótszym niż twoje westchnienie.',
-        'Ta maszyna to J-35. Chiny robią ją w trzech wersjach naraz: na lotniskowiec, na zwykłe lotnisko i na sprzedaż.',
-        'Na sprzedaż. To jest ta część, która zmienia świat.',
-        'Przez trzydzieści lat myśliwiec niewidzialny dla radaru można było kupić tylko w jednym miejscu na Ziemi.',
-        'Właśnie otworzyło się drugie, a pierwszy w kolejce stoi Pakistan.',
+        ['rozruch', 'Stoisz na pokładzie lotniskowca. W metalowej podłodze przed tobą biegnie szyna.'],
+        ['przelot', 'Nie ma pary. Nie ma buchającego kotła, nie ma syku.'],
+        ['przelot', 'Jest prąd.'],
+        ['przelot', 'Samolot rusza z miejsca i po dwóch sekundach nie ma go już nad pokładem.'],
+        ['okrazenie', 'Elektromagnes cisnął nim jak kamieniem z procy — z zera do prędkości autostradowej razy trzy, w czasie krótszym niż twoje westchnienie.'],
+        ['okrazenie', 'Ta maszyna to J-35. Chiny robią ją w trzech wersjach naraz: na lotniskowiec, na zwykłe lotnisko i na sprzedaż.'],
+        ['rozklad', 'Na sprzedaż. To jest ta część, która zmienia świat.'],
+        ['radar', 'Przez trzydzieści lat myśliwiec niewidzialny dla radaru można było kupić tylko w jednym miejscu na Ziemi.'],
+        ['final', 'Właśnie otworzyło się drugie, a pierwszy w kolejce stoi Pakistan.'],
       ]),
       ciekawostki: [
         { tytul: 'Zaczął się jako projekt prywatny', tekst: 'Poprzednik J-35, demonstrator FC-31, powstał z inicjatywy samych zakładów Shenyang — nie na zamówienie wojska. Dopiero później program znalazł państwowego odbiorcę.' },
@@ -322,17 +333,17 @@
       ],
       pewnosc: { poziom: 'bardzo-niska', skad: 'Chiny nie opublikowały żadnych danych technicznych. Wszystkie wymiary to fotogrametria zdjęć obserwatorów i pomiary z orbity. Sylwetka obok jest rekonstrukcją z fotografii, nie rysunkiem technicznym.' },
       opowiesc: wersy('j-36', [
-        'Grudzień 2024, chińskie miasto. Ktoś stoi na parkingu i podnosi telefon do góry.',
-        'Nagranie trwa kilkanaście sekund i jest rozmazane. Widać coś ogromnego i płaskiego.',
-        'Bez ogona. Kształt jak grot strzały.',
-        'Tak świat dowiedział się o J-36. Nie z konferencji prasowej.',
-        'Nie z parady. Z filmiku przechodnia.',
-        'Ta maszyna ma ponad dwadzieścia dwa metry długości i waży tyle, co pięćdziesiąt samochodów osobowych.',
-        'Ma trzy silniki — bo dwa nie dałyby rady jej unieść.',
-        'Nikt nie podał jej wymiarów.',
-        'Wszystko, co o niej wiadomo, wyliczono z cieni i perspektywy na zdjęciach, tak jak archeolog odtwarza wzrost człowieka z jednej kości.',
-        'I to jest w tej historii najdziwniejsze: pierwszy myśliwiec nowej generacji wzniósł się w powietrze nie nad Ameryką —',
-        'a dowiedzieliśmy się o tym od kogoś, kto akurat przechodził obok.',
+        ['rozruch', 'Grudzień 2024, chińskie miasto. Ktoś stoi na parkingu i podnosi telefon do góry.'],
+        ['przelot', 'Nagranie trwa kilkanaście sekund i jest rozmazane. Widać coś ogromnego i płaskiego.'],
+        ['przelot', 'Bez ogona. Kształt jak grot strzały.'],
+        ['okrazenie', 'Tak świat dowiedział się o J-36. Nie z konferencji prasowej.'],
+        ['okrazenie', 'Nie z parady. Z filmiku przechodnia.'],
+        ['okrazenie', 'Ta maszyna ma ponad dwadzieścia dwa metry długości i waży tyle, co pięćdziesiąt samochodów osobowych.'],
+        ['czesc/dysze', 'Ma trzy silniki — bo dwa nie dałyby rady jej unieść.'],
+        ['rozklad', 'Nikt nie podał jej wymiarów.'],
+        ['rozklad', 'Wszystko, co o niej wiadomo, wyliczono z cieni i perspektywy na zdjęciach, tak jak archeolog odtwarza wzrost człowieka z jednej kości.'],
+        ['final', 'I to jest w tej historii najdziwniejsze: pierwszy myśliwiec nowej generacji wzniósł się w powietrze nie nad Ameryką —'],
+        ['final', 'a dowiedzieliśmy się o tym od kogoś, kto akurat przechodził obok.'],
       ]),
       ciekawostki: [
         { tytul: 'Trzy silniki w myśliwcu to ewenement', tekst: 'Dwa wloty siedzą po bokach, trzeci na grzbiecie. Najprostsze wyjaśnienie nie jest efektowne: chińskie silniki wciąż ustępują ciągiem, a płatowca ważącego ponad 50 ton nie da się rozpędzić dwoma.' },
@@ -362,16 +373,16 @@
       ],
       pewnosc: { poziom: 'bardzo-niska', skad: 'Najmniej wiarygodna pozycja w zestawieniu. Nawet oznaczenie „J-50" pochodzi od obserwatorów. Każda liczba obok jest szacunkiem szacunku.' },
       opowiesc: wersy('j-50', [
-        'Tego samego grudnia poleciał jeszcze jeden.',
-        'Mniejszy. I cichszy — w każdym sensie, bo prawie nikt o nim nie mówił.',
-        'Nie ma ogona. Ma dwa silniki.',
-        'Skręca samymi końcówkami skrzydeł, bo nie ma czym innym. Prawdopodobnie ma kiedyś siadać na lotniskowcu.',
-        '„Prawdopodobnie" — bo o tej maszynie nie wiadomo prawie nic.',
-        'Nikt nie podał jej wymiarów. Nikt nie potwierdził, do czego służy.',
-        'Nikt oficjalnie nie przyznał, że istnieje.',
-        'Nawet nazwa „J-50" nie jest prawdziwa.',
-        'Wymyślili ją ludzie z internetu, którzy oglądali rozmazane zdjęcia — bo trzeba go było jakoś nazywać.',
-        'Gdzieś nad Chinami lata w tej chwili samolot, który nie ma imienia.',
+        ['rozruch', 'Tego samego grudnia poleciał jeszcze jeden.'],
+        ['przelot', 'Mniejszy. I cichszy — w każdym sensie, bo prawie nikt o nim nie mówił.'],
+        ['okrazenie', 'Nie ma ogona. Ma dwa silniki.'],
+        ['okrazenie', 'Skręca samymi końcówkami skrzydeł, bo nie ma czym innym. Prawdopodobnie ma kiedyś siadać na lotniskowcu.'],
+        ['okrazenie', '„Prawdopodobnie" — bo o tej maszynie nie wiadomo prawie nic.'],
+        ['rozklad', 'Nikt nie podał jej wymiarów. Nikt nie potwierdził, do czego służy.'],
+        ['radar', 'Nikt oficjalnie nie przyznał, że istnieje.'],
+        ['final', 'Nawet nazwa „J-50" nie jest prawdziwa.'],
+        ['final', 'Wymyślili ją ludzie z internetu, którzy oglądali rozmazane zdjęcia — bo trzeba go było jakoś nazywać.'],
+        ['final', 'Gdzieś nad Chinami lata w tej chwili samolot, który nie ma imienia.'],
       ]),
       ciekawostki: [
         { tytul: 'Nie ma oficjalnej nazwy', tekst: '„J-50" wymyślili obserwatorzy oglądający rozmazane zdjęcia. W obiegu funkcjonuje też oznaczenie J-XDS. Żadne z nich nie pochodzi od chińskiego wojska, które nigdy nie potwierdziło, że ten samolot istnieje.' },
@@ -386,7 +397,7 @@
     return null;
   }
 
-  var api = { PEWNOSC: PEWNOSC, KRAJE: KRAJE, MYSLIWCE: MYSLIWCE, mysliwiec: mysliwiec };
+  var api = { PEWNOSC: PEWNOSC, KRAJE: KRAJE, UJECIA: UJECIA, MYSLIWCE: MYSLIWCE, mysliwiec: mysliwiec };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MysliwceDane = api;
 })(typeof window !== 'undefined' ? window : globalThis);
