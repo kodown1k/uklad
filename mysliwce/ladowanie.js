@@ -5,12 +5,11 @@
 
    Adresy:  #mysliwce → hangar ({id:null}); #mysliwiec=<id>[&tryb=pokaz|makieta] → {id, tryb} (domyślnie pokaz);
             #mysliwiec=<nieznany> → {id:null, nieznany} (hangar z komunikatem). Obcy hash → null.
-   Zapytanie: ?mysliwce = przycisk zakładki widoczny (do czasu gotowości zakładki jest ukryty — main publikuje się
-   sam); ?smoke&mysliwce = hak testowy hangaru (marker MYSLIWCE_READY hangar; &hover=<id> = podświetlona maszyna,
-   &przelot=<id>[&u=0..1] = kadr przelotu kamery); ?smoke&mysliwiec=<id>&makieta = hak testowy (marker
-   MYSLIWCE_READY <id> makieta); ?smoke&mysliwiec=<id>&ujecie=N [&t=0..1] = kadr pokazu w chwili t ujęcia N (marker
-   MYSLIWCE_READY <id> <N>). Hash i hak działają też bez ?mysliwce — wtedy przycisk pojawia się tylko na czas
-   otwartej nakładki (żeby było widać, gdzie jesteś). */
+   Zapytanie: przycisk zakładki widoczny dla wszystkich (`?mysliwce` był bramką widoczności do czasu gotowości
+   zakładki — dziś flaga służy tylko hakowi smoke); ?smoke&mysliwce = hak testowy hangaru (marker MYSLIWCE_READY
+   hangar; &hover=<id> = podświetlona maszyna, &przelot=<id>[&u=0..1] = kadr przelotu kamery);
+   ?smoke&mysliwiec=<id>&makieta = hak testowy (marker MYSLIWCE_READY <id> makieta); ?smoke&mysliwiec=<id>&ujecie=N
+   [&t=0..1] = kadr pokazu w chwili t ujęcia N (marker MYSLIWCE_READY <id> <N>). */
 (function (root) {
   // Ta sama kolejność co MysliwceDane.MYSLIWCE (test pilnuje); parser hasha działa przed wczytaniem dane.js.
   var IDS = ['f-22a', 'f-35a', 'f-47', 'su-57', 'su-75', 'j-20a', 'j-35a', 'j-36', 'j-50'];
@@ -64,7 +63,6 @@
   var zap = parsujZapytanieMysliwcow(root.location.search);
   var ladowanie = null;
   if (!korzen || !root.Zakladki) { console.error('Myśliwce: brak #mysliwce albo zakladki.js — zakładka nieaktywna'); return; }
-  if (przycisk && zap.widoczna) przycisk.hidden = false;
 
   // Pasek nakładki istnieje od pierwszego `przelacz` (rejestr przenosi do niego #zakladki przed `otworz`).
   function pasek() {
@@ -105,7 +103,6 @@
 
   function otworz(stan) {
     korzen.hidden = false;
-    if (przycisk) przycisk.hidden = false;
     pasek();
     if (root.Mysliwce) return root.Mysliwce.otworz(stan || { id: null });
     komunikat('Wczytuję hangar…');
@@ -123,7 +120,6 @@
     if (root.Mysliwce) root.Mysliwce.zamknij();
     komunikat('');
     korzen.hidden = true;
-    if (przycisk && !zap.widoczna) przycisk.hidden = true;
   }
 
   root.Zakladki.zarejestruj({ id: 'mysliwce', przycisk: przycisk, pasek: pasek, otworz: otworz, zamknij: zamknij,
