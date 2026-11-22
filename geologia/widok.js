@@ -41,7 +41,6 @@
   var doc = document, $ = function (id) { return doc.getElementById(id); };
   var korzen = $('geologia');
   var zap = L.parsujZapytanieGeologii(location.search), smoke = zap.smoke;
-  var POKAZ_GOTOWY = false; // Task 8 ustawia true razem z filmami
   var K_KRZYWE = ['dojazd', 'cruise', 'logLerp', 'aimArc'];
   var RAD = Math.PI / 180;
   var NAZWY_PEWNOSCI = { wysoka: 'wysoka', srednia: 'średnia', niska: 'niska', 'bardzo-niska': 'bardzo niska' };
@@ -91,6 +90,7 @@
   var mks = { kolorowanie: 'teren', przekroj: null, chmury: false, przew: 1.5, przewCel: 1.5, czesc: null, mity: false, hover: null, czas: 0, anim: null,
     turystyka: false, tur: null, widok: null, azymut: null };
   var nacisk = null, ciag = null, wskaznik = null;
+  var pokaz = null;                     // geologia/pokaz.js — tworzony przy pierwszym wejściu w pokaz
 
   /* ---------- DOM ---------- */
   function zbudujUI() {
@@ -130,6 +130,10 @@
     ui.bZamknij = guzik(gk, '✕', 'Wróć do Układu Słonecznego (Esc)', 'ge-zamknij');
     ui.bZamknij.removeAttribute('aria-pressed'); ui.bZamknij.setAttribute('aria-label', 'Wróć do Układu Słonecznego');
 
+    // pokaz: „Makieta” w pasku (spec: tryb interaktywny tego miejsca; Esc robi to samo)
+    ui.bDoMakiety = guzik(pasek, 'Makieta', 'Makieta wyspy — tryb interaktywny (Esc)', 'ge-do-makiety');
+    ui.bDoMakiety.removeAttribute('aria-pressed'); ui.bDoMakiety.hidden = true;
+    ui.bDoMakiety.addEventListener('click', function () { otworz({ miejsce: st.miejsce, tryb: 'makieta' }); });
     ui.podmenu = el('nav', 'ge-podmenu', null, pasek);
     ui.podmenu.setAttribute('aria-label', 'Miejsca');
     M.MIEJSCA.forEach(function (m) {
@@ -234,6 +238,7 @@
     L.ROZDZIALY.forEach(function (r) { przyciskiRozdzialow[r.id].setAttribute('aria-pressed', String(st.rozdzial === r.id)); });
     var m = st.tryb === 'makieta';
     ui.rozdzialy.hidden = m;
+    ui.bDoMakiety.hidden = m;
     ui.narzedzia.hidden = !m;
     ui.makieta.hidden = !m;
     odswiezNarzedzia();
@@ -319,7 +324,16 @@
     var w = korzen.clientWidth, h = korzen.clientHeight;
     if (!(w > 0 && h > 0) || (w === gl.w && h === gl.h)) return;
     gl.w = w; gl.h = h;
-    gl.renderer.setSize(w, h, false);
+    var cs = ui.canvas.style;
+    if (st.tryb === 'pokaz' && pokaz) {
+      // pokaz: kadr KinoKadr.kadrKinowy z całego kontenera (R1) — canvas = prostokąt kadru, pasy = tło kontenera
+      var k = pokaz.dopasuj(w, h);
+      cs.left = k.x + 'px'; cs.top = k.y + 'px'; cs.width = k.w + 'px'; cs.height = k.h + 'px';
+      gl.renderer.setSize(Math.max(1, k.w), Math.max(1, k.h), false);
+    } else {
+      cs.left = cs.top = cs.width = cs.height = '';
+      gl.renderer.setSize(w, h, false);
+    }
     if (ui) ukladKart();
     if (mk) {
       mk.sc.kamera.aspect = w / h; mk.sc.kamera.updateProjectionMatrix(); limityKamery();
@@ -342,11 +356,12 @@
     if (st.tryb === 'makieta' && mk) {
       krokMakiety(dt, smoke ? 1 : (teraz - tStart) / 1000);
       gl.renderer.render(mk.sc.scena, mk.sc.kamera);
-    } else {
+    } else if (!(st.tryb === 'pokaz' && pokaz && pokaz.klatka(dt))) {
+      gl.renderer.setRenderTarget(null);
       gl.renderer.setClearColor(kolorTla(), 1);
       gl.renderer.render(scena, kamera);
     }
-    if (gotowosc && (st.tryb !== 'makieta' || mk)) { console.log('GEOLOGIA_READY ' + gotowosc); gotowosc = null; }
+    if (gotowosc && (st.tryb === 'makieta' ? mk : pokaz && pokaz.gotowy())) { console.log('GEOLOGIA_READY ' + gotowosc); gotowosc = null; }
     rafId = requestAnimationFrame(krok);
   }
   // Jakość: fps < 30 przez 2 s (poza smoke i hakiem &jakosc=pelna) → piksele 1:1. Siatka terenu (lod) zostaje.
@@ -388,6 +403,7 @@
           return dekodujObraz(x.plik).then(function (px) {
             if (px.w !== x.meta.w || px.h !== x.meta.h) throw new Error(x.plik + ': ' + px.w + '×' + px.h + ' zamiast ' + x.meta.w + '×' + x.meta.h);
             var s = Teren.zPikseli(px.rgba, px.w, px.h, x.meta); s.id = x.id;
+            if (x.meta.mNaPikselDanych) s.mNaPikselDanych = x.meta.mNaPikselDanych;
             return s;
           });
         })).then(function (siatki) {
@@ -1052,6 +1068,7 @@
     if (tag === 'INPUT' && /^(Arrow|Page|Home$|End$)/.test(k)) return;
     if (k === 'Escape') { e.preventDefault(); esc(); }
     else if (k === 'f' || k === 'F') { e.preventDefault(); pelnyEkran(); }
+    else if (st.tryb === 'pokaz' && pokaz && !natywny && pokaz.klawisz(k)) e.preventDefault();
   }, true);
   window.addEventListener('keyup', function (e) { if (aktywny) e.stopPropagation(); }, true);
 
@@ -1116,17 +1133,27 @@
     });
   }
 
+  /* ---------- pokaz (geologia/pokaz.js) ---------- */
+  function utworzPokaz() {
+    if (pokaz) return pokaz;
+    pokaz = window.GeologiaPokaz.utworz({ T: T, renderer: gl.renderer, korzen: korzen, smoke: smoke, zap: zap, el: el, guzik: guzik,
+      wczytajRzezbe: wczytajRzezbe, lod: lod, komunikat: komunikat, pelnyEkran: pelnyEkran,
+      doMakiety: function () { otworz({ miejsce: st.miejsce, tryb: 'makieta' }); },
+      doUkladu: function () { window.Zakladki.zamknijDoUkladu(); },
+      nazwaMiejsca: function (id) { var m = M.MIEJSCA.filter(function (x) { return x.id === id; })[0]; return m ? m.nazwa : id; },
+      zmianaRozdzialu: function (id) { if (st.tryb !== 'pokaz' || st.rozdzial === id) return; st.rozdzial = id; odswiezUI(); adres(); } });
+    return pokaz;
+  }
+
   /* ---------- API ---------- */
   function otworz(stan) {
     var s = stan || {};
     var miejsce = M.MIEJSCA.some(function (m) { return m.id === s.miejsce; }) ? s.miejsce : M.MIEJSCA[0].id;
     var tryb = s.tryb === 'makieta' ? 'makieta' : 'pokaz';
-    // Do czasu gotowego pokazu (Task 8) użytkownik trafia do makiety — pusty pokaz bez wyjścia na telefonie.
-    // Hak ?smoke zostaje przy pokazie, żeby bramki szkieletu działały.
-    if (tryb === 'pokaz' && !smoke && !POKAZ_GOTOWY) tryb = 'makieta';
     var rozdzial = tryb === 'makieta' ? null : (L.ROZDZIALY.some(function (r) { return r.id === s.rozdzial; }) ? s.rozdzial : L.ROZDZIALY[0].id);
     zbudujUI();
     if (mk && (tryb !== 'makieta' || miejsce !== st.miejsce)) zwolnijMakiete();
+    if (pokaz && tryb !== 'pokaz') pokaz.wyjdz();
     st.miejsce = miejsce; st.tryb = tryb; st.rozdzial = rozdzial; st.ujecie = null; st.t = zap.t;
     if (tryb === 'makieta' && s.warstwa === 'turystyka') { mks.turystyka = true; if (mk) ustawTurystyke(true); }
     korzen.hidden = false;
@@ -1145,7 +1172,7 @@
     aktywny = true; ostatni = 0;
     if (!tStart) tStart = performance.now();
     if (tryb === 'makieta') wejdzMakieta();
-    else komunikat('');
+    else { komunikat(''); utworzPokaz().wejdz(miejsce, rozdzial); gl.w = 0; dopasuj(); }
     if (!rafId) rafId = requestAnimationFrame(krok);
     if (!smoke) korzen.focus({ preventScroll: true });
     return true;
@@ -1158,6 +1185,7 @@
     if (ui) { zamknijCzesc(); zamknijMity(true); zamknijTur(true); ui.canvas.style.cursor = ''; }
     wskaznik = null; nacisk = null; ciag = null;
     if (gl) zwolnijMakiete();
+    if (pokaz) pokaz.wyjdz();
     if (ui) zwinPasek(false);           // zwinięcie wynika ze stanu warstwy — przy wyjściu z zakładki zdejmowane
     mks.przekroj = null; mks.chmury = false; mks.kolorowanie = 'teren'; mks.przew = mks.przewCel = 1.5; mks.czas = 0; mks.anim = null;
     mks.turystyka = false; mks.tur = null; mks.widok = null; mks.azymut = null;
@@ -1184,9 +1212,9 @@
     otworz: otworz,
     zamknij: zamknij,
     stan: function () {
-      var rz = mk && mk.rz;
-      return { miejsce: st.miejsce, tryb: st.tryb, rozdzial: st.rozdzial, ujecie: st.ujecie, t: st.t, fps: Math.round(fps),
-        jakosc: jakosc, lektor: smoke ? 'cisza' : 'brak', gotowa: !!mk,
+      var rz = mk && mk.rz, ps = st.tryb === 'pokaz' && pokaz ? pokaz.stan() : null;
+      return { miejsce: st.miejsce, tryb: st.tryb, rozdzial: st.rozdzial, ujecie: ps ? ps.ujecie : st.ujecie, t: ps ? ps.t : st.t, fps: Math.round(fps),
+        jakosc: jakosc, lektor: smoke ? 'cisza' : 'brak', gotowa: st.tryb === 'pokaz' ? !!(pokaz && pokaz.gotowy()) : !!mk, pokaz: ps,
         rzezba: rz ? { hMax: rz.hMax, hMin: rz.hMin, hMaxJson: rz.meta.hMax, hMinJson: rz.meta.hMin } : null,
         kolorowanie: mks.kolorowanie, przekroj: mks.przekroj ? { kat_st: mks.przekroj.kat_st, przesuniecie_km: mks.przekroj.przesuniecie_km,
           maks_m: mks.przekroj.profil ? mks.przekroj.profil.maks_m : null } : null,
@@ -1199,6 +1227,12 @@
         kamera: mk ? { poz: mk.sc.kamera.position.toArray(), cel: mk.ster ? mk.ster.target.toArray() : null,
           min: mk.ster ? mk.ster.minDistance : null, max: mk.ster ? mk.ster.maxDistance : null } : null };
     },
+    // smoke (spec R4): ekspozycja jednej klatki kanwy bez nakładek (cel 320 px); { porownaj: true } → delta do poprzedniej
+    pomiar: function (o) { return smoke && st.tryb === 'pokaz' && pokaz ? pokaz.pomiar(o) : null; },
+    // hak sondy: scena pokazu (GeologiaScena) — null poza pokazem
+    pokazScena: function () { return st.tryb === 'pokaz' && pokaz ? pokaz.scena() : null; },
+    // smoke: skok do chwili filmu (rozdział, ułamek 0…1) i klatka od razu
+    skok: function (rozdzial, ulamek) { return smoke && st.tryb === 'pokaz' && pokaz ? pokaz.skok(rozdzial, ulamek) : null; },
     diagnostyka: function () {
       if (!gl) return null;
       var m = gl.renderer.info.memory, pr = gl.renderer.info.programs;

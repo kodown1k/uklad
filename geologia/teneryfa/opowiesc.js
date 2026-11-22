@@ -1,14 +1,22 @@
 'use strict';
 /* Zakładka Geologia → Teneryfa — opowieść: scenopis filmów (spec R9) jako dane i wersy lektora w głosie Bajarza.
    Czyste dane, bez DOM/THREE; dual-export: przeglądarka window.GeologiaOpowiesc. Ładowany po dane.js (miejsca.js).
-   Kolejność pracy jak w filmie: najpierw ujęcia (R9, bez kamery — klucze kamery dopisuje Task 8), potem wersy
+   Kolejność pracy jak w filmie: najpierw ujęcia (R9), potem wersy
    wpisane w ujęcia, w ich budżecie znaków (tempo lektora 12,1 zn./s, lektor ≤ ok. 75% czasu = 9 zn. na sekundę celu).
    Zasady treści: każda liczba z dane.js (test); pora doby 1706 tylko z erupcje[1706].przebieg (UCZ-2); w 1706 stawką
    jest port i miasto, nikt w Garachico nie zginął; spór badaczy nazwany wprost.
    Jedno źródło: wers jest zapisany w swoim ujęciu (`w`), a `id`, `scena` i `zdarzenia` (przypięte do wersu) wylicza
    budowa() niżej — dopisanie wersu nie wymaga numerowania ręcznie.
    Wymowa: `wymowa` = tekst dla syntezatora (napis pokazuje `tekst`). Liczby słownie piszemy ręcznie (przypadek),
-   nazwy hiszpańskie zamienia fonetyka() wg FONETYKA — nowa trudna nazwa = nowy wpis w FONETYKA. */
+   nazwy hiszpańskie zamienia fonetyka() wg FONETYKA — nowa trudna nazwa = nowy wpis w FONETYKA.
+   Kamera (Task 8, czyta ją geologia/rozdzialy.js): `kamera: [klucz, …]`, klucz = { u: 0..1 ujęcia | kiedy: '<zdarzenie
+   ujęcia>' (+ po_s), cel: '<część>' | [lon, lat] | { czesc | lonLat | tor: '<id w dane.tory>', f, dx, dz [km, +x wschód, +z południe],
+   hc | dh [km] } | { ziemia: true, dx, dz }, wzgledem?: cel kotwicy stanowiska (domyślnie cel), az [° stanowiska widziany
+   z kotwicy, 0 = N], d [km poziomo], h [km n.p.m., rzeczywiste] | nad [km nad celem], fov [° pion przy 2.39],
+   wstrzas?, luk? (cel po łuku: aimArc), krzywa? ('dojazd' | 'cruise' — odcinek do tego klucza), stop? }. Brakujące pola
+   klucza = poprzedni klucz; ujęcie z wejściem D/P zaczyna się tam, gdzie skończyło poprzednie (klucz u = 0 pomijany).
+   `obiekt.hc` [km] = wysokość obiektu głównego wewnątrz przekroju (bez niego: teren w punkcie części).
+   Odstępstwa kadrów od R9 (wstawki ~2× szersze: ruling T3; ciągłość szwów D; horyzont SKA-3) — raport Task 8a. */
 (function (root) {
   var ROZDZIALY = ['polozenie', 'geografia', 'budowa', 'powstanie', 'historia', 'przekroj', 'czesci', 'mity', 'dzis'];
 
@@ -49,22 +57,38 @@
   // ───────────── klocki scenopisu ─────────────
   function sw(pora, az, el) { return { pora: pora, az: az, el: el }; }
   // Wers w ujęciu: w(tekst, { wymowa, czesc, zd: [[po_s, co], …] }).
-  function w(tekst, o) { o = o || {}; return { id: o.id, tekst: tekst, wymowa: o.wymowa, czesc: o.czesc, zd: o.zd || [] }; }
+  // `czas` = id zdarzenia osCzasu, o którego wieku mówi wers (licznik A1 w oknie wersu leży w jego przedzialMa — test)
+  // `czasOd: true` — wers mówi „od tego czasu” (licznik ≤ górna granica przedziału, nie w samym przedziale)
+  function w(tekst, o) { o = o || {}; return { id: o.id, tekst: tekst, wymowa: o.wymowa, czesc: o.czesc, czas: o.czas, czasOd: o.czasOd, zd: o.zd || [] }; }
   // Ujęcie: u(nazwa, pola, wersy). Domyślnie woda realna, krajobraz, bez plakietki.
   function u(nazwa, p, wersy) {
     var o = { nazwa: nazwa, typ: p.typ, poziom: p.poziom, wejscie: p.wejscie, znaki: p.znaki, cel_s: p.cel_s };
     if (p.oddechPo_s !== undefined) o.oddechPo_s = p.oddechPo_s;
+    if (p.zawieszeniePo_s !== undefined) o.zawieszeniePo_s = p.zawieszeniePo_s;   // cisza przed cięciem (R9.8), nie oddech
     o.obiekt = p.obiekt;
     o.swiatlo = p.swiatlo;
     o.woda = p.woda || 'realna';
     o.kolorowanie = p.kolorowanie || 'krajobraz';
     o.plakietka = p.plakietka || null;
     if (p.animacja) o.animacja = { nazwa: p.animacja[0], od: p.animacja[1], do: p.animacja[2] };
+    if (p.animacjaPoWersie) o.animacjaPoWersie = true;   // animacja rusza po ostatnim wersie ujęcia (do tego chwila stoi na `od`)
+    if (p.czasMa) o.czasMa = p.czasMa;                   // stała chwila geologiczna ujęcia [mln lat] (bez a1)
+    if (p.przewyzszenie) o.przewyzszenie = p.przewyzszenie; // [{ u, e }] — rampa przewyższenia w ujęciu (R2)
+    if (p.przekroj) o.przekroj = p.przekroj;             // { czesc, kat_st, start } — płaszczyzna przekroju (R9.6)
     if (p.etykiety) o.etykiety = p.etykiety;
+    // etykiety miejsc spoza części (cała wyspa, ląd sąsiedni): { nazwa, lonLat, odleglosc?: { fakt, liczba } } — liczba
+    // odległości z dane.fakty[].liczby (nie z tego pliku)
+    if (p.etykietyMiejsc) o.etykietyMiejsc = p.etykietyMiejsc;
+    if (p.podpis) o.podpis = p.podpis;                   // dopisek pola G-L pod plakietką (R4: „barwy: model…”)
+    if (p.osTelefonu) o.osTelefonu = p.osTelefonu;       // 'cel': na telefonie oś zostaje na celu kluczy (nie ku obiektowi)
+    if (p.ekspozycja) o.ekspozycja = p.ekspozycja;       // mnożnik ekspozycji ujęcia (dopasowanie przez cięcie, R4 EKS-6)
     o._wersy = wersy || [];
     return o;
   }
-  var TEIDE_WYSPA = { czesc: 'teide', promien_km: 40, promienPion_km: 28 };   // cała wyspa; pion: rdzeń wyspy (R9.1)
+  var TEIDE_WYSPA = { czesc: 'teide', promien_km: 40, promienPion_km: 28 };
+  // P3 (R9.1: „przy prawej krawędzi »Afryka« z odległością z danych”): środek wyspy (F1.1) i brzeg Afryki naprzeciw
+  // Kanarów (przylądek Juby) — punkty etykiet, nie dane geologiczne
+  var SRODEK_WYSPY_ETYKIETA = [-16.60556, 28.26861], AFRYKA_BRZEG = [-12.9, 27.95];   // cała wyspa; pion: rdzeń wyspy (R9.1)
   var NOC_1706 = sw('z-danych', 65, -12);       // przebieg: „ok. godzinę przed świtem” = noc; słońce pod horyzontem na E
   var NIEZNANA_1706 = sw('z-danych', 292, -2);  // przebieg: pora 'nieznana' → światło zmierzchu (R9.5), lektor pory nie nazywa
   var STUDIO = sw('studio', 135, 40);
@@ -85,6 +109,30 @@
       wymowa: 'Pedro Gil: tu zaczęła się dolina Güímar i tu w tysiąc siedemset piątym roku znów popłynęła lawa.' }
   };
 
+  function animacje() { return root.Animacje || (typeof require === 'function' ? require('../animacje.js') : null); }
+  // Okna A1 W4–W7 z wieku zdarzeń w danych (oś A1: Animacje.fA1 — f, przy którym licznik dochodzi do danego wieku)
+  function oknaA1() {
+    var D = daneTeneryfy(), An = animacje(), oc = function (id) { return D.osCzasu.filter(function (x) { return x.id === id; })[0]; };
+    var wyn = oc('oc-wynurzenie'), anaga = oc('oc-anaga');
+    // postój licznika na wynurzeniu: od dojścia do 11,9 do końca postoju (f osi A1)
+    var poczatekPostoju = An.fA1(D, wyn.Ma), koniecPostoju = An.fA1(D, wyn.Ma - 1e-6);
+    return {
+      // W4: oś od M0 (górna granica „ok. 12 mln lat”) do wynurzenia — tarcza centralna rośnie pod wodą ku tafli
+      dno: [0, poczatekPostoju],
+      // W5: licznik stoi na 11,9 przez wers (animacja rusza po wersie — `animacjaPoWersie`), tuż przed końcem postoju;
+      // po wersie postój się kończy, szczyt przebija taflę (ewolucja.js: przebicie w Ma zdarzenia), tarcza rośnie (do doMa
+      // tarczy centralnej) i stoi do początku Teno — W5 kończy się tam, gdzie zaczyna się W6 (cięcie K bez skoku licznika)
+      wynurzenie: [koniecPostoju - 1e-4 * (koniecPostoju - poczatekPostoju), An.fA1(D, oc('oc-teno').Ma)],
+      // W6: Teno i Anaga — od początku Teno do końca przedziału Anagi
+      trzyTarcze: [An.fA1(D, oc('oc-teno').Ma), An.fA1(D, Math.min.apply(null, anaga.przedzialMa))],
+      zrost: [An.fA1(D, Math.min.apply(null, anaga.przedzialMa)), 0.95]
+    };
+  }
+  var A1 = oknaA1();
+  // wierzchołek tarczy centralnej: pierwsza komórka, która przebija taflę (rzeźba chwili z ewolucja.js, z mieszaniem na pasie
+  // granicy — najwyższa komórka jednostki, 1347 m, leży w pasie z gmachem i wychodzi później; ta ma 1161 m). Źródło:
+  // Ewolucja.parametry → wynLad (para A1 w animacje.js czyta je wprost); test pilnuje, że stała i cele kluczy W5 = wynLad
+  var RDC_SZCZYT = [-16.71022, 28.15189];
   function daneTeneryfy() {
     if (root.GeologiaTeneryfa) return root.GeologiaTeneryfa;
     if (typeof require === 'function') return require('./dane.js');
@@ -118,17 +166,18 @@
       w('Po prawej brzeg Afryki, a od jej strony nadciąga noc.')
     ]),
     u('archipelag', { typ: 'dojazd', poziom: 'archipelag', wejscie: 'P', znaki: 170, cel_s: 18,
-      obiekt: { czesc: 'teide', promien_km: 250 }, swiatlo: sw('dzien', 268, 19) }, [
+      obiekt: { czesc: 'teide', promien_km: 250 }, swiatlo: sw('dzien', 268, 19),
+      etykietyMiejsc: [{ nazwa: 'Teneryfa', lonLat: SRODEK_WYSPY_ETYKIETA }, { nazwa: 'Afryka', lonLat: AFRYKA_BRZEG, odleglosc: { fakt: 'f-odleglosci', liczba: 'doAfryki' } }] }, [
       w('Z błękitu wyłaniają się wyspy, rzucone w ocean jak okruchy.'),
       w('Największa to Teneryfa. Do Afryki masz stąd około 300 kilometrów.',
         { wymowa: 'Największa to Teneryfa. Do Afryki masz stąd około trzystu kilometrów.' })
     ]),
     u('wyspa', { typ: 'dojazd', poziom: 'wyspa', wejscie: 'P', znaki: 190, cel_s: 20,
       obiekt: TEIDE_WYSPA, swiatlo: sw('zloty', 272, 16) }, [
-      w('Wyspa ma trzy rogi, jak grot rzucony w morze.'),
+      w('Wyspa ma trzy rogi, jak grot rzucony w morze.', { zd: [[0.5, 'podpis:przewyzszenie']] }),
       w('Grzbiety biegną od rogów do środka i tam się spotykają.'),
       w('Na spotkaniu stoi Teide: 3718 metrów, najwyżej w całej Hiszpanii.',
-        { wymowa: 'Na spotkaniu stoi Teide: trzy tysiące siedemset osiemnaście metrów, najwyżej w całej Hiszpanii.' })
+        { wymowa: 'Na spotkaniu stoi Teide: trzy tysiące siedemset osiemnaście metrów, najwyżej w całej Hiszpanii.', zd: [[0.3, 'etykieta:teide']] })
     ]),
     u('teide', { typ: 'dojazd', poziom: 'wyspa', wejscie: 'D', znaki: 110, cel_s: 12.5, oddechPo_s: 2.5,
       obiekt: { czesc: 'teide', promien_km: 28, promienPion_km: 28 }, swiatlo: sw('zloty', 278, 12) }, [
@@ -152,7 +201,8 @@
       w('Chmury rozbijają się o grzbiet jak fala o falochron.')
     ]),
     u('gran', { typ: 'przelot', poziom: 'wyspa', wejscie: 'K', znaki: 120, cel_s: 14,
-      obiekt: { czesc: 'dorsal', promien_km: 3.5 }, swiatlo: sw('dzien', 115, 26) }, [
+      obiekt: { czesc: 'dorsal', promien_km: 3.5 }, swiatlo: sw('dzien', 115, 26),
+      podpis: 'barwy: model z wysokości i wiatru' }, [
       w('Grań tnie wyspę na pół: po prawej mokra zieleń, po lewej sucha skała w słońcu.')
     ]),
     u('las-canadas', { typ: 'okrazenie', poziom: 'wyspa', wejscie: 'D', znaki: 130, cel_s: 14,
@@ -226,25 +276,30 @@
       w('I cofnij zegar. Daleko.')
     ]),
     u('dno', { typ: 'dojazd', poziom: 'wyspa', wejscie: 'D', znaki: 150, cel_s: 16,
-      obiekt: { czesc: 'teide', promien_km: 35 }, swiatlo: NEUTRALNE, woda: 'szklana', plakietka: 'rekonstrukcja', animacja: ['a1', 0, 0.15] }, [
+      obiekt: { czesc: 'teide', promien_km: 35 }, swiatlo: NEUTRALNE, woda: 'szklana', plakietka: 'rekonstrukcja', animacja: ['a1'].concat(A1.dno) }, [
       w('Stoisz na dnie, na jednej z najstarszych skorup oceanu na Ziemi.'),
       w('Szczeliny się żarzą. Lawa wychodzi w zimną wodę i stygnie w poduszki.')
     ]),
-    u('wynurzenie', { typ: 'dojazd', poziom: 'wyspa', wejscie: 'B', znaki: 100, cel_s: 12, oddechPo_s: 2,
-      obiekt: { czesc: 'teide', promien_km: 20 }, swiatlo: NEUTRALNE, woda: 'szklana', plakietka: 'rekonstrukcja', animacja: ['a1', 0.15, 0.25] }, [
+    u('wynurzenie', { typ: 'dojazd', poziom: 'wyspa', wejscie: 'B', znaki: 100, cel_s: 16, oddechPo_s: 6,
+      // obiekt główny = wierzchołek tarczy centralnej (Roque del Conde, oc-wynurzenie): wers „ok. 12 mln lat” na postoju
+      // licznika (11,9; szczyt tuż pod taflą, para), animacja rusza po wersie — koniec postoju = przebicie tafli (zdarzenie
+      // `przebicie-tafli` liczy plan z krzywej). Długi oddech po wersie: w środku ujęcia wierzchołek stoi już nad wodą
+      // (ruling 8b-10)
+      obiekt: { lonLat: RDC_SZCZYT, promien_km: 6, promienPion_km: 4 }, swiatlo: NEUTRALNE, woda: 'szklana', plakietka: 'rekonstrukcja',
+      animacja: ['a1'].concat(A1.wynurzenie), animacjaPoWersie: true }, [
       w('Syk pary: około 12 milionów lat temu góra wychodzi nad wodę.',
-        { wymowa: 'Syk pary: około dwunastu milionów lat temu góra wychodzi nad wodę.', zd: [[0.8, 'przebicie-tafli'], [1.2, 'woda:realna']] })
+        { wymowa: 'Syk pary: około dwunastu milionów lat temu góra wychodzi nad wodę.', czas: 'oc-wynurzenie', zd: [[1.2, 'woda:realna']] })
     ]),
     u('trzy-tarcze', { typ: 'statyw', poziom: 'wyspa', wejscie: 'K', znaki: 150, cel_s: 16,
-      obiekt: TEIDE_WYSPA, swiatlo: NEUTRALNE, plakietka: 'rekonstrukcja', animacja: ['a1', 0.25, 0.6] }, [
+      obiekt: TEIDE_WYSPA, swiatlo: NEUTRALNE, plakietka: 'rekonstrukcja', animacja: ['a1'].concat(A1.trzyTarcze) }, [
       w('Rosną trzy tarcze, jedna po drugiej: na południu, potem Teno, potem Anaga.'),
       w('Czy stały osobno, jak wyspy? Badacze piszą tylko: prawdopodobnie.')
     ]),
     u('zrost', { typ: 'okrazenie', poziom: 'wyspa', wejscie: 'D', znaki: 150, cel_s: 16,
-      obiekt: TEIDE_WYSPA, swiatlo: NEUTRALNE, plakietka: 'rekonstrukcja', animacja: ['a1', 0.6, 0.95] }, [
+      obiekt: TEIDE_WYSPA, swiatlo: NEUTRALNE, plakietka: 'rekonstrukcja', animacja: ['a1'].concat(A1.zrost) }, [
       w('Potem długa przerwa. Deszcz i morze gryzą skałę.'),
       w('Około 4 milionów lat temu środek budzi się znowu. Lawa skleja tarcze w jedną wyspę.',
-        { wymowa: 'Około czterech milionów lat temu środek budzi się znowu. Lawa skleja tarcze w jedną wyspę.' })
+        { wymowa: 'Około czterech milionów lat temu środek budzi się znowu. Lawa skleja tarcze w jedną wyspę.', czas: 'oc-canadas' })
     ]),
     u('goraca-plama', { typ: 'statyw', poziom: 'archipelag', wejscie: 'P', znaki: 110, cel_s: 10,
       obiekt: { czesc: 'teide', promien_km: 250 }, swiatlo: NEUTRALNE, plakietka: 'hipoteza' }, [
@@ -258,17 +313,22 @@
 
   // R9.5 — jednostka czasu maleje (tysiące lat → lata → godziny), ujęcia się skracają; kulminacja w H10.
   var GARACHICO = { czesc: 'garachico', promien_km: 0.75 };
+  // H1–H3: rzeźba tuż przed osuwiskiem Icod (zapadniecie.Ma z dane.js + 5 tys. lat — zbocze z wypełnieniem)
+  var ICOD = (daneTeneryfy().jednostki || []).filter(function (j) { return j.id === 'dolina-icod'; })[0];
+  var PRZED_ICOD = ICOD && ICOD.zapadniecie ? +(ICOD.zapadniecie.Ma + 0.005).toFixed(3) : 0;
   S.historia = [
     u('przed', { typ: 'statyw', poziom: 'wyspa', wejscie: 'C', znaki: 100, cel_s: 10,
-      obiekt: { czesc: 'icod', promien_km: 4.2 }, swiatlo: NEUTRALNE, plakietka: 'rekonstrukcja' }, [
+      obiekt: { czesc: 'icod', promien_km: 4.2 }, swiatlo: NEUTRALNE, plakietka: 'rekonstrukcja', czasMa: [PRZED_ICOD, PRZED_ICOD] }, [
       w('Północne zbocze jeszcze stoi. Patrz na nie dobrze, bo zaraz go nie będzie.')
     ]),
     u('zbocze-rusza', { typ: 'statyw', poziom: 'wyspa', wejscie: 'D', znaki: 90, cel_s: 12,
-      obiekt: { czesc: 'icod', promien_km: 6 }, swiatlo: NEUTRALNE, woda: 'szklana', plakietka: 'rekonstrukcja', animacja: ['a3', 0, 0.7] }, [
+      obiekt: { czesc: 'icod', promien_km: 6 }, swiatlo: NEUTRALNE, woda: 'szklana', plakietka: 'rekonstrukcja', animacja: ['a3', 0, 0.7],
+      czasMa: [PRZED_ICOD, PRZED_ICOD] }, [
       w('Najpierw rusza pod wodą, etap po etapie. Na końcu zjeżdża to, co nad wodą.', { zd: [[0.2, 'start-a3']] })
     ]),
     u('fala-i-cisza', { typ: 'statyw', poziom: 'wyspa', wejscie: 'K', znaki: 80, cel_s: 10, oddechPo_s: 3,
-      obiekt: { czesc: 'icod', promien_km: 15 }, swiatlo: NEUTRALNE, woda: 'szklana', plakietka: 'rekonstrukcja', animacja: ['a3', 0.7, 1] }, [
+      obiekt: { czesc: 'icod', promien_km: 15 }, swiatlo: NEUTRALNE, woda: 'szklana', plakietka: 'rekonstrukcja', animacja: ['a3', 0.7, 1],
+      czasMa: [PRZED_ICOD, PRZED_ICOD] }, [
       w('Potem cisza. Po zboczu został pusty amfiteatr: dolina Icod.')
     ]),
     u('trzy-blizny', { typ: 'przelot', poziom: 'wyspa', wejscie: 'C', znaki: 140, cel_s: 14,
@@ -283,10 +343,11 @@
       w('A ta kaldera? Badacze się kłócą.'),
       w('Jedni widzą trzy zapadnięcia, drudzy osuwisko zbocza. A może jedno i drugie.')
     ]),
-    u('teide-w-bliznie', { typ: 'dojazd', poziom: 'wyspa', wejscie: 'D', znaki: 100, cel_s: 10,
-      obiekt: { czesc: 'teide', promien_km: 3 }, swiatlo: NEUTRALNE, plakietka: 'rekonstrukcja', animacja: ['a1', 0.95, 1] }, [
+    // wejście K (ruling kontrolera, runda 1): H6 zaczyna się w chwili 0,17 mln lat (bez Teide) — zmiana chwili to cięcie
+    u('teide-w-bliznie', { typ: 'dojazd', poziom: 'wyspa', wejscie: 'K', znaki: 100, cel_s: 10,
+      obiekt: { czesc: 'teide', promien_km: 3 }, swiatlo: NEUTRALNE, plakietka: 'rekonstrukcja', animacja: ['a1', 0.875, 1] }, [
       w('W tej bliźnie od około 170 tysięcy lat rośnie Teide, a obok Pico Viejo.',
-        { wymowa: 'W tej bliźnie od około stu siedemdziesięciu tysięcy lat rośnie Teide, a obok Pico Viejo.' })
+        { wymowa: 'W tej bliźnie od około stu siedemdziesięciu tysięcy lat rośnie Teide, a obok Pico Viejo.', czas: 'oc-teide', czasOd: true })
     ]),
     u('ludzie', { typ: 'statyw', poziom: 'wyspa', wejscie: 'K', znaki: 110, cel_s: 10,
       obiekt: TEIDE_WYSPA, swiatlo: NEUTRALNE }, [
@@ -301,7 +362,10 @@
         { wymowa: 'Wracasz do tamtej nocy. Na grzbiecie pęka szczelina długa na dziewięćset pięćdziesiąt metrów.' })
     ]),
     u('lawa-schodzi', { typ: 'przelot', poziom: 'wstawka:garachico', wejscie: 'K', znaki: 120, cel_s: 14,
-      obiekt: GARACHICO, swiatlo: NIEZNANA_1706, plakietka: 'rekonstrukcja', animacja: ['a2', 0.1, 0.6] }, [
+      // na telefonie oś zostaje na czole lawy (cel kluczy), nie ku Garachico — czoło i miasto są na starcie H9 2,5
+      // szerokości kadru telefonu od siebie (ruling 8b-2: lawa w kadrze kulminacji, EKS-3)
+      // ekspozycja 1,2: stok o zmierzchu (słońce −2°) wobec portu z morzem odbijającym zachód po cięciu K (EKS-6 ±25%)
+      obiekt: GARACHICO, osTelefonu: 'cel', ekspozycja: 1.2, swiatlo: NIEZNANA_1706, plakietka: 'rekonstrukcja', animacja: ['a2', 0.1, 0.6] }, [
       w('Z ponad dwunastu otworów bije ogień, a lawa rusza w dół, ku miastu.'),
       w('Na dole czeka najważniejszy port wyspy.')
     ]),
@@ -324,27 +388,31 @@
     schemat('blok', { typ: 'statyw', poziom: 'wyspa', wejscie: 'C', znaki: 90, cel_s: 10, obiekt: BLOK }, [
       w('Teraz weź nóż i przetnij wyspę przez sam szczyt Teide.')
     ]),
-    schemat('ciecie', { typ: 'statyw', poziom: 'wyspa', wejscie: 'D', znaki: 60, cel_s: 9, obiekt: BLOK }, [
+    // cięcie N–S przez Teide (ściana patrzy na wschód, kamera X3–X6 na az 90°); płaszczyzna rusza na zdarzeniu `ciecie-start`
+    schemat('ciecie', { typ: 'statyw', poziom: 'wyspa', wejscie: 'D', znaki: 60, cel_s: 9, obiekt: BLOK,
+      przekroj: { czesc: 'teide', kat_st: 0, start: 'ciecie-start' } }, [
       w('Zgrzyt kamienia. Połowa wyspy odjeżdża na bok.', { zd: [[0, 'ciecie-start']] })
     ]),
-    schemat('profil', { typ: 'dojazd', poziom: 'wyspa', wejscie: 'D', znaki: 120, cel_s: 12, obiekt: { czesc: 'teide', promien_km: 21 } }, [
+    schemat('profil', { typ: 'dojazd', poziom: 'wyspa', wejscie: 'D', znaki: 120, cel_s: 12, obiekt: { czesc: 'teide', promien_km: 21, hc: 0 },
+      przewyzszenie: [{ u: 0.08, e: 1.5 }, { u: 0.58, e: 3 }] }, [
       w('Górna linia jest zmierzona. Wszystko pod nią to schemat, nie zdjęcie.'),
       w('Góry są tu wyciągnięte w górę trzy razy.')
     ]),
-    schemat('warstwy', { typ: 'przelot', poziom: 'wyspa', wejscie: 'D', znaki: 160, cel_s: 16, obiekt: { czesc: 'teide', promien_km: 10.5 } }, [
+    schemat('warstwy', { typ: 'przelot', poziom: 'wyspa', wejscie: 'D', znaki: 160, cel_s: 16, obiekt: { czesc: 'teide', promien_km: 10.5, hc: -1 } }, [
       w('Na dole skorupa z czasów dinozaurów.', { zd: [[0.2, 'warstwa:w-skorupa'], [1.6, 'warstwa:w-osady']] }),
       w('Nad nią lawa zastygła pod wodą w szkliste okruchy, słaba i podatna.', { zd: [[0.2, 'warstwa:w-kompleks-podmorski']] }),
       w('Wyżej tarcze bazaltu, gmach Las Cañadas i Teide.',
         { zd: [[0.2, 'warstwa:w-tarcze'], [1.6, 'warstwa:w-gmach-canadas'], [3.4, 'warstwa:w-teide-pico-viejo']] })
     ]),
-    schemat('komora', { typ: 'dojazd', poziom: 'wyspa', wejscie: 'D', znaki: 120, cel_s: 12, obiekt: { czesc: 'teide', promien_km: 6 } }, [
+    schemat('komora', { typ: 'dojazd', poziom: 'wyspa', wejscie: 'D', znaki: 120, cel_s: 12, obiekt: { czesc: 'teide', promien_km: 6, hc: -1.5 } }, [
       w('Płytko pod Teide czeka magma: raczej kilka zbiorników niż jedna komora.', { zd: [[0.5, 'warstwa:w-zbiornik-fonolitowy']] }),
       w('Nikt ich nie widział. Ten obrys to szacunek.')
     ]),
-    schemat('osady', { typ: 'przelot', poziom: 'wyspa', wejscie: 'D', znaki: 70, cel_s: 8, obiekt: { czesc: 'icod', promien_km: 15 } }, [
+    schemat('osady', { typ: 'przelot', poziom: 'wyspa', wejscie: 'D', znaki: 70, cel_s: 8, obiekt: { czesc: 'icod', promien_km: 15, hc: -1.5 } }, [
       w('Na dnie, daleko od brzegu, leży gruz zsuniętych zboczy.')
     ]),
-    schemat('zamkniecie', { typ: 'dojazd', poziom: 'wyspa', wejscie: 'D', znaki: 50, cel_s: 8, oddechPo_s: 2.5, obiekt: BLOK }, [
+    schemat('zamkniecie', { typ: 'dojazd', poziom: 'wyspa', wejscie: 'D', znaki: 50, cel_s: 8, oddechPo_s: 2.5, obiekt: BLOK,
+      przewyzszenie: [{ u: 0.06, e: 3 }, { u: 0.8, e: 1.5 }] }, [
       w('Złóż wyspę z powrotem.')
     ])
   ];
@@ -353,6 +421,9 @@
   // Wers ujęcia = czesc.wers z dane.js (spec R9.7; jedno źródło — ten sam wers czyta karta makiety). Moduł go nie pisze.
   var OKRAZENIE = [['anaga', 'C'], ['la-laguna', 'D'], ['guimar', 'D'], ['montana-roja', 'K'], ['los-gigantes', 'D'],
     ['masca', 'D'], ['garachico', 'D'], ['orotava', 'D'], ['teide', 'D']];
+  // Montaña Roja po cięciu K: kadr z większą połacią nieba (telefon 93 → 130 sRGB) — ekspozycja ujęcia (EKS-6), przez szew
+  // D do Los Gigantes płynnie
+  var EKSPOZYCJA_OKRAZENIA = { 'montana-roja': 0.88 };
   var ETYKIETY_OKRAZENIA = { garachico: ['garachico', 'el-caleton'], orotava: ['orotava', 'icod'] };
   S.czesci = OKRAZENIE.map(function (z, i, wszystkie) {
     var t = i / (wszystkie.length - 1), ostatnie = i === wszystkie.length - 1;
@@ -361,6 +432,7 @@
       obiekt: { czesc: z[0], promien_km: 2.5 },
       swiatlo: sw(t < 0.65 ? 'dzien' : 'zloty', Math.round(250 + 35 * t), Math.round(30 - 20 * t)),
       etykiety: ETYKIETY_OKRAZENIA[z[0]] || [z[0]] };
+    if (EKSPOZYCJA_OKRAZENIA[z[0]]) p.ekspozycja = EKSPOZYCJA_OKRAZENIA[z[0]];
     if (ostatnie) p.oddechPo_s = 3;
     return u(z[0], p, [wersCzesci(czescDanych(z[0]))]);
   });
@@ -369,7 +441,8 @@
   // M3 i M5 wybrane z danych: „jeden wulkan” (mit, kadr dowodu = B5 ryfty) i „najwyższa góra” (fakt, kadr G5).
   function para(id, teza, dowod) {
     return [
-      u(id + '-teza', { typ: 'dojazd', poziom: teza.poziom || 'wyspa', wejscie: 'C', znaki: 55, cel_s: 6, obiekt: teza.obiekt,
+      // 0,8 s zawieszenia po tezie, przed stemplem werdyktu na cięciu K (R9.8) — także przy nagraniu dłuższym od budżetu
+      u(id + '-teza', { typ: 'dojazd', poziom: teza.poziom || 'wyspa', wejscie: 'C', znaki: 55, cel_s: 6, zawieszeniePo_s: 0.8, obiekt: teza.obiekt,
         swiatlo: teza.swiatlo, plakietka: teza.plakietka }, [w(teza.w)]),
       u(id + '-dowod', { typ: dowod.typ || 'statyw', poziom: dowod.poziom || 'wyspa', wejscie: 'K', znaki: 85, cel_s: dowod.cel_s || 9.5,
         oddechPo_s: dowod.oddechPo_s, obiekt: dowod.obiekt, swiatlo: dowod.swiatlo, woda: dowod.woda, kolorowanie: dowod.kolorowanie,
@@ -442,10 +515,208 @@
     ]),
     u('noc', { typ: 'statyw', poziom: 'wstawka:teide', wejscie: 'D', znaki: 150, cel_s: 22, oddechPo_s: 6,
       obiekt: { czesc: 'teide', promien_km: 1 }, swiatlo: sw('noc', 295, -18), animacja: ['a5', 0, 1] }, [
-      w('Gaśnie ostatnie okno. Tu chroni się skały, ale też ciemność nieba.'),
-      w('Podnieś głowę. Wyspa, która wyszła z oceanu, patrzy teraz w gwiazdy.')
+      w('Gaśnie ostatnie okno. Tu chroni się skały, ale też ciemność nieba.', { zd: [[0.3, 'okna-gasna']] }),
+      w('Podnieś głowę. Wyspa, która wyszła z oceanu, patrzy teraz w gwiazdy.', { zd: [[0.2, 'niebo']] })
     ])
   ];
+
+  // ───────────── KAMERA (spec R9; format w nagłówku pliku) ─────────────
+  // Klamra (R8 p. 4): ten sam kadr z morza na Garachico — P0 = H8 (noc 1706), H10 = H11 = D1 (port, świt po, dziś).
+  // Wstawka z=12 ma realnie 67 m na komórkę (ruling T3): H ≥ 45 komórek = 3,1 km, więc kadry ~2× szersze niż w R9.
+  var KADR_P0 = [{ u: 0, cel: { czesc: 'garachico', dz: 1.0 }, az: 350, d: 12.8, h: 0.15, fov: 14, wstrzas: 0.5 }, { u: 1, d: 12.6 }];
+  var KADR_H10 = [{ u: 0, cel: 'garachico', az: 340, d: 7.7, h: 0.12, fov: 24 }, { u: 1, d: 7.55 }];
+  var KAMERA = {
+    // R9.1 — zimny start, zjazd z orbity: glob → (P) archipelag → (P) wyspa → (D) Teide
+    'polozenie/zimny-start': KADR_P0,
+    'polozenie/glob': [
+      { u: 0, cel: { ziemia: true, dx: -1500, dz: 500 }, wzgledem: 'teide', az: 180, d: 6000, h: 30000, fov: 24 },
+      { u: 1, cel: 'teide', d: 400, h: 3000, luk: true }],
+    'polozenie/archipelag': [
+      { u: 0.45, cel: 'teide', az: 120, d: 150, h: 700, fov: 26 },
+      { u: 1, az: 50, d: 80, h: 225, fov: 28 }],
+    'polozenie/wyspa': [
+      { u: 0.35, cel: 'teide', az: 50, d: 95, h: 62, fov: 28 },
+      { u: 0.68, d: 66, h: 30 },
+      { u: 1, d: 62, h: 18 }],
+    // P5: dojazd wykładniczy do kadru końcowego (kino.js dojazd, odległość i wysokość logLerp) — rozdział kończy oddech
+    'polozenie/teide': [{ u: 1, cel: 'teide', az: 52, d: 55, h: 13, fov: 24, krzywa: 'dojazd' }],
+
+    // R9.2 — jeden dzień
+    'geografia/pod-chmurami': [
+      { u: 0, cel: { czesc: 'orotava', hc: 0.25 }, az: 40, d: 9, h: 0.6, fov: 35 },
+      { u: 1, cel: { czesc: 'orotava', dx: -3, dz: 3.5, hc: 0.4 }, h: 1.0 }],
+    'geografia/przebicie': [
+      { u: 0, cel: 'teide', az: 18, d: 17, h: 1.1, fov: 30 },
+      { u: 1, az: 16, d: 15.5, h: 2.3 }],
+    'geografia/morze-chmur': [{ u: 0, cel: 'teide', az: 55, d: 45, h: 2.4, fov: 10 }, { u: 1, d: 44 }],
+    // G3 → G4 (K) to cięcie osiowe: R9.2 stawia oba ujęcia na NE od Teide (tele znad Anagi, przelot wzdłuż Dorsal ku
+    // kalderze) — wyjątek RUCH-9 jawny w teście i w raporcie Task 8a
+    'geografia/gran': [
+      { u: 0, cel: { czesc: 'teide', hc: 2.6 }, az: 58, d: 37, h: 3.0, fov: 32 },
+      { u: 1, az: 78, d: 23, h: 3.1 }],
+    'geografia/las-canadas': [
+      { u: 0.5, cel: 'teide', az: 135, d: 18, h: 3.5, fov: 26 },
+      { u: 1, az: 195, d: 16, h: 3.6, fov: 24 }],
+    'geografia/teno': [
+      { u: 0, cel: 'los-gigantes', wzgledem: 'los-gigantes', az: 228, d: 9.2, h: 0.3, fov: 20 },
+      { u: 1, cel: { czesc: 'masca', dz: 4 }, h: 1.4, luk: true }],
+    'geografia/kalima': [{ u: 0, cel: 'teide', az: 170, d: 30, h: 1.2, fov: 20 }, { u: 1, d: 29 }],
+    'geografia/dwa-swiaty': [
+      { u: 0.6, cel: 'teide', az: 176, d: 60, h: 26, fov: 26 },
+      { u: 1, az: 180, d: 80, h: 42, fov: 28 }],
+
+    // R9.3 — mapa (światło studyjne)
+    'budowa/mapa': [{ u: 0, cel: 'teide', az: 180, d: 9, h: 110, fov: 28 }, { u: 1, az: 188, d: 16, h: 95 }],
+    'budowa/tarcze': [{ u: 0.65, cel: 'teide', az: 205, d: 70, h: 48, fov: 28 }, { u: 1, az: 230, d: 75, h: 45 }],
+    'budowa/gmach': [{ u: 0.4, cel: 'las-canadas', az: 175, d: 40, h: 10, fov: 20 }, { u: 1, az: 170, d: 26, h: 9 }],
+    'budowa/teide-pico-viejo': [{ u: 0.3, cel: 'teide', az: 190, d: 14, h: 4.6, fov: 24 }, { u: 1, az: 250 }],
+    'budowa/ryfty': [{ u: 1, cel: 'teide', az: 200, d: 60, h: 50, fov: 28 }],
+    'budowa/calosc': [{ u: 1, az: 202, d: 58, h: 49 }],
+
+    // R9.4 — powstanie; sylwetka z WSCHODU (ruling T6: słońce zachodzi za wyspą)
+    'powstanie/sylwetka': [{ u: 0, cel: 'teide', az: 90, d: 60, h: 0.2, fov: 12 }, { u: 1, d: 59 }],
+    'powstanie/zabierz-wode': [
+      { kiedy: 'woda:szklana', po_s: 2.6, cel: { czesc: 'teide', hc: 0 }, d: 78, h: 0.12, fov: 16 },
+      { u: 1, cel: { czesc: 'teide', hc: -1.0 }, d: 108, h: -1.0, fov: 24 }],
+    'powstanie/cofniecie': [{ u: 1, d: 106 }],
+    'powstanie/dno': [
+      { u: 0.5, az: 15, d: 95, h: -0.7 },
+      { u: 1, cel: { czesc: 'teide', hc: -0.8 }, az: 300, d: 70, h: -0.5 }],
+    // W5: kamera z SSE (nad morzem) na wierzchołek tarczy centralnej, który przebija taflę po wersie; z tafli
+    // w górę i ku dołowi, żeby kadr końcowy (cięcie K na W6) miał mniej nieba (EKS-6)
+    'powstanie/wynurzenie': [
+      { u: 0, cel: { lonLat: RDC_SZCZYT, hc: -0.3 }, az: 160, d: 26, h: -0.35, fov: 24 },
+      { kiedy: 'woda:realna', h: 0.07, cel: { lonLat: RDC_SZCZYT, hc: 0.2 } },
+      { u: 1, d: 22, h: 4.5, cel: { lonLat: RDC_SZCZYT, hc: 0 } }],
+    // W6–W7 z SSE, nie z SSW jak w R9: słońce „neutralne” (az 220°) byłoby 161° od osi patrzenia (SWI-1 ≤ 155°)
+    'powstanie/trzy-tarcze': [{ u: 0, cel: 'teide', az: 165, d: 75, h: 40, fov: 28 }, { u: 1, az: 162, d: 74 }],
+    'powstanie/zrost': [
+      { u: 0.55, az: 135, d: 74, h: 42 },
+      { u: 1, az: 120, d: 40, h: 260, fov: 28 }],
+    'powstanie/goraca-plama': [
+      { u: 0.5, cel: 'teide', az: 160, d: 80, h: 1000, fov: 28 },
+      { u: 1, az: 0, d: 40, h: 265 }],
+    'powstanie/dzis': [
+      { u: 0.5, cel: 'icod', az: 0, d: 22, h: 26, fov: 22 },
+      { u: 1, d: 26, h: 11, fov: 20 }],
+
+    // R9.5 — historia
+    'historia/przed': [{ u: 0, cel: 'icod', az: 0, d: 30, h: 1.2, fov: 16 }, { u: 1, d: 29.6 }],
+    'historia/zbocze-rusza': [{ u: 0.25, wstrzas: 1 }, { u: 1, d: 29, fov: 24, wstrzas: 0.6 }],
+    'historia/fala-i-cisza': [{ u: 0, cel: 'icod', az: 325, d: 60, h: 20, fov: 28 }, { u: 1, d: 59 }],
+    'historia/trzy-blizny': [
+      { u: 0, cel: { czesc: 'orotava', dx: -9, dz: 4 }, az: 345, d: 24, h: 6, fov: 28 },
+      { u: 1, cel: { czesc: 'orotava', dx: 8, dz: 2 }, az: 5, d: 22 }],
+    'historia/kaldera-spor': [
+      { u: 0, cel: 'las-canadas', az: 200, d: 12, h: 3.4, fov: 24 },
+      { u: 1, az: 160 }],
+    'historia/teide-w-bliznie': [{ u: 0, cel: 'teide', az: 150, d: 16, h: 4.8, fov: 24 }, { u: 1, az: 125, d: 14 }],
+    'historia/ludzie': [{ u: 0, cel: 'teide', az: 180, d: 70, h: 40, fov: 28 }, { u: 1, d: 68 }],
+    'historia/luna': KADR_P0,
+    'historia/lawa-schodzi': [0, 0.25, 0.5, 0.75, 1].map(function (q, i) {
+      var k = { u: q, cel: { tor: 'lawa1706', f: 0.1 + 0.5 * q } };
+      if (i === 0) { k.az = 230; k.d = 5.3; k.nad = 1.5; k.fov = 32; }
+      return k;
+    }),
+    'historia/port': KADR_H10,
+    'historia/swit-po': KADR_H10,
+
+    // R9.6 — przekrój (cięcie N–S przez Teide, ściana patrzy na wschód)
+    'przekroj/blok': [{ u: 0, cel: 'teide', az: 135, d: 80, h: 40, fov: 28 }, { u: 1, d: 78 }],
+    'przekroj/ciecie': [{ u: 1, d: 76, h: 39 }],
+    'przekroj/profil': [
+      { u: 0.3, cel: { czesc: 'teide', hc: 1.5 }, az: 120, d: 70, h: 27, fov: 24 },
+      { u: 1, cel: { czesc: 'teide', hc: 0 }, az: 90, d: 120, h: 2, fov: 20 }],
+    'przekroj/warstwy': [
+      { u: 0.3, cel: { czesc: 'teide', dz: -10, hc: 0 }, d: 60, h: 1.2 },
+      { u: 1, cel: { czesc: 'teide', dz: 10, hc: 0 } }],
+    'przekroj/komora': [{ u: 1, cel: { czesc: 'teide', hc: -0.5 }, az: 90, d: 34, h: 1, fov: 24 }],
+    'przekroj/osady': [{ u: 1, cel: { czesc: 'icod', dz: -5, hc: -1 }, az: 95, d: 40, h: 1 }],
+    'przekroj/zamkniecie': [
+      { u: 0.5, cel: 'teide', az: 120, d: 62, h: 14, fov: 26 },
+      { u: 1, az: 135, d: 66, h: 40, fov: 28 }],
+
+    // R9.8 — mity: teza → K → dowód (w tym samym miejscu azymut stanowiska zmienia się o 30–150°)
+    'mity/m-atlantyda-teza': [{ u: 0, cel: 'teide', az: 80, d: 70, h: 3, fov: 24 }, { u: 1, d: 62, h: 2.5 }],
+    'mity/m-atlantyda-dowod': [{ u: 0, cel: { czesc: 'teide', hc: -1.0 }, az: 130, d: 110, h: -1.0, fov: 24 }, { u: 1, d: 104 }],
+    'mity/m-wygasly-teza': [{ u: 0, cel: 'teide', az: 150, d: 30, h: 4.2, fov: 20 }, { u: 1, d: 27 }],
+    'mity/m-wygasly-dowod': [{ u: 0, cel: 'teide', az: 200, d: 12.8, h: 4.3, fov: 14 }, { u: 1, d: 12.6 }],
+    'mity/m-jeden-wulkan-teza': [{ u: 0, cel: 'teide', az: 300, d: 70, h: 27, fov: 28 }, { u: 1, d: 64, h: 26 }],
+    'mity/m-jeden-wulkan-dowod': [{ u: 0, cel: 'teide', az: 200, d: 60, h: 50, fov: 28 }, { u: 1, d: 58 }],
+    'mity/m-megatsunami-teza': [{ u: 0, cel: LA_PALMA, az: 120, d: 200, h: 230, fov: 26 }, { u: 1, d: 150, h: 175 }],
+    'mity/m-megatsunami-dowod': [{ u: 0, cel: 'teno', az: 300, d: 150, h: 260, fov: 28 }, { u: 1, d: 146 }],
+    'mity/m-najwyzszy-teza': [{ u: 0, cel: 'teide', az: 40, d: 30, h: 4.5, fov: 20 }, { u: 1, d: 27 }],
+    'mity/m-najwyzszy-dowod': [{ u: 0, cel: 'teide', az: 120, d: 16, h: 3.6, fov: 24 }, { u: 1, az: 165 }],
+    'mity/m-guayota-teza': [{ u: 0, cel: 'teide', az: 0, d: 26, h: 2.2, fov: 16 }, { u: 1, d: 24 }],
+    'mity/m-guayota-dowod': [{ u: 0, cel: 'teide', az: 60, d: 15, h: 4.4, fov: 20 }, { u: 1, d: 14.5 }],
+
+    // R9.9 — dziś
+    'dzis/el-caleton': KADR_H10,
+    'dzis/mikroklimaty': [
+      { u: 0, cel: 'dorsal', az: 355, d: 14, h: 3.0, fov: 32 },
+      { u: 1, cel: { czesc: 'dorsal', dz: 8 }, wzgledem: 'dorsal', az: 355, d: 4, h: 3.2, krzywa: 'cruise' }],
+    'dzis/plaze': [{ u: 0, cel: 'montana-roja', az: 110, d: 10, h: 0.8, fov: 30 }, { u: 1, az: 160 }],
+    'dzis/miasta': [
+      { u: 0, cel: 'la-laguna', az: 40, d: 10, h: 2, fov: 30 },
+      { u: 1, cel: { czesc: 'la-laguna', dx: -3, dz: 1 }, wzgledem: 'la-laguna', az: 340 }],
+    'dzis/winnice': [{ u: 1, cel: 'orotava', az: 20, d: 9, h: 1.5, fov: 30 }],
+    'dzis/szlak': [{ u: 1, cel: 'teide', az: 35, d: 14, h: 3.9, fov: 26 }],
+    'dzis/noc': [
+      { u: 0.3, cel: 'teide', az: 30, d: 13, h: 2.6, fov: 16 },
+      { u: 1, cel: { czesc: 'teide', hc: 5.1 }, fov: 38 }]
+  };
+  // R9.7 — okrążenie zgodnie z ruchem wskazówek zegara wokół środka wyspy (F1.1): kamera nad morzem, 22° za celem na
+  // okręgu (cel ≥ 9 km), cel biegnie po brzegu (azymut i promień wokół środka między częściami), więc środek wyspy jest
+  // cały czas po prawej stronie kadru; przy części cel = część (lonLat), tam lektor czyta wers. Cięcie K przed
+  // `montana-roja` w ruchu, ten sam kierunek lotu. Finał: spirala od wschodu Teide na jego południe (niżej).
+  var SRODEK_WYSPY = [-16.60556, 28.26861], KM_LAT = 111.2, KM_LON = 111.2 * Math.cos(28.26861 * Math.PI / 180);
+  function biegunowe(ll) {
+    var dx = (ll[0] - SRODEK_WYSPY[0]) * KM_LON, dz = -(ll[1] - SRODEK_WYSPY[1]) * KM_LAT;
+    return [(Math.atan2(dx, -dz) * 180 / Math.PI + 360) % 360, Math.hypot(dx, dz)];
+  }
+  function naBrzegu(az, r) {
+    var a = az * Math.PI / 180;
+    return [SRODEK_WYSPY[0] + r * Math.sin(a) / KM_LON, SRODEK_WYSPY[1] + r * Math.cos(a) / KM_LAT];
+  }
+  var OKR = OKRAZENIE.slice(0, -1).map(function (z) {
+    var b = biegunowe(czescDanych(z[0]).lonLat);
+    return { id: z[0], az: b[0], r: b[1] };
+  });
+  // jeden obieg, rosnąco; Anaga i La Laguna leżą na jednym promieniu (1,2° różnicy) — krok radialny, nie wstecz
+  OKR.forEach(function (o, i) {
+    if (i === 0) return;
+    var q = OKR[i - 1].az;
+    if (o.az < q && o.az > q - 20) o.az = q + 4;
+    while (o.az < q) o.az += 360;
+  });
+  var OKR_ZA = 22, OKR_ODSUW = 14, OKR_MIJA = 3.5, OKR_H = { anaga: 1.6, 'la-laguna': 1.8, guimar: 1.8, 'montana-roja': 1.6,
+    'los-gigantes': 1.6, masca: 2.0, garachico: 1.8, orotava: 2.0 };
+  // Przy części kamera zwalnia: cel = część przez 16% ujęcia, stanowisko mija ją o ±3,5° (najwyżej ¼ odstępu do sąsiada),
+  // czyli ok. 30% prędkości przelotu, nigdy zero (R9.7); między częściami cel przechodzi do następnej, stanowisko
+  // przyspiesza. Środek postoju odsunięty od długich przelotów (Montaña Roja → Los Gigantes 94°, Garachico → La Orotava
+  // 84°), żeby obrót pod wersem był ≤ 14°/s także przy nagraniach ×1,3.
+  // Garachico: stanowisko 34° za częścią — przy 22° kamera z WNW patrzyłaby na wschód ze słońcem złotej godziny
+  // dokładnie za plecami (157° od osi, SWI-1 ≤ 155°)
+  var OKR_ZA_CZESCI = { garachico: 34 };
+  var OKR_SRODEK = { guimar: 0.42, 'montana-roja': 0.27, 'los-gigantes': 0.73, garachico: 0.36, orotava: 0.62 };
+  function kluczOkr(u, o, dAz) {
+    return { u: u, cel: o.id, wzgledem: { lonLat: SRODEK_WYSPY, hc: 0 }, az: o.az - (OKR_ZA_CZESCI[o.id] || OKR_ZA) + dAz, d: o.r + OKR_ODSUW, h: OKR_H[o.id], fov: 32 };
+  }
+  OKR.forEach(function (o, i) {
+    var k = [], sr = OKR_SRODEK[o.id] || 0.5;
+    var p0 = OKR[i - 1], n0 = OKR[i + 1], mDo = Math.min(OKR_MIJA, p0 ? (o.az - p0.az) / 4 : OKR_MIJA), mPo = Math.min(OKR_MIJA, n0 ? (n0.az - o.az) / 4 : OKR_MIJA);
+    if (i === 0) k.push(kluczOkr(0, o, -10));
+    if (o.id === 'montana-roja') k.push(kluczOkr(0, o, -16));
+    k.push(kluczOkr(sr - 0.08, o, -mDo), kluczOkr(sr + 0.08, o, mPo));
+    if (o.id === 'guimar') k.push(kluczOkr(1, o, 14));
+    KAMERA['czesci/' + o.id] = k;
+  });
+  // finał: spirala w górę ku kraterowi (zgodnie z ruchem wskazówek zegara, wschodnie zbocze), cel ≥ 9 km; kadr końcowy
+  // znad wschodniego zbocza na szczyt i kalderę w złotym świetle (kontra) — pełny zwrot „na północ” po okrążeniu
+  // kończącym się na północy to obrót 180° w 13 s pod wersem (limit 14°/s) — raport Task 8a
+  KAMERA['czesci/teide'] = [
+    { u: 0.4, cel: 'teide', az: 35, d: 15, h: 3.6, fov: 30 },
+    { u: 1, cel: 'teide', az: 75, d: 9, h: 5.0, fov: 30 }];
 
   // ───────────── budowa: id wersów, scena, zdarzenia przypięte do wersu ─────────────
   var ujecia = {}, wersy = {};
@@ -462,10 +733,13 @@
         if (x.wymowa || maNazwe(x.tekst)) wers.wymowa = fonetyka(x.wymowa || x.tekst);
         wers.scena = uj.id;
         if (x.czesc) wers.czesc = x.czesc;
+        if (x.czas) wers.czas = x.czas;
+        if (x.czasOd) wers.czasOd = true;
         x.zd.forEach(function (z) { zdarzenia.push({ wers: wers.id, po_s: z[0], co: z[1] }); });
         wersy[r].push(wers);
       });
       if (zdarzenia.length) uj.zdarzenia = zdarzenia;
+      if (KAMERA[uj.id]) uj.kamera = KAMERA[uj.id];
       ujecia[r].push(uj);
     });
   });

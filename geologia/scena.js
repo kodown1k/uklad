@@ -44,6 +44,8 @@
   var GORA_SCIANY_KM = 4;
   var STROP_CHMUR_KM = 1.5;
   var SKALA_ETYKIETY = 0.56;          // etykieta rysowana pismem 26 px, na ekranie ok. 15 px
+  var R_ZIEMI = 6371, KM_STOPIEN = R_ZIEMI * Math.PI / 180;   // jak Teren.doLokalnych
+  var MGIELKA_L = [20, 0];            // km: L kolumny powietrza (pokaz; patrz GLSL_MGIELKA; drugi składnik nieużywany)
 
   /* ---------- czysta część (node) ---------- */
   function gladko(t) { t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); }
@@ -284,7 +286,7 @@
   ].join('\n');
 
   // Czas geologiczny na GPU — ten sam rachunek co Ewolucja.wysokoscKomorki (geologia/ewolucja.js; zmiana tu = zmiana tam).
-  // uEwoO[k] = (odMa, doMa, zapadniecie.Ma | −1, wypelnienie_m), uEwoP[k] = (podłoże k+1 | 0, podloze.wys_m, R_km, ma centrum),
+  // uEwoO[k] = (od — odMa albo początek fazy podwodnej z Ewolucja.parametry(), doMa, zapadniecie.Ma | −1, wypelnienie_m), uEwoP[k] = (podłoże k+1 | 0, podloze.wys_m, R_km, ma centrum),
   // uEwoC[k] = centrum w układzie lokalnym [km]. Podłoże rozwinięte o jeden poziom (test danych pilnuje, że więcej nie ma).
   var MAX_JEDN_GPU = 16;
   var GLSL_EWOLUCJA = [
@@ -426,7 +428,8 @@
     'if (uTryb < 0.5) geKol = geHipsometria(geH);',
     'else if (uTryb < 1.5) {',
     '  if (geH < 0.0) geKol = mix(geHex(38.0, 54.0, 70.0), geHex(66.0, 86.0, 102.0), smoothstep(-3000.0, -100.0, geH));',
-    '  else if (geJ > 0.5) geKol = geS2L(texture2D(uPaleta, vec2((geJ + 0.5) / 256.0, 0.5)).rgb);',
+    // alfa palety = odsłonięcie jednostki (pokaz: mapa wlewana według wieku); makieta ma zawsze 255
+    '  else if (geJ > 0.5) { vec4 geP = texture2D(uPaleta, vec2((geJ + 0.5) / 256.0, 0.5)); geKol = mix(geHex(146.0, 142.0, 132.0), geS2L(geP.rgb), geP.a); }',
     '  else geKol = geHex(146.0, 142.0, 132.0);',
     '} else if (uTryb < 2.5) geKol = geKrajobraz(geH, geN.a * 2.0 - 1.0, geNw, geJ);',
     'else geKol = vec3(0.2);',                                     // „kalibracja”: jednolite albedo 0,2 do pomiaru światła
@@ -462,6 +465,26 @@
     '}'
   ].join('\n');
 
+  // Mgiełka powietrza (pokaz, spec R4 „niebo: jasna mgiełka”): światło rozproszone na drodze kamera → punkt, w sRGB jak
+  // mgła r128. Dwie warstwy o wysokości skali H: Rayleigh (8,5 km, barwa zenitu) i aerozol pod inwersją pasatu (1,2 km,
+  // barwa horyzontu); ilość powietrza na drodze = kolumna równoważna przy poziomie morza (atmosfera warstwowa płaska),
+  // udział = 1 − e^(−kolumna / L). Z orbity rozjaśnia ocean, przy ziemi daje głębię planów. Makieta: uMgielka = 0.
+  var GLSL_MGIELKA = [
+    'uniform float uMgielka; uniform vec2 uMgielkaL; uniform vec3 uMgielkaKol; uniform vec3 uMgielkaKolR; uniform float uMgPrzew; uniform float uMgKamH;',
+    // wysokość kamery rzeczywista z uniformu (y kamery pokazu ma przewyższenie tanh — Rozdzialy.doSceny — nie e·h)
+    'float geKolumna(vec3 c, vec3 p, float H) {',
+    '  float yc = max(uMgKamH, 0.0), yp = max(p.y / uMgPrzew, 0.0), L = length(c - p), d = yc - yp;',
+    '  if (abs(d) < 0.01) return L * exp(-0.5 * (yc + yp) / H);',
+    '  return L * H * abs(exp(-yp / H) - exp(-yc / H)) / abs(d);',
+    '}',
+    'vec3 geMgielka(vec3 k, vec3 c, vec3 p) {',
+    '  if (uMgielka < 0.001) return k;',
+    '  return mix(k, mix(uMgielkaKol, uMgielkaKolR, 0.4), uMgielka * (1.0 - exp(-geKolumna(c, p, 8.5) / uMgielkaL.x)));',
+    '}'
+  ].join('\n');
+  // mgiełka PRZED mgłą sceny: na brzegu dysku oceanu mgła daje dokładnie barwę horyzontu nieba (bez szwu na horyzoncie)
+  var MGIELKA_KONIEC = 'gl_FragColor.rgb = geMgielka(gl_FragColor.rgb, cameraPosition, vSwiat);\n\t#include <fog_fragment>';
+
   var FOG_RADIALNA = '#ifdef USE_FOG\n\tfogDepth = length(mvPosition.xyz);\n#endif';
 
   var WODA_VERT = [
@@ -484,8 +507,10 @@
     'uniform float uCzas; uniform float uSzklo; uniform float uTylkoKafel;',
     'uniform vec3 uSlonce; uniform vec3 uKolorSlonca; uniform vec3 uAmb; uniform vec3 uZenitL; uniform vec3 uHoryzontL;',
     'uniform sampler2D uPrzynW; uniform float uEwoWoda;',
+    'uniform sampler2D uZiemia; uniform float uDaleko; uniform vec2 uSrodekLL; uniform vec2 uKmStopien; uniform float uWodaJasn;',
     'varying vec3 vSwiat;',
     GLSL_WSPOLNE,
+    GLSL_MGIELKA,
     GLSL_EWOLUCJA,
     'vec2 geUv(vec2 xz, vec4 r, vec2 n) { vec2 f = (xz - r.xy) / (r.zw - r.xy); return (f * (n - 1.0) + 0.5) / n; }',
     'bool geW(vec2 xz, vec4 r) { return xz.x >= r.x && xz.x <= r.z && xz.y >= r.y && xz.y <= r.w; }',
@@ -509,7 +534,7 @@
     // półka 0 m ze szwu SRTM/ETOPO zasłonięta: głębokość efektywna rośnie co najmniej 120 m na km od brzegu
     '  float dEff = max(-h, 120.0 * dist);',
     '  vec3 woda = mix(geHex(38.0, 128.0, 128.0), geHex(18.0, 62.0, 96.0), smoothstep(4.0, 60.0, dEff));',
-    '  woda = mix(woda, geHex(10.0, 30.0, 58.0), smoothstep(60.0, 1500.0, dEff));',
+    '  woda = mix(woda, geHex(10.0, 30.0, 58.0), smoothstep(60.0, 1500.0, dEff)) * uWodaJasn;',
     '  vec3 n1 = texture2D(uFale, xz / 0.42 + uCzas * vec2(0.010, 0.006)).rgb * 2.0 - 1.0;',
     '  vec3 n2 = texture2D(uFale, xz / 1.30 - uCzas * vec2(0.004, -0.007)).rgb * 2.0 - 1.0;',
     '  vec3 n = normalize(vec3(n1.x + n2.x, 2.6, n1.y + n2.y));',
@@ -524,15 +549,88 @@
     '  float piana = (1.0 - smoothstep(0.015, 0.11, dist)) * step(h, 2.0) * (0.55 + 0.45 * geSzum(xz * 22.0 + uCzas * 0.3));',
     '  kol = mix(kol, vec3(0.78, 0.80, 0.80) * (uAmb + uKolorSlonca * max(uSlonce.y, 0.0)), piana * 0.65);',
     '  float daleko = smoothstep(25.0, 110.0, length(cameraPosition - vSwiat));',
-    '  gl_FragColor = vec4(kol, mix(1.0, mix(0.25, 1.0, daleko), uSzklo));',
+    '  float geAlfa = mix(1.0, mix(0.25, 1.0, daleko), uSzklo);',
+    // pokaz: ląd spoza danych (Afryka, Madera) z tekstury globu — ta sama barwa co na poziomie `glob` (przenikanie P)
+    '  if (uDaleko > 0.5 && !geW(xz, uProstA) && !geW(xz, uProstW)) {',
+    '    vec2 ll = vec2(uSrodekLL.x + xz.x / uKmStopien.x, uSrodekLL.y - xz.y / uKmStopien.y);',
+    '    vec3 tz = texture2D(uZiemia, vec2((ll.x + 180.0) / 360.0, (ll.y + 90.0) / 180.0)).rgb;',
+    '    float lad = smoothstep(0.05, 0.16, distance(tz, OCEAN_ZIEMI));',
+    '    kol = mix(kol, geS2L(tz) * (uAmb + uKolorSlonca * max(uSlonce.y, 0.0)), lad); geAlfa = mix(geAlfa, 1.0, lad);',
+    '  }',
+    '  gl_FragColor = vec4(kol, geAlfa);',
     '  #include <tonemapping_fragment>',
     '  #include <encodings_fragment>',
     '  #include <fog_fragment>',
     '}'
   ].join('\n');
 
+  // Glob (pokaz, poziom `glob`, spec R2): kula 6371 km z tekstury Ziemi; ocean tekstury (jednolity 30/59/117 w earthmap)
+  // dostaje tę samą barwę głębokiej wody co płaski ocean poziomów archipelag/wyspa (warunek 3 przenikania P), ląd —
+  // albedo tekstury × (wypełnienie + klucz·N·L) jak teren (π się skraca); noc: wypełnienie gaśnie za terminatorem.
+  var GLOB_VERT = [
+    'varying vec2 vUv; varying vec3 vN; varying vec3 vP;',
+    'void main() {',
+    '  vUv = uv; vN = normalize(mat3(modelMatrix) * normal);',
+    '  vec4 sw = modelMatrix * vec4(position, 1.0); vP = sw.xyz;',
+    '  gl_Position = projectionMatrix * viewMatrix * sw;',
+    '}'
+  ].join('\n');
+  var GLOB_FRAG = [
+    'uniform sampler2D uMapa; uniform vec3 uSlonce; uniform vec3 uKolorSlonca; uniform vec3 uAmb; uniform vec3 uZenitL; uniform vec3 uHoryzontL;',
+    'uniform float uMgielka; uniform vec2 uMgielkaL; uniform vec3 uMgielkaKol; uniform vec3 uMgielkaKolR; uniform float uWodaJasn;',
+    'varying vec2 vUv; varying vec3 vN; varying vec3 vP;',
+    'vec3 geS2L(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)); }',
+    'vec3 geHex(float r, float g, float b) { return geS2L(vec3(r, g, b) / 255.0); }',
+    'void main() {',
+    '  vec3 N = normalize(vN), V = normalize(cameraPosition - vP);',
+    '  vec3 tz = texture2D(uMapa, vUv).rgb;',
+    '  float ndl = dot(N, uSlonce), dzien = smoothstep(-0.12, 0.08, ndl);',
+    '  vec3 amb = uAmb * (0.04 + 0.96 * dzien);',
+    '  vec3 lad = geS2L(tz) * (amb + uKolorSlonca * max(ndl, 0.0));',
+    '  float fres = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);',
+    '  vec3 R = reflect(-V, N);',
+    '  vec3 niebo = mix(uHoryzontL, uZenitL, pow(clamp(dot(R, N), 0.0, 1.0), 0.45)) * dzien;',
+    '  float rs = max(dot(R, uSlonce), 0.0);',
+    '  vec3 woda = geHex(10.0, 30.0, 58.0) * uWodaJasn * (amb + uKolorSlonca * max(ndl, 0.0) * 0.45);',
+    // gładka kula bez fal: bez połysku słońca (z daleka fale rozmywają odbicie; plama połysku na gładkiej kuli
+    // rozjaśniała kadr przenikania P względem płaskiego oceanu)
+    '  woda = mix(woda, niebo, fres);',
+    '  float morze = 1.0 - smoothstep(0.05, 0.16, distance(tz, OCEAN_ZIEMI));',
+    '  vec3 c = mix(lad, woda, morze);',
+    '  gl_FragColor = vec4(c, 1.0);',
+    '  #include <tonemapping_fragment>',
+    '  #include <encodings_fragment>',
+    // mgiełka jak na płaskich poziomach (kamera ponad atmosferą: kolumna = H / cos kąta widzenia) — przy brzegu tarczy
+    // pas atmosfery; za terminatorem gaśnie
+    '  float geCos = max(dot(N, V), 0.035);',
+    '  float aR = uMgielka * (1.0 - exp(-8.5 / geCos / uMgielkaL.x));',
+    '  gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(uMgielkaKol, uMgielkaKolR, 0.4) * dzien, aR);',
+    '}'
+  ].join('\n');
+  var HALO_FRAG = [
+    'uniform vec3 uSlonce; varying vec2 vUv; varying vec3 vN; varying vec3 vP;',
+    'uniform vec3 uSrodek; uniform float uR;',
+    'void main() {',
+    // odległość promienia widzenia od środka Ziemi (w R): poświata tylko tuż nad brzegiem tarczy
+    '  vec3 d = normalize(vP - cameraPosition), c = uSrodek - cameraPosition;',
+    '  float b = length(c - d * dot(c, d)) / uR;',
+    '  float a = smoothstep(1.035, 1.0, b) * smoothstep(0.985, 1.0, b);',
+    '  float dzien = smoothstep(-0.25, 0.15, dot(normalize(vP - uSrodek), uSlonce));',
+    '  gl_FragColor = vec4(vec3(0.30, 0.52, 1.0) * a * 0.55 * dzien, 1.0);',
+    '}'
+  ].join('\n');
+  var KWADRAT_VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+  // przenikanie: dwa kadry z render targetów (wartości sRGB ekranu) mieszane liniowo; zasłona C/B/Cc nad kadrem
+  var MIKS_FRAG = 'uniform sampler2D uA; uniform sampler2D uB; uniform float uF; varying vec2 vUv;\n' +
+    'void main() { gl_FragColor = vec4(mix(texture2D(uA, vUv).rgb, texture2D(uB, vUv).rgb, uF), 1.0); }';
+  var ZASLONA_FRAG = 'uniform vec4 uZaslona; void main() { gl_FragColor = uZaslona; }';
+
   // Kopuła nieba: gradient zenit → mgiełka przy horyzoncie, tarcza i poświata słońca; wynik od razu w sRGB ekranu
   // (bez mapowania tonów), żeby barwa horyzontu = barwa mgły terenu i oceanu (mgła r128 miesza po kodowaniu wyjścia).
+  var OCEAN_ZIEMI = 'vec3(0.1176, 0.2314, 0.4588)';             // earthmap8k/4k: ocean jednolity sRGB 30/59/117
+  WODA_FRAG = WODA_FRAG.replace(/OCEAN_ZIEMI/g, OCEAN_ZIEMI);
+  GLOB_FRAG = GLOB_FRAG.replace(/OCEAN_ZIEMI/g, OCEAN_ZIEMI);
+  WODA_FRAG = WODA_FRAG.replace('  #include <fog_fragment>', '  ' + MGIELKA_KONIEC);
   var NIEBO_VERT = 'varying vec3 vKier; void main() { vKier = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
   var NIEBO_FRAG = [
     'uniform vec3 uZenit; uniform vec3 uHoryzont; uniform vec3 uSlonce; uniform vec3 uKolorTarczy; uniform float uTarcza;',
@@ -574,14 +672,18 @@
     '  #include <fog_fragment>',
     '}'
   ].join('\n');
+  CHMURY_FRAG = CHMURY_FRAG.replace('  #include <fog_fragment>', '  ' + MGIELKA_KONIEC).replace('varying vec3 vSwiat;', 'varying vec3 vSwiat;\n' + GLSL_MGIELKA);
 
   // Pory dnia: barwy klucza i wypełnienia, nieba (sRGB ekranu). Klucz : wypełnienie = 3 : 1 (spec R4). Moce dobrane pomiarem
   // (sonda, krajobraz w nadirze, słońce az 250° el 30°, mapowanie tonów liniowe): cień 60, światło 121 sRGB.
   var PORY = {
     dzien:    { klucz: 0xfff1df, k: 0.9, wyp: 0xdfe6ee, f: 0.3, zenit: '#4c79ad', horyzont: '#c9d5de', tarcza: '#fff4dc', moc: 1 },
     zlota:    { klucz: 0xffcf9a, k: 0.86, wyp: 0xe4d6c8, f: 0.28, zenit: '#5a79a0', horyzont: '#e2c6a2', tarcza: '#ffd9a0', moc: 1 },
-    zmierzch: { klucz: 0xff9a62, k: 0.5, wyp: 0x9ba5c2, f: 0.16, zenit: '#26385a', horyzont: '#c98d6e', tarcza: '#ffb080', moc: 0.8 },
+    zmierzch: { klucz: 0xff9a62, k: 0.5, wyp: 0x9ba5c2, f: 0.25, zenit: '#26385a', horyzont: '#c98d6e', tarcza: '#ffb080', moc: 0.8 },
     noc:      { klucz: 0x9fb4ff, k: 0.06, wyp: 0x5a6a90, f: 0.02, zenit: '#04070d', horyzont: '#111a28', tarcza: '#000000', moc: 0 },
+    // pokaz (Task 8): świt po erupcji (az 70°, el 6°) i kalima — pył Sahary: wypełnienie mocne, kontrast celowo niski, mgła bliska
+    swit:     { klucz: 0xffc08a, k: 0.62, wyp: 0xb8b8c8, f: 0.24, zenit: '#4a6390', horyzont: '#e6b690', tarcza: '#ffcf9a', moc: 0.9 },
+    kalima:   { klucz: 0xffd6a0, k: 0.6, wyp: 0xe0c49c, f: 0.42, zenit: '#a88660', horyzont: '#d9b88c', tarcza: '#ffe0b0', moc: 0.5, mgla: [6, 70] },
   };
   var NIEBO_PRZEKROJU = { zenit: '#07090c', horyzont: '#1a2028' };
 
@@ -653,7 +755,16 @@
       uSlonceKier: { value: new T.Vector3(0, 1, 0) } };
     Object.keys(UE).forEach(function (k) { U[k] = UE[k]; });
     Object.keys(UF).forEach(function (k) { U[k] = UF[k]; });
+    // mgiełka powietrza (pokaz): te same obiekty uniformów w terenie, wodzie, chmurach i na globie
+    var UM = { uMgielka: { value: 0 }, uMgielkaL: { value: new T.Vector2(MGIELKA_L[0], MGIELKA_L[1]) }, uMgielkaKol: { value: new T.Vector3(1, 1, 1) },
+      uMgielkaKolR: { value: new T.Vector3(1, 1, 1) }, uMgPrzew: { value: e }, uMgKamH: { value: 0 } };
+    Object.keys(UM).forEach(function (k) { U[k] = UM[k]; });
     var plaszczyzna = new T.Plane(new T.Vector3(0, 1, 0), 1e7), plaszczyzny = [plaszczyzna];
+    // pokaz (o.ostrze): druga płaszczyzna i przecięcie (clipIntersection) — odcięcie jedzie wzdłuż linii przekroju
+    // (R9.6 X2); poza ruchem ostrze „tnie wszystko”, więc przecięcie = sama płaszczyzna przekroju. Makieta: jedna płaszczyzna.
+    var ostrze = o.ostrze ? new T.Plane(new T.Vector3(0, 1, 0), -1e7) : null, ostrzeSciany = o.ostrze ? new T.Plane(new T.Vector3(0, 1, 0), 1e7) : null;
+    if (ostrze) plaszczyzny.push(ostrze);
+    var blokWl = false, tlo = new T.Color(0x000000), odslonWarstwy = null, jasnNieba = 1;
     var KOTWICA_SWIATLA = 'getDirectionalDirectLightIrradiance( directionalLight, geometry, directLight );';
     var KOTWICA_NORMALNEJ = 'normal = texture2D( normalMap, vUv ).xyz * 2.0 - 1.0;';
     if (T.ShaderChunk.lights_fragment_begin.indexOf(KOTWICA_SWIATLA) < 0 || T.ShaderChunk.normal_fragment_maps.indexOf(KOTWICA_NORMALNEJ) < 0) {
@@ -681,7 +792,7 @@
 
     function materialTerenu(P, tNorm, tInd, wyciecia) {
       var m = z(new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.94, metalness: 0, normalMap: tNorm,
-        normalMapType: T.ObjectSpaceNormalMap, clippingPlanes: plaszczyzny, clipShadows: true }));
+        normalMapType: T.ObjectSpaceNormalMap, clippingPlanes: plaszczyzny, clipShadows: true, clipIntersection: !!ostrze }));
       var wyc = [0, 1, 2].map(function (k) { var r = wyciecia[k]; return r ? new T.Vector4(r.x0, r.z0, r.x1, r.z1) : new T.Vector4(); });
       var u = { uIndeksy: { value: tInd || tPaleta }, uMaIndeksy: { value: tInd ? 1 : 0 }, uMloda: { value: tInd ? iMloda : 0 },
         uWyc: { value: wyc }, uLWyc: { value: wyciecia.length },
@@ -695,7 +806,8 @@
         wierzcholekEwolucji(sh, u, false);
         sh.vertexShader = sh.vertexShader.replace('#include <fog_vertex>', FOG_RADIALNA);
         sh.fragmentShader = sh.fragmentShader
-          .replace('#include <common>', '#include <common>\n' + GLSL_TEREN_PARS)
+          .replace('#include <common>', '#include <common>\n' + GLSL_TEREN_PARS + '\n' + GLSL_MGIELKA)
+          .replace('#include <fog_fragment>', MGIELKA_KONIEC)
           .replace('#include <color_fragment>', '#include <color_fragment>\n' + GLSL_TEREN_KOLOR)
           .replace('#include <normal_fragment_maps>', NORMALNA_EWO)
           .replace('#include <lights_fragment_begin>', LUZ_SWIATLA)
@@ -866,12 +978,15 @@
       uRozmW: { value: new T.Vector2(siatka.w, siatka.h) }, uRozmA: { value: arch ? new T.Vector2(arch.w, arch.h) : new T.Vector2(1, 1) },
       uCzas: { value: 0 }, uSzklo: { value: 0 }, uTylkoKafel: { value: 0 },
       uSlonce: { value: new T.Vector3(0, 1, 0) }, uKolorSlonca: { value: new T.Vector3(1, 1, 1) }, uAmb: { value: new T.Vector3(0.5, 0.5, 0.5) },
-      uZenitL: { value: new T.Vector3() }, uHoryzontL: { value: new T.Vector3() }, uPrzynW: { value: null }, uEwoWoda: { value: 0 } }]);
+      uZenitL: { value: new T.Vector3() }, uHoryzontL: { value: new T.Vector3() }, uPrzynW: { value: null }, uEwoWoda: { value: 0 },
+      uZiemia: { value: null }, uDaleko: { value: 0 }, uWodaJasn: { value: 1 }, uSrodekLL: { value: new T.Vector2(Teren.SRODEK.lon, Teren.SRODEK.lat) },
+      uKmStopien: { value: new T.Vector2(KM_STOPIEN * Math.cos(Teren.SRODEK.lat * RAD), KM_STOPIEN) } }]);
     // UniformsUtils.merge klonuje tekstury — podmieniamy z powrotem na te same obiekty (jedno wgranie na GPU)
-    uWoda.uWysW.value = wyspa.tWys; uWoda.uWysA.value = arch ? arch.tWys : wyspa.tWys; uWoda.uFale.value = tFale; uWoda.uPrzynW.value = tPaleta;
+    uWoda.uWysW.value = wyspa.tWys; uWoda.uWysA.value = arch ? arch.tWys : wyspa.tWys; uWoda.uFale.value = tFale; uWoda.uPrzynW.value = tPaleta; uWoda.uZiemia.value = tPaleta;
     Object.keys(UE).forEach(function (k) { uWoda[k] = UE[k]; });          // czas geologiczny: te same obiekty co w terenie
+    Object.keys(UM).forEach(function (k) { uWoda[k] = UM[k]; });
     var matWody = z(new T.ShaderMaterial({ uniforms: uWoda, vertexShader: WODA_VERT, fragmentShader: WODA_FRAG, transparent: true,
-      fog: true, clipping: true, clippingPlanes: plaszczyzny, depthWrite: true }));
+      fog: true, clipping: true, clippingPlanes: plaszczyzny, clipIntersection: !!ostrze, depthWrite: true }));
     var ocean = new T.Mesh(z(new T.CircleGeometry(1, 128)), matWody);
     ocean.rotation.x = -Math.PI / 2; ocean.renderOrder = 1; ocean.frustumCulled = false; ocean.name = 'ocean';
     scena.add(ocean);
@@ -884,8 +999,9 @@
       uCzas: { value: 0 }, uStrop: { value: STROP_CHMUR_KM }, uSlonce: { value: uWoda.uSlonce.value }, uKolorSlonca: { value: uWoda.uKolorSlonca.value },
       uAmb: { value: uWoda.uAmb.value } }]);
     uChmury.uWysW.value = wyspa.tWys;
+    Object.keys(UM).forEach(function (k) { uChmury[k] = UM[k]; });
     var matChmur = z(new T.ShaderMaterial({ uniforms: uChmury, vertexShader: WODA_VERT, fragmentShader: CHMURY_FRAG, transparent: true,
-      depthWrite: false, side: T.DoubleSide, fog: true, clipping: true, clippingPlanes: plaszczyzny }));
+      depthWrite: false, side: T.DoubleSide, fog: true, clipping: true, clippingPlanes: plaszczyzny, clipIntersection: !!ostrze }));
     var chmuryMesh = new T.Mesh(z(new T.PlaneGeometry(prostCh.x1 - prostCh.x0, prostCh.z1 - prostCh.z0, 1, 1)), matChmur);
     chmuryMesh.rotation.x = -Math.PI / 2;
     chmuryMesh.position.set((prostCh.x0 + prostCh.x1) / 2, STROP_CHMUR_KM * e, (prostCh.z0 + prostCh.z1) / 2);
@@ -981,6 +1097,8 @@
           }
           var g2 = Math.min(gor, pow);
           if (g2 <= dol) continue;
+          var odsl = odslonWarstwy ? odslonWarstwy(w.id) : 1;
+          if (!(odsl > 0.5)) { x.fillStyle = '#23272d'; x.fillRect(px, yNaPx(g2), 1, yNaPx(dol) - yNaPx(g2) + 1); continue; }
           x.fillStyle = kolWarstwy(w);
           x.fillRect(px, yNaPx(g2), 1, yNaPx(dol) - yNaPx(g2) + 1);
           // granice schematu: przerywane (niska pewność — kreska rzadsza)
@@ -1014,6 +1132,7 @@
       } else napis('profil: dane', kMax / (probki.length - 1) * W, yNaPx(probki[kMax].h) + wysNapisu * 1.6, rozm, '#fff6e0', 'center');
       warstwy.forEach(function (w) {
         if (w.skala === 'stratowulkan' || w.skala === 'komora') return;
+        if (odslonWarstwy && !(odslonWarstwy(w.id) > 0.5)) return;
         // miejsce podpisu: najgrubsze pasmo, z lekką preferencją środka ściany (podpis nie ucieka na brzeg kadru)
         var gor = -w.doGlebokosci_m / 1000, dol = -w.odGlebokosci_m / 1000, best = -1, bi = 0, ocena = -Infinity;
         for (var i = 0; i < probki.length; i += 4) {
@@ -1045,7 +1164,8 @@
       var g = new T.BufferGeometry();
       g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setAttribute('uv', new T.BufferAttribute(uv, 2)); g.setIndex(idx);
       g.computeBoundingSphere();
-      sciana = new T.Mesh(g, new T.MeshBasicMaterial({ map: rysujSciane(L.dl, probki), side: T.DoubleSide, fog: false, toneMapped: false }));
+      sciana = new T.Mesh(g, new T.MeshBasicMaterial({ map: rysujSciane(L.dl, probki), side: T.DoubleSide, fog: false, toneMapped: false,
+        clippingPlanes: ostrzeSciany ? [ostrzeSciany] : null }));
       sciana.scale.y = e; sciana.name = 'przekroj'; sciana.userData.probki = probki;
       scena.add(sciana);
     }
@@ -1053,8 +1173,8 @@
       if (!arg) {
         przek = null; zwolnijSciane();
         plaszczyzna.set(new T.Vector3(0, 1, 0), 1e7);
-        if (arch) arch.mesh.visible = true;
-        uWoda.uTylkoKafel.value = 0;
+        if (arch) arch.mesh.visible = !blokWl;
+        uWoda.uTylkoKafel.value = blokWl ? 1 : 0;
         niebo();
         renderer.shadowMap.needsUpdate = true;
         widocznoscPinow();
@@ -1090,13 +1210,15 @@
     // --- światło i niebo ---
     var sw = { pora: 'dzien', az: 250, el: 30 }, kier = new T.Vector3();
     function niebo() {
-      var p = PORY[sw.pora] || PORY.dzien, nz = przek ? NIEBO_PRZEKROJU : p;
-      var cz = new T.Color(nz.zenit), ch = new T.Color(nz.horyzont), ct = new T.Color(p.tarcza);
+      var p = PORY[sw.pora] || PORY.dzien, nz = przek || blokWl ? NIEBO_PRZEKROJU : p;
+      var cz = new T.Color(nz.zenit).multiplyScalar(jasnNieba), ch = new T.Color(nz.horyzont).multiplyScalar(jasnNieba), ct = new T.Color(p.tarcza);
       uNiebo.uZenit.value.set(cz.r, cz.g, cz.b); uNiebo.uHoryzont.value.set(ch.r, ch.g, ch.b);
-      uNiebo.uKolorTarczy.value.set(ct.r, ct.g, ct.b); uNiebo.uTarcza.value = przek ? 0 : p.moc;
+      uNiebo.uKolorTarczy.value.set(ct.r, ct.g, ct.b); uNiebo.uTarcza.value = przek || blokWl ? 0 : p.moc;
       scena.fog.color.copy(ch);
+      tlo.copy(ch);
       renderer.setClearColor(ch, 1);
-      var zl = new T.Color(nz.zenit).convertSRGBToLinear(), hl = new T.Color(nz.horyzont).convertSRGBToLinear();
+      UM.uMgielkaKol.value.set(ch.r, ch.g, ch.b); UM.uMgielkaKolR.value.set(cz.r, cz.g, cz.b);
+      var zl = cz.clone().convertSRGBToLinear(), hl = ch.clone().convertSRGBToLinear();
       uWoda.uZenitL.value.set(zl.r, zl.g, zl.b); uWoda.uHoryzontL.value.set(hl.r, hl.g, hl.b);
     }
     function swiatlo(a) {
@@ -1127,7 +1249,7 @@
     function przewyzszenie(x, wTrakcie) {
       if (x == null) return e;
       e = Math.max(0.5, Math.min(5, +x || 1));
-      U.uPrzew.value = e;
+      U.uPrzew.value = e; UM.uMgPrzew.value = e;
       [arch, wyspa].concat(wstawki).forEach(function (P) { if (P) P.mesh.scale.y = e; });
       chmuryMesh.position.y = STROP_CHMUR_KM * e;
       UF.uStropA4.value = stropA4 * e;
@@ -1223,6 +1345,8 @@
       Rdysku = Math.max(400, 25 * Math.max(cp.y, 0));
       ocean.position.set(cp.x, 0, cp.z); ocean.scale.set(Rdysku * 1.02, Rdysku * 1.02, 1);
       scena.fog.near = Rdysku * 0.6; scena.fog.far = Rdysku;
+      var mg = PORY[sw.pora] && PORY[sw.pora].mgla;
+      if (mg) { scena.fog.near = Math.min(scena.fog.near, mg[0]); scena.fog.far = Math.min(scena.fog.far, mg[1]); }
       kopula.position.copy(cp); kopula.scale.setScalar(Rdysku * 1.2);
       var near = Math.max(0.01, Math.min(5, Math.max(nad, 0.04) * 0.25)), far = Rdysku * 1.3;
       if (Math.abs(kamera.near - near) > 1e-4 || Math.abs(kamera.far - far) > 1e-3) { kamera.near = near; kamera.far = far; kamera.updateProjectionMatrix(); }
@@ -1346,6 +1470,226 @@
       return przygaszenie;
     }
 
+
+    /* ---------- pokaz (Task 8): poziom glob, przenikanie przez render target, blok, ostrze, odsłanianie ---------- */
+    // Glob: kula 6371 km stycznie do układu makiety w Teren.SRODEK (środek kuli w (0, −R, 0), +x wschód, +y góra, +z południe).
+    // Własna scena i kamera (near/far z odległości od kuli). Tekstura ta sama dla kuli i dalekiego lądu płaskiego oceanu.
+    var glob = null, dalekiLadP = null;
+    function obraz(url) {
+      return new Promise(function (ok, zle) {
+        var img = new Image();
+        img.onload = function () { ok(img); };
+        img.onerror = function () { zle(new Error('nie udało się wczytać ' + url)); };
+        img.src = url;
+      });
+    }
+    // Daleki ląd płaskiego oceanu (Afryka, Madera): kopia tekstury Ziemi 2048 × 1024 (ok. 20 km/teksel — ląd za mgłą
+    // i z wysoka). Osobno od kuli: 8k próbkuje tylko kula, a kula żyje tylko w rozdziale z poziomem `glob`.
+    function dalekiLad(url) {
+      if (dalekiLadP) return dalekiLadP;
+      dalekiLadP = obraz(url).then(function (img) {
+        var pl = plotno(2048, 1024); pl.getContext('2d').drawImage(img, 0, 0, 2048, 1024);
+        var tz = z(new T.CanvasTexture(pl));
+        tz.minFilter = T.LinearMipmapLinearFilter; tz.magFilter = T.LinearFilter; tz.generateMipmaps = true;
+        uWoda.uZiemia.value = tz; uWoda.uDaleko.value = 1;
+        return true;
+      });
+      return dalekiLadP;
+    }
+    function zbudujGlob(url) {
+      if (glob) return glob.gotowa;
+      var sg = new T.Scene(), kg = new T.PerspectiveCamera(30, 1, 10, 1e5), wlasne = [];
+      function zg(x) { wlasne.push(x); return z(x); }
+      var tex = zg(new T.Texture());
+      tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1);
+      tex.minFilter = T.LinearMipmapLinearFilter; tex.magFilter = T.LinearFilter; tex.generateMipmaps = true;
+      var uG = { uMapa: { value: tex }, uSlonce: { value: uWoda.uSlonce.value }, uKolorSlonca: { value: uWoda.uKolorSlonca.value },
+        uMgielka: UM.uMgielka, uMgielkaL: UM.uMgielkaL, uMgielkaKol: UM.uMgielkaKol, uMgielkaKolR: UM.uMgielkaKolR, uWodaJasn: uWoda.uWodaJasn,
+        uAmb: { value: uWoda.uAmb.value }, uZenitL: { value: uWoda.uZenitL.value }, uHoryzontL: { value: uWoda.uHoryzontL.value } };
+      var kula = new T.Mesh(zg(new T.SphereGeometry(R_ZIEMI, 256, 128)), zg(new T.ShaderMaterial({ uniforms: uG, vertexShader: GLOB_VERT, fragmentShader: GLOB_FRAG })));
+      // obrót: wiersze = wschód, góra, południe punktu stycznego w układzie SphereGeometry (u = 0 → lon −180°)
+      var lon = Teren.SRODEK.lon * RAD, lat = Teren.SRODEK.lat * RAD;
+      var gora = [Math.cos(lat) * Math.cos(lon), Math.sin(lat), -Math.cos(lat) * Math.sin(lon)];
+      var wsch = [-Math.sin(lon), 0, -Math.cos(lon)];
+      var pln = [-Math.sin(lat) * Math.cos(lon), Math.cos(lat), Math.sin(lat) * Math.sin(lon)];
+      var M = new T.Matrix4().set(wsch[0], wsch[1], wsch[2], 0, gora[0], gora[1], gora[2], -R_ZIEMI, -pln[0], -pln[1], -pln[2], 0, 0, 0, 0, 1);
+      kula.matrixAutoUpdate = false; kula.matrix.copy(M); kula.name = 'glob';
+      sg.add(kula);
+      var uH = { uSlonce: uG.uSlonce, uSrodek: { value: new T.Vector3(0, -R_ZIEMI, 0) }, uR: { value: R_ZIEMI } };
+      var halo = new T.Mesh(zg(new T.SphereGeometry(R_ZIEMI * 1.04, 96, 48)), zg(new T.ShaderMaterial({ uniforms: uH, vertexShader: GLOB_VERT,
+        fragmentShader: HALO_FRAG, side: T.BackSide, transparent: true, depthWrite: false, blending: T.AdditiveBlending })));
+      halo.position.set(0, -R_ZIEMI, 0); halo.name = 'glob-halo';
+      sg.add(halo);
+      var g = glob = { scena: sg, kamera: kg, tekstura: tex, kula: kula, wlasne: wlasne, gotowy: false };
+      glob.gotowa = obraz(url).then(function (img) {
+        if (glob !== g) return false;                 // zwolniony w trakcie wczytywania
+        tex.image = img; tex.needsUpdate = true; g.gotowy = true;
+        return true;
+      });
+      return glob.gotowa;
+    }
+    // Zwolnienie kuli (rozdział bez poziomu `glob`): tekstura 8k i siatki wychodzą z pamięci karty (G-L: przez z()).
+    function zwolnijGlob() {
+      if (!glob) return false;
+      glob.wlasne.forEach(function (x) { var i = zasoby.indexOf(x); if (i >= 0) zasoby.splice(i, 1); x.dispose(); });
+      while (glob.scena.children.length) glob.scena.remove(glob.scena.children[0]);
+      glob = null;
+      return true;
+    }
+    function ustawKamereGlobu(k) {
+      var kg = glob.kamera;
+      kg.position.copy(k.position); kg.quaternion.copy(k.quaternion); kg.fov = k.fov; kg.aspect = k.aspect;
+      var dc = Math.hypot(k.position.x, k.position.y + R_ZIEMI, k.position.z), nad = Math.max(1, dc - R_ZIEMI);
+      kg.near = Math.max(0.5, nad * 0.25); kg.far = dc + R_ZIEMI * 1.1;
+      kg.updateProjectionMatrix(); kg.updateMatrixWorld(true);
+    }
+    // Render target z głębią 24 bity (r128 daje domyślnie 16 i z-fighting na graniach — docs/material-filmowy.md);
+    // wielopróbkowy na WebGL2 (kadr przenikania wygładzony jak kanwa). Zasoby przez z(); stare zwalniane przy zmianie rozmiaru.
+    function nowyRT(w, h, msaa) {
+      var Klasa = msaa && renderer.capabilities.isWebGL2 && T.WebGLMultisampleRenderTarget ? T.WebGLMultisampleRenderTarget : T.WebGLRenderTarget;
+      var rt = z(new Klasa(w, h, { minFilter: T.LinearFilter, magFilter: T.LinearFilter, format: T.RGBAFormat, depthBuffer: true }));
+      rt.texture.encoding = T.sRGBEncoding; rt.texture.generateMipmaps = false;
+      rt.depthTexture = z(new T.DepthTexture(w, h, T.UnsignedIntType));
+      rt.depthTexture.format = T.DepthFormat;
+      return rt;
+    }
+    function usunRT(rt) {
+      if (!rt) return;
+      [rt.depthTexture, rt].forEach(function (x) { var i = zasoby.indexOf(x); if (i >= 0) zasoby.splice(i, 1); x.dispose(); });
+    }
+    var komp = null, wymiar = new T.Vector2();
+    function kompozytor() {
+      if (komp) return komp;
+      var kam = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1), geo = z(new T.PlaneGeometry(2, 2));
+      var mMiks = z(new T.ShaderMaterial({ uniforms: { uA: { value: null }, uB: { value: null }, uF: { value: 0 } }, vertexShader: KWADRAT_VERT,
+        fragmentShader: MIKS_FRAG, depthTest: false, depthWrite: false }));
+      var mZasl = z(new T.ShaderMaterial({ uniforms: { uZaslona: { value: new T.Vector4() } }, vertexShader: KWADRAT_VERT,
+        fragmentShader: ZASLONA_FRAG, depthTest: false, depthWrite: false, transparent: true }));
+      var sMiks = new T.Scene(), sZasl = new T.Scene(), q1 = new T.Mesh(geo, mMiks), q2 = new T.Mesh(geo, mZasl);
+      q1.frustumCulled = q2.frustumCulled = false;
+      sMiks.add(q1); sZasl.add(q2);
+      komp = { kam: kam, mMiks: mMiks, mZasl: mZasl, sMiks: sMiks, sZasl: sZasl };
+      return komp;
+    }
+    // para celów przenikania: osobna dla ekranu i dla celu pomiaru (bez przełączania rozmiarów co pomiar)
+    function parRT(w, h, klucz) {
+      var K = kompozytor(), P = K[klucz] || (K[klucz] = { A: null, B: null, w: 0, h: 0 });
+      if (P.A && P.w === w && P.h === h) return P;
+      usunRT(P.A); usunRT(P.B);
+      // bez wielopróbkowania: przenikanie trwa 1–3 s, a dwa cele MSAA 4× w 3440×1440 to ok. 0,3 GB pamięci karty
+      P.A = nowyRT(w, h, false); P.B = nowyRT(w, h, false); P.w = w; P.h = h;
+      return P;
+    }
+    // Kadr pokazu: o = { glob: 0…1 (udział poziomu glob), zaslona: [r, g, b, a] (czerń C/Cc, biel B; 0…1), cel: RT | null }.
+    // glob 0 / 1 → render wprost; w przenikaniu P obie sceny do render targetów i mieszanie; zasłona = kwadrat nad kadrem.
+    function kadr(o) {
+      o = o || {};
+      var cel = o.cel || null, zs = o.zaslona, a = zs ? Math.max(0, Math.min(1, zs[3])) : 0;
+      var g = glob && glob.gotowy ? Math.max(0, Math.min(1, +o.glob || 0)) : 0, ac = renderer.autoClear;
+      renderer.setRenderTarget(cel);
+      if (a >= 0.999) { renderer.setClearColor(new T.Color(zs[0], zs[1], zs[2]), 1); renderer.clear(true, true, true); renderer.setClearColor(tlo, 1); return; }
+      if (glob && g > 0.001) ustawKamereGlobu(kamera);
+      // poza przenikaniem para celów nie wisi w pamięci karty (2 × kolor + głębia kadru: 80 MB w 3440×1440)
+      if ((g <= 0.001 || g >= 0.999) && komp && komp[cel ? 'pomiar' : 'ekran'] && komp[cel ? 'pomiar' : 'ekran'].A) {
+        var Pz = komp[cel ? 'pomiar' : 'ekran']; usunRT(Pz.A); usunRT(Pz.B); Pz.A = Pz.B = null; Pz.w = Pz.h = 0;
+      }
+      if (g <= 0.001) { renderer.setClearColor(tlo, 1); renderer.render(scena, kamera); }
+      else if (g >= 0.999) { renderer.setClearColor(0x000000, 1); renderer.render(glob.scena, glob.kamera); renderer.setClearColor(tlo, 1); }
+      else {
+        if (cel) wymiar.set(cel.width, cel.height); else renderer.getDrawingBufferSize(wymiar);
+        var K = parRT(wymiar.x, wymiar.y, cel ? 'pomiar' : 'ekran'), K0 = kompozytor();
+        renderer.setRenderTarget(K.A); renderer.setClearColor(tlo, 1); renderer.render(scena, kamera);
+        renderer.setRenderTarget(K.B); renderer.setClearColor(0x000000, 1); renderer.render(glob.scena, glob.kamera);
+        renderer.setClearColor(tlo, 1);
+        K0.mMiks.uniforms.uA.value = K.A.texture; K0.mMiks.uniforms.uB.value = K.B.texture; K0.mMiks.uniforms.uF.value = g;
+        renderer.setRenderTarget(cel); renderer.render(K0.sMiks, K0.kam);
+      }
+      if (a > 0.001) {
+        var K2 = kompozytor();
+        K2.mZasl.uniforms.uZaslona.value.set(zs[0], zs[1], zs[2], a);
+        renderer.autoClear = false; renderer.render(K2.sZasl, K2.kam); renderer.autoClear = ac;
+      }
+    }
+    // Pomiar (smoke): kadr w rozdzielczości kanwy do celu z głębią 24 bity, odczyt i zmniejszenie średnią z pudełka do
+    // szerokości 320 px (wiersze od dołu, RGBA). Render wprost do 320 px przekłamywał kadr: wielkość cząstek i świateł
+    // (punkty w px kanwy) zostawała z 1440 px, więc w 3440×1440 dym i ogień A2 zasłaniały 10× więcej kadru pomiaru.
+    var rtPomiaru = null, wymPomiaru = new T.Vector2();
+    function pomiarKadru(o, szer) {
+      szer = szer || 320;
+      renderer.getDrawingBufferSize(wymPomiaru);
+      var W = Math.max(1, wymPomiaru.x), H = Math.max(1, wymPomiaru.y);
+      if (!rtPomiaru || rtPomiaru.width !== W || rtPomiaru.height !== H) { usunRT(rtPomiaru); rtPomiaru = nowyRT(W, H, false); }
+      var oo = {}; for (var k in o) oo[k] = o[k];
+      oo.cel = rtPomiaru;
+      kadr(oo);
+      var pelny = new Uint8Array(W * H * 4);
+      renderer.readRenderTargetPixels(rtPomiaru, 0, 0, W, H, pelny);
+      renderer.setRenderTarget(null);
+      var w = Math.min(szer, W), h = Math.max(1, Math.round(w * H / W)), buf = new Uint8Array(w * h * 4);
+      for (var y = 0; y < h; y++) {
+        var y0 = Math.floor(y * H / h), y1 = Math.max(y0 + 1, Math.floor((y + 1) * H / h));
+        for (var x = 0; x < w; x++) {
+          var x0 = Math.floor(x * W / w), x1 = Math.max(x0 + 1, Math.floor((x + 1) * W / w)), r = 0, g = 0, b = 0, n = 0;
+          for (var yy = y0; yy < y1; yy++) for (var xx = x0; xx < x1; xx++) { var q = (yy * W + xx) * 4; r += pelny[q]; g += pelny[q + 1]; b += pelny[q + 2]; n++; }
+          var d = (y * w + x) * 4; buf[d] = Math.round(r / n); buf[d + 1] = Math.round(g / n); buf[d + 2] = Math.round(b / n); buf[d + 3] = 255;
+        }
+      }
+      return { w: w, h: h, px: buf };
+    }
+    // Maska obiektu (pomiar lawy): ten sam kadr z obiektem i bez niego — piksele, które się różnią, to obiekt widoczny
+    // w kadrze (z testem głębi i z discardem własnego shadera; łuna na terenie zostaje w obu, więc do maski nie wchodzi).
+    function maskaObiektu(nazwa, o, szer) {
+      var ob = scena.getObjectByName(nazwa);
+      if (!ob || !ob.visible) return null;
+      var p1 = pomiarKadru(o, szer);
+      ob.visible = false;
+      var p2 = pomiarKadru(o, szer);
+      ob.visible = true;
+      var n = p1.w * p1.h, m = new Uint8Array(n);
+      for (var i = 0; i < n; i++) {
+        var b = i * 4;
+        m[i] = Math.abs(p1.px[b] - p2.px[b]) > 8 || Math.abs(p1.px[b + 1] - p2.px[b + 1]) > 8 || Math.abs(p1.px[b + 2] - p2.px[b + 2]) > 8 ? 1 : 0;
+      }
+      return { w: p1.w, h: p1.h, maska: m, px: p1.px };
+    }
+    // Blok (R9.6 X1: wyspa jako blok z dnem na czarnym tle): bez archipelagu, woda tylko na kaflu, niebo przekroju.
+    function blok(wl) {
+      blokWl = !!wl;
+      if (!przek) { if (arch) arch.mesh.visible = !blokWl; uWoda.uTylkoKafel.value = blokWl ? 1 : 0; }
+      niebo();
+      renderer.shadowMap.needsUpdate = true;
+      return blokWl;
+    }
+    // Ostrze (o.ostrze): z = null → odcięcie całe; liczba → odcięta tylko część na północ od z (z rośnie na południe),
+    // ściana widoczna na północ od z.
+    function ustawOstrze(zKm) {
+      if (!ostrze) return null;
+      if (zKm == null) { ostrze.set(new T.Vector3(0, 1, 0), -1e7); ostrzeSciany.set(new T.Vector3(0, 1, 0), 1e7); }
+      else { ostrze.set(new T.Vector3(0, 0, 1), -zKm); ostrzeSciany.set(new T.Vector3(0, 0, -1), zKm); }
+      renderer.shadowMap.needsUpdate = true;
+      return zKm;
+    }
+    // Odsłanianie jednostek mapy geologicznej (alfa palety): f(id) → 0…1, null = wszystkie.
+    function odslonJednostki(f) {
+      var zm = false;
+      jednostki.slice(0, 255).forEach(function (j, k) {
+        var v = Math.round(255 * Math.max(0, Math.min(1, f ? +f(j.id) || 0 : 1)));
+        if (paleta[(k + 1) * 4 + 3] !== v) { paleta[(k + 1) * 4 + 3] = v; zm = true; }
+      });
+      if (zm) tPaleta.needsUpdate = true;
+      return zm;
+    }
+    // Odsłanianie warstw ściany przekroju (R9.6 X4: warstwa zapala się na swoim wersie): f(id) → 0…1, null = wszystkie.
+    // Ściana przebudowywana tylko przy zmianie zbioru odsłoniętych warstw.
+    var kluczWarstw = '';
+    function warstwyPrzekroju(f) {
+      var klucz = f ? (dane.warstwy || []).map(function (w) { return f(w.id) > 0.5 ? 1 : 0; }).join('') : '*';
+      if (klucz === kluczWarstw) return false;
+      kluczWarstw = klucz; odslonWarstwy = f;
+      if (sciana && przek) zbudujSciane(przek.linia);
+      return true;
+    }
+
     function zwolnij() {
       warstwy.length = 0;
       zwolnijSciane();
@@ -1353,6 +1697,8 @@
       zasoby.forEach(function (x) { if (x && x.dispose) x.dispose(); });
       zasoby.length = 0;
       while (scena.children.length) scena.remove(scena.children[0]);
+      if (glob) { while (glob.scena.children.length) glob.scena.remove(glob.scena.children[0]); glob = null; }
+      komp = null; rtPomiaru = null; dalekiLadP = null;
     }
 
     przewyzszenie(e);
@@ -1373,6 +1719,14 @@
       szklo: function () { return U.uSzklo.value; },
       wysokosc: wysokosc, probkaSwiatla: probkaSwiatla, trafiaSciane: trafiaSciane, punktNaMorzu: punktNaMorzu,
       dodajWarstwe: dodajWarstwe, przygasCzesci: przygasCzesci,
+      // pokaz (Task 8)
+      zbudujGlob: zbudujGlob, zwolnijGlob: zwolnijGlob, dalekiLad: dalekiLad, kadr: kadr,
+      // ekspozycja pokazu (spec R4, pomiar): niebo (kopuła, mgła, tło, odbicie w wodzie) × jasność; makieta: 1
+      jasnoscNieba: function (x) { if (x != null && Math.abs(x - jasnNieba) > 1e-6) { jasnNieba = Math.max(0.1, +x || 1); niebo(); } return jasnNieba; },
+      jasnoscWody: function (x) { if (x != null) uWoda.uWodaJasn.value = Math.max(0, +x || 0); return uWoda.uWodaJasn.value; },
+      mgielka: function (a, L, hKam) { if (hKam != null) UM.uMgKamH.value = +hKam || 0; if (a != null) UM.uMgielka.value = Math.max(0, +a || 0); if (L) UM.uMgielkaL.value.set(L[0], L[1]); return UM.uMgielka.value; }, pomiarKadru: pomiarKadru, maskaObiektu: maskaObiektu, blok: blok, ostrze: ustawOstrze,
+      odslonJednostki: odslonJednostki, warstwyPrzekroju: warstwyPrzekroju, tlo: function () { return tlo; },
+      glob: function () { return glob; }, globGotowy: function () { return !!(glob && glob.gotowy); },
       lad: lad, granice: { wyspa: wyspa.prost, archipelag: arch ? arch.prost : wyspa.prost }, srodekPrzekroju: srodekPrzekroju,
       dekoracje: { sciana: function () { return sciana; }, chmury: chmuryMesh, kopula: kopula, lawa: lawa, klucz: klucz, wypelnienie: wypelnienie },
       stan: function () {

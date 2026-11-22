@@ -15,7 +15,9 @@
        (ruling PODŁOŻE: wzrost od podłoża, nigdy od dna);
      tMa ≥ odMa → podstawa; tMa ≤ doMa → X; pomiędzy → podstawa + smoothstep(q)·(X − podstawa), gdzie q = postęp w przedziale
      wieku opóźniony o OPOZNIENIE·r (r = odległość od u.centrum / najdalsza komórka lądu jednostki; bez centrum r = 0):
-     środek rośnie pierwszy, brzeg ostatni.
+     środek rośnie pierwszy, brzeg ostatni. Jednostka z `wynurzenie` (Ma zdarzenia, bez podłoża): odMa zastąpione
+     wcześniejszym początkiem fazy podwodnej, tak żeby pierwsza komórka lądu przebiła taflę dokładnie w wynurzenie.Ma
+     (parametry(): pole `od`; `odDanych` = odMa z danych).
      Stok podmorski (h ≤ 0) waży zmianę: h + w·(E − h), w = (h − dno) / 1000 m przycięte do 0…1 — głębokie dno prawie
      stoi, płytki stok rośnie w pełni. Na stoku granica dwóch jednostek (komórki Voronoi najbliższego lądu) byłaby prostym
      uskokiem dna, więc stok miesza dwie najbliższe jednostki: E = m·E₁ + (1 − m)·E₂,
@@ -184,10 +186,10 @@
     var id = {};
     jednostki.forEach(function (j, k) { id[j.id] = k + 1; });
     var P = jednostki.map(function (j) {
-      return { id: j.id, od: j.odMa, do: j.doMa,
+      return { id: j.id, od: j.odMa, do: j.doMa, odDanych: j.odMa,
         zapMa: j.zapadniecie ? j.zapadniecie.Ma : null, zapWyp: j.zapadniecie ? j.zapadniecie.wypelnienie_m : 0,
         pod: j.podloze && id[j.podloze.jednostka] ? id[j.podloze.jednostka] : 0, podWys: j.podloze ? j.podloze.wys_m : 0,
-        centrum: j.centrum || null, R_km: 0 };
+        centrum: j.centrum || null, R_km: 0, wynMa: j.wynurzenie && j.wynurzenie.Ma > 0 ? j.wynurzenie.Ma : null };
     });
     for (var y = 0; y < s.h; y++) {
       var lat = latKomorki(s, y);
@@ -199,8 +201,51 @@
       }
     }
     P.forEach(function (u) { if (u.centrum && !(u.R_km > 0)) u.R_km = 1; });
+    fazaPodwodna(s, przyn, P);
     if (pamiec) pamiec.set(przyn, { P: P, s: s, jednostki: jednostki });
     return P;
+  }
+
+  // Faza podwodna (ruling 8b-9): jednostka z `wynurzenie` (Ma zdarzenia osi czasu) i bez podłoża zaczyna wzrost spod dna
+  // wcześniej niż odMa — od = najmniejszy początek, przy którym któraś komórka lądu jednostki dochodzi do 0 m dokładnie
+  // w wynMa (pierwszy ląd nad taflą = zdarzenie z danych). Ten sam smoothstep, tylko dłuższy przedział: komórka c przy
+  // starcie od ma postęp q(t) = (od − t)/(od − do); 0 m przy smoothstep(p) = −podstawa/(X − podstawa), p z q jak w rosnie().
+  // Komórka w pasie granicy liczy się z mieszaniem z sąsiadem (jak wysokoscKomorki), więc pierwszy ląd na ekranie, nie
+  // w samej krzywej jednostki. Shader dostaje `od` w uniformach (uEwoO) — ten sam rachunek na GPU.
+  function odwrotnySmoothstep(v) {
+    var lo = 0, hi = 1;
+    for (var i = 0; i < 60; i++) { var m = (lo + hi) / 2; if (m * m * (3 - 2 * m) < v) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  }
+  function fazaPodwodna(s, przyn, P) {
+    var naj = {}, lad = {};
+    P.forEach(function (u, k) { if (u.wynMa != null && !u.pod && u.wynMa <= u.od && u.wynMa > u.do) naj[k + 1] = Infinity; });
+    if (!Object.keys(naj).length) return;
+    for (var y = 0; y < s.h; y++) {
+      var lat = latKomorki(s, y);
+      for (var x = 0; x < s.w; x++) {
+        var i = y * s.w + x, k = przyn[i];
+        if (!(k in naj) || !(s.wys[i] > 0)) continue;
+        var u = P[k - 1], X = celX(u, s.wys[i], u.wynMa), b = Math.min(DNO, X), lon = lonKomorki(s, x);
+        // komórka w pasie granicy: e = m·e₁ + (1 − m)·e₂ (sąsiad e₂ w chwili wynMa) — 0 m przy e₁ = −(1 − m)·e₂ / m
+        var d2 = przyn.drugi ? przyn.drugi[i] : 0, m = przyn.waga && d2 && P[d2 - 1] ? przyn.waga[i] / 255 : 1;
+        var cel = m < 1 ? (m > 0 ? -(1 - m) * wzrost(P, d2, s.wys[i], u.wynMa, lon, lat, DNO) / m : Infinity) : 0;
+        var v = (cel - b) / (X - b);
+        if (!(v > 0 && v < 1)) continue;
+        var p = odwrotnySmoothstep(v);
+        var r = u.centrum ? clamp01(odlegloscKm(lon, lat, u.centrum) / u.R_km) : 0;
+        var q = u.centrum ? OPOZNIENIE * r + (1 - OPOZNIENIE) * p : p;
+        var od = (u.wynMa - q * u.do) / (1 - q);
+        if (od < naj[k]) { naj[k] = od; lad[k] = { i: i, lonLat: [lon, lat] }; }
+      }
+    }
+    // − 1e-6 Ma (1 rok): przebicie tuż PO wynMa — w samej chwili zdarzenia (postój licznika A1) szczyt jest jeszcze pod
+    // taflą (r ≤ 0 → −12 m), a nie ułamek milimetra nad nią (bisekcja smoothstepu)
+    // `wynLad` = ta komórka (indeks w siatce, [lon, lat]) — pierwszy ląd nad taflą: para i fala A1 (animacje.js), test celu
+    // kamery W5 (jedno źródło)
+    Object.keys(naj).forEach(function (k) {
+      if (isFinite(naj[k]) && naj[k] - 1e-6 > P[k - 1].od) { P[k - 1].od = naj[k] - 1e-6; P[k - 1].wynLad = lad[k]; }
+    });
   }
 
   // Wzrost jednostki k (0..n−1) ku wartości X w chwili t.

@@ -391,6 +391,10 @@
     { id: 'tarcza-roque-del-conde', nazwa: 'Tarcza centralna (Roque del Conde)', skala: 'tarcza', odMa: 11.9, doMa: 8.9,
       skaly: ['bazalty'], kolor: '#2c4b94',
       wielokaty: [[[-16.775, 28.165], [-16.735, 28.178], [-16.70, 28.165], [-16.685, 28.13], [-16.695, 28.10], [-16.735, 28.09], [-16.765, 28.105], [-16.785, 28.135], [-16.775, 28.165]]],
+      // wynurzenie: pierwsza komórka lądu jednostki przebija taflę w Ma zdarzenia osi czasu (Ma dopisywane niżej z osCzasu —
+      // jedno źródło). Faza podwodna przed odMa: geologia/ewolucja.js przesuwa początek wzrostu spod dna tak, żeby
+      // przebicie wypadło w tej chwili — początek fazy podwodnej wynika z rachunku (parametr modelu, nie fakt; ruling 8b-9)
+      wynurzenie: { zdarzenie: 'oc-wynurzenie', pewnosc: 'bardzo-niska', zrodlo: 'parametr modelu (faza podwodna tarczy przed jej wiekiem z Guillou 2004 — długość nie ze źródła, wynika z rachunku przebicia tafli w Ma zdarzenia ' + Z.wGeol + ')' },
       pewnosc: 'niska', zrodlo: Z.ignMapa + '; wiek: ' + Z.wGeol + ' (11,9–8,9 Ma, za Guillou 2004)' },
     // IGN: „In the NW axis of Teno, today active” ; Amado 2007: „The Santiago rift is the most recent and active volcanic zone in the Tenerife island”
     // Wiek 0,2 Ma: Carracedo i in. 2007, GSA Bulletin (rifty NW i NE jako produkt ostatniej fazy od ok. 200 ka) — (streszczenie/pośrednio — nie pobrano)
@@ -447,20 +451,23 @@
   ];
 
   // ───────────────────────────── OŚ CZASU ─────────────────────────────
+  // `postojA1: true` = licznik A1 (rozdział `powstanie`, oś czasu w filmie) staje na tym zdarzeniu (spec R9.4, ≥ 2,5 s;
+  // `postojA1_s` = dłuższy postój tego zdarzenia, w sekundach 60-sekundowej osi A1).
   var osCzasu = [
     { id: 'oc-skorupa', Ma: 175, przedzialMa: [175, 150], nazwa: 'Skorupa oceaniczna', opis: 'Powstaje jurajska skorupa oceaniczna, na której później wyrosną Kanary.', pewnosc: 'srednia', zrodlo: Z.wGeol },
-    { id: 'oc-wynurzenie', Ma: 11.9, przedzialMa: [12, 11.9], nazwa: 'Wynurzenie', opis: 'Pierwsze skały wychodzą nad ocean; rośnie tarcza centralna (Roque del Conde).', pewnosc: 'srednia', zrodlo: Z.wGeol + '; ' + Z.ign + ' (ok. 12 mln lat)' },
-    { id: 'oc-teno', Ma: 6.4, przedzialMa: [6.4, 5.1], nazwa: 'Tarcza Teno', opis: 'Na północnym zachodzie rośnie druga tarcza — Teno.', pewnosc: 'srednia', zrodlo: Z.wGeol + ' (za Guillou 2004); inne: ok. 7,4 Ma (' + Z.wTenerife + ')' },
-    { id: 'oc-anaga', Ma: 4.9, przedzialMa: [5.7, 3.9], nazwa: 'Tarcza Anaga', opis: 'Na północnym wschodzie rośnie trzecia tarcza — Anaga (4,9–3,9 mln lat; inne źródło: ok. 5,7 mln lat).', pewnosc: 'srednia', zrodlo: Z.wGeol + ' (za Guillou 2004, 4,9–3,9 Ma); ' + Z.wTenerife + ' (ok. 5,7 Ma)' },
-    { id: 'oc-canadas', Ma: 4.0, przedzialMa: [4.0, 0.17], nazwa: 'Gmach Las Cañadas', opis: 'Po przerwie erozyjnej w środku wyspy rośnie gmach Las Cañadas, do ok. 4000 m.', pewnosc: 'srednia', zrodlo: Z.ign + '; ' + Z.wGeol },
+    // postój 6 s (nie 2,5): licznik stoi na 11,9 przez cały wers W5 o wynurzeniu „ok. 12 mln lat” (recenzja 8b, I-1)
+    { id: 'oc-wynurzenie', postojA1: true, postojA1_s: 6, Ma: 11.9, przedzialMa: [12, 11.9], nazwa: 'Wynurzenie', opis: 'Pierwsze skały wychodzą nad ocean; rośnie tarcza centralna (Roque del Conde).', pewnosc: 'srednia', zrodlo: Z.wGeol + '; ' + Z.ign + ' (ok. 12 mln lat)' },
+    { id: 'oc-teno', postojA1: true, Ma: 6.4, przedzialMa: [6.4, 5.1], nazwa: 'Tarcza Teno', opis: 'Na północnym zachodzie rośnie druga tarcza — Teno.', pewnosc: 'srednia', zrodlo: Z.wGeol + ' (za Guillou 2004); inne: ok. 7,4 Ma (' + Z.wTenerife + ')' },
+    { id: 'oc-anaga', postojA1: true, Ma: 4.9, przedzialMa: [5.7, 3.9], nazwa: 'Tarcza Anaga', opis: 'Na północnym wschodzie rośnie trzecia tarcza — Anaga (4,9–3,9 mln lat; inne źródło: ok. 5,7 mln lat).', pewnosc: 'srednia', zrodlo: Z.wGeol + ' (za Guillou 2004, 4,9–3,9 Ma); ' + Z.wTenerife + ' (ok. 5,7 Ma)' },
+    { id: 'oc-canadas', postojA1: true, Ma: 4.0, przedzialMa: [4.0, 0.17], nazwa: 'Gmach Las Cañadas', opis: 'Po przerwie erozyjnej w środku wyspy rośnie gmach Las Cañadas, do ok. 4000 m.', pewnosc: 'srednia', zrodlo: Z.ign + '; ' + Z.wGeol },
     // Hunt 2018: „Roques de Garcia (1.15 ± 0.01 Ma)”
     { id: 'oc-roques-de-garcia', Ma: 1.15, przedzialMa: [1.15, 0.6], nazwa: 'Osuwisko Roques de García', opis: 'Osuwisko zbocza wiązane z półkalderą Ucanca; wiek sporny.', pewnosc: 'niska', zrodlo: Z.hunt2018 + ' (1,15 ± 0,01 Ma); inne: 0,6–0,7 Ma (Ancochea 1999, streszczenie/pośrednio — nie pobrano)' },
     { id: 'oc-ucanca', Ma: 1.02, nazwa: 'Półkaldera Ucanca', opis: 'Według hipotezy zapadnięć — pierwsza z trzech półkalder Las Cañadas.', pewnosc: 'srednia', zrodlo: ficha(30, 'Caldera de Las Cañadas') },
-    { id: 'oc-dorsal', Ma: 1.0, przedzialMa: [1.0, 0.5], nazwa: 'Grzbiet Dorsal', opis: 'Szczelinowe erupcje bazaltowe na osi NE budują grzbiet Dorsal.', pewnosc: 'srednia', zrodlo: Z.ign + '; ' + Z.wDorsalEs },
-    { id: 'oc-guimar', Ma: 0.83, przedzialMa: [1.0, 0.57], nazwa: 'Osuwisko Güímar', opis: 'Megaosuwisko zabiera stratowulkan Arafo; powstaje dolina Güímar.', pewnosc: 'srednia', zrodlo: Z.ferrer2020 + '; ' + ficha(37, 'Caldera de Pedro Gil') },
+    { id: 'oc-dorsal', postojA1: true, Ma: 1.0, przedzialMa: [1.0, 0.5], nazwa: 'Grzbiet Dorsal', opis: 'Szczelinowe erupcje bazaltowe na osi NE budują grzbiet Dorsal.', pewnosc: 'srednia', zrodlo: Z.ign + '; ' + Z.wDorsalEs },
+    { id: 'oc-guimar', postojA1: true, Ma: 0.83, przedzialMa: [1.0, 0.57], nazwa: 'Osuwisko Güímar', opis: 'Megaosuwisko zabiera stratowulkan Arafo; powstaje dolina Güímar.', pewnosc: 'srednia', zrodlo: Z.ferrer2020 + '; ' + ficha(37, 'Caldera de Pedro Gil') },
     { id: 'oc-guajara', Ma: 0.57, nazwa: 'Półkaldera Guajara', opis: 'Według hipotezy zapadnięć — druga półkaldera.', pewnosc: 'srednia', zrodlo: ficha(30, 'Caldera de Las Cañadas') },
-    { id: 'oc-orotava', Ma: 0.535, przedzialMa: [0.69, 0.5], nazwa: 'Osuwiska La Orotava', opis: 'Kilka osuwisk w odstępach dziesiątek tysięcy lat tworzy dolinę La Orotava.', pewnosc: 'srednia', zrodlo: Z.hunt2018 + '; ' + Z.ferrer2020 },
-    { id: 'oc-icod', Ma: 0.17, przedzialMa: [0.2, 0.16], nazwa: 'Osuwisko Icod i kaldera', opis: 'Północne zbocze gmachu Las Cañadas zsuwa się do oceanu; powstaje dolina Icod i ostatnia faza kaldery (Diego Hernández).', pewnosc: 'srednia', zrodlo: Z.hunt2018 + '; ' + Z.ferrer2020 + '; ' + ficha(30, 'Caldera de Las Cañadas') },
+    { id: 'oc-orotava', postojA1: true, Ma: 0.535, przedzialMa: [0.69, 0.5], nazwa: 'Osuwiska La Orotava', opis: 'Kilka osuwisk w odstępach dziesiątek tysięcy lat tworzy dolinę La Orotava.', pewnosc: 'srednia', zrodlo: Z.hunt2018 + '; ' + Z.ferrer2020 },
+    { id: 'oc-icod', postojA1: true, Ma: 0.17, przedzialMa: [0.2, 0.16], nazwa: 'Osuwisko Icod i kaldera', opis: 'Północne zbocze gmachu Las Cañadas zsuwa się do oceanu; powstaje dolina Icod i ostatnia faza kaldery (Diego Hernández).', pewnosc: 'srednia', zrodlo: Z.hunt2018 + '; ' + Z.ferrer2020 + '; ' + ficha(30, 'Caldera de Las Cañadas') },
     { id: 'oc-teide', Ma: 0.17, przedzialMa: [0.2, 0.17], nazwa: 'Narodziny Teide', opis: 'W bliźnie po osuwisku zaczynają rosnąć Teide i Pico Viejo.', pewnosc: 'srednia', zrodlo: Z.wGeol + '; ' + Z.wTeide },
     // ficha 25: „(20.775±321 años) emitidas por Pico Viejo”
     { id: 'oc-cueva-del-viento', Ma: 0.020775, nazwa: 'Lawy Cueva del Viento', opis: 'Wylewy pahoehoe z Pico Viejo, w których uformował się tunel Cueva del Viento.', pewnosc: 'wysoka', zrodlo: ficha(25, 'Cueva del Viento') },
@@ -477,6 +484,13 @@
     { id: 'oc-1798', rok: 1798, nazwa: 'Narices del Teide (Chahorra)', opis: 'Najdłuższa historyczna erupcja wyspy, na zboczu Pico Viejo.', pewnosc: 'wysoka', zrodlo: ficha(32, 'Las Narices del Teide / Chahorra') },
     { id: 'oc-1909', rok: 1909, nazwa: 'Chinyero', opis: 'Ostatnia erupcja na Teneryfie.', pewnosc: 'srednia', zrodlo: ficha(45, 'Volcán Chinyero') + '; ' + Z.wHist }
   ];
+  // wynurzenie jednostki: Ma z osCzasu (jedno źródło czasu — ewolucja.js czyta jednostki, nie oś czasu)
+  jednostki.forEach(function (j) {
+    if (!j.wynurzenie) return;
+    var z = osCzasu.filter(function (o) { return o.id === j.wynurzenie.zdarzenie; })[0];
+    if (!z) throw new Error('dane: ' + j.id + '.wynurzenie wskazuje nieistniejące zdarzenie ' + j.wynurzenie.zdarzenie);
+    j.wynurzenie.Ma = z.Ma;
+  });
 
   // ───────────────────────────── ERUPCJE HISTORYCZNE ─────────────────────────────
   var erupcje = [

@@ -101,7 +101,29 @@
     return ((g % 360) + 360) % 360;
   }
 
-  var api = { EPS_MA: EPS_MA, ETAPY: ETAPY, czasMa: czasMa, osMa: osMa, osV: osV, frontLawy: frontLawy, osuwisko: osuwisko,
+  // Oś czasu A1 filmu z danych miejsca (spec R9.4): postoje na zdarzeniach osCzasu z `postojA1` (domyślnie 2,5 s, dłużej
+  // przy `postojA1_s`), 60 s osi. M0 = najstarsza chwila danych: odMa jednostek i górne granice przedziałów zdarzeń
+  // z postojem (wynurzenie „ok. 12 mln lat”: oś startuje przed 11,9, licznik schodzi do zdarzenia — ruling 8b-10).
+  // Jedno źródło dla planu rozdziałów, animacji i opowieści.
+  var A1_CZAS_S = 60, A1_POSTOJ_S = 2.5;
+  function osA1(dane) {
+    dane = dane || {};
+    var zd = (dane.osCzasu || []).filter(function (x) { return x.postojA1 && x.Ma > 0; });
+    return { czas_s: A1_CZAS_S,
+      zd: zd.map(function (x) { return { Ma: x.Ma, postoj_s: x.postojA1_s > 0 ? x.postojA1_s : A1_POSTOJ_S }; }),
+      M0: Math.max.apply(null, (dane.jednostki || []).map(function (j) { return j.odMa; })
+        .concat(zd.map(function (x) { return x.przedzialMa ? Math.max.apply(null, x.przedzialMa) : x.Ma; }))) };
+  }
+  function maA1(dane, f) { var o = osA1(dane); return czasMa(f, o.zd, o.czas_s, { M0: o.M0 }); }
+  // najmniejsze f, przy którym licznik A1 doszedł do Ma (wiek maleje z f) — okna ujęć z wieku zdarzeń w danych
+  function fA1(dane, Ma) {
+    var o = osA1(dane), lo = 0, hi = 1;
+    if (czasMa(0, o.zd, o.czas_s, { M0: o.M0 }) <= Ma) return 0;
+    for (var i = 0; i < 50; i++) { var m = (lo + hi) / 2; if (czasMa(m, o.zd, o.czas_s, { M0: o.M0 }) <= Ma) hi = m; else lo = m; }
+    return hi;
+  }
+
+  var api = { EPS_MA: EPS_MA, ETAPY: ETAPY, czasMa: czasMa, osA1: osA1, maA1: maA1, fA1: fA1, osMa: osMa, osV: osV, frontLawy: frontLawy, osuwisko: osuwisko,
     nieboLokalne: nieboLokalne, lst: lst };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
   root.Animacje = api;
@@ -118,9 +140,7 @@
   // A5: noc nad Teide 20 VII 2026, 23:30 czasu kanaryjskiego letniego (22:30 UT) — centrum Galaktyki na południu
   // ok. 32° nad horyzontem, Deneb wysoko na NE: łuk Drogi Mlecznej od Strzelca przez zenit (Animacje.lst + nieboLokalne).
   var DATA_A5 = Date.UTC(2026, 6, 20, 22, 30);
-  // A1: zdarzenia z postojem licznika (R9.4: ≥ 2,5 s) — starty jednostek i osuwiska z osCzasu, czas osi 60 s (W4–W7).
-  var A1_CZAS_S = 60, A1_POSTOJ_S = 2.5;
-  var A1_ZDARZENIA = ['oc-wynurzenie', 'oc-teno', 'oc-anaga', 'oc-canadas', 'oc-dorsal', 'oc-guimar', 'oc-orotava', 'oc-icod'];
+  // A1: oś czasu z postojami licznika — osA1(dane) wyżej (zdarzenia osCzasu z `postojA1`, czas osi 60 s, W4–W7).
   // A4: morze chmur — plik faktów F2.18 (Z37): inwersja pasatowa średnio ok. 1300 m, druga, wyższa 1500–1800 m latem.
   var WARSTWY_CHMUR = [{ strop_km: 1.3, gest: 0 }, { strop_km: 1.05, gest: 1 }, { strop_km: 1.75, gest: 2 }];
   // Lawa nocą (spec R4, MF „Lawa nocą”): poziomy emisji skorupa / szczeliny / czoło, miękkie nasycenie LUMINANCJI.
@@ -479,17 +499,20 @@
     function zbudujA1() {
       var A = podgrupa('a1');
       var ed = sc.ewolucja();                   // { s, przyn, P } wyspy
-      // najwyższa komórka lądu każdej jednostki — tam wierzchołek przebija taflę (para, biała woda)
-      var szczyty = ed.P.map(function () { return null; }), s = ed.s;
+      // tam, gdzie wierzchołek przebija taflę (para, biała woda): jednostka z wynurzeniem — pierwszy ląd nad taflą z modelu
+      // (Ewolucja.parametry → wynLad, to samo źródło co test celu kamery W5); pozostałe — najwyższa komórka lądu jednostki
+      var szczyty = ed.P.map(function (u) { return u.wynLad ? { i: u.wynLad.i, h: ed.s.wys[u.wynLad.i] } : null; }), s = ed.s;
       for (var i = 0; i < s.wys.length; i++) {
         var k = ed.przyn[i];
-        if (!k || !(s.wys[i] > 0)) continue;
+        if (!k || !(s.wys[i] > 0) || (ed.P[k - 1] && ed.P[k - 1].wynLad)) continue;
         if (!szczyty[k - 1] || s.wys[i] > szczyty[k - 1].h) szczyty[k - 1] = { i: i, h: s.wys[i] };
       }
       A.szczyty = szczyty.map(function (q, k) {
         if (!q) return null;
         var x = q.i % s.w, y = Math.floor(q.i / s.w), lon = s.bbox.lonMin + (s.bbox.lonMax - s.bbox.lonMin) * x / (s.w - 1), lat = s.bbox.latMax - (s.bbox.latMax - s.bbox.latMin) * y / (s.h - 1);
-        return { k: k + 1, h: q.h, lon: lon, lat: lat, xz: lok([lon, lat]) };
+        var pr = ed.przyn;
+        return { k: k + 1, h: q.h, lon: lon, lat: lat, xz: lok([lon, lat]),
+          drugi: pr.drugi ? pr.drugi[q.i] : 0, waga: pr.waga ? pr.waga[q.i] : 255, brzeg: pr.brzeg ? pr.brzeg[q.i] : 0 };
       });
       A.para = przenies(czastki(90, { okres: 7, wznos: [0.15, 1.1, -0.1], rozrzut: [0.5, 0, 2.2], rozmiar: 0.55, krycie: 0.7,
         kolorA: [0.85, 0.87, 0.88], kolorB: [0.7, 0.72, 0.74], podswietl: [0.9, 0.35, 0.08] }, 11), A.grupa);
@@ -500,10 +523,8 @@
     function a1Powstanie(f, t_s) {
       var A = zbudowane.a1 || zbudujA1();
       pokaz('a1');
-      if (!ZD_A1) ZD_A1 = (dane.osCzasu || []).filter(function (o) { return A1_ZDARZENIA.indexOf(o.id) >= 0 && o.Ma > 0; })
-        .map(function (o) { return { Ma: o.Ma, postoj_s: A1_POSTOJ_S }; });
-      var M0 = Math.max.apply(null, (dane.jednostki || []).map(function (j) { return j.odMa; }));
-      var Ma = czasMa(f, ZD_A1, A1_CZAS_S, { M0: M0 }), t = zegar(t_s), e = sc.przewyzszenie();
+      if (!ZD_A1) ZD_A1 = osA1(dane);
+      var Ma = czasMa(f, ZD_A1.zd, ZD_A1.czas_s, { M0: ZD_A1.M0 }), t = zegar(t_s), e = sc.przewyzszenie();
       sc.czas(Ma);
       sc.efekty.zar(1.6);
       // przebicie tafli: szczyt jednostki w pasie −150 … +250 m i w trakcie wzrostu
@@ -512,7 +533,7 @@
         if (!q) return;
         var u = P[q.k - 1];
         if (!(Ma < u.od && Ma > u.do)) return;
-        var h = Ew.wysokoscKomorki(P, q.k, q.h, Ma, q.lon, q.lat, Ew.DNO);
+        var h = Ew.wysokoscKomorki(P, q.k, q.h, Ma, q.lon, q.lat, Ew.DNO, q.drugi, q.waga, q.brzeg);
         var w = 1 - Math.min(1, Math.abs(h - 50) / 200);
         if (w > sila) { sila = w; naj = q; }
       });

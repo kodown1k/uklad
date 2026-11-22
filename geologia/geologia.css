@@ -172,3 +172,85 @@
   .ge-plan { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 45%; padding: 6px 12px 8px; }
   .ge-tryb-tur .ge-kompas, .ge-tryb-tur .ge-podpis-przew { bottom: 50px; }
 }
+
+/* ---------- pokaz (Task 8): kadr kinowy, pola kadru (spec R1), napisy, pasek postępu, karty ---------- */
+/* Pola kadru w prostokącie kadru (.ge-film = kadr z KinoKadr.kadrKinowy): G-L plakietka, G-P przewyższenie z podziałką,
+   G-S licznik, T-L tytuł rozdziału i stempel werdyktu, S etykiety i teza mitu, D napisy z podkładem. Marginesy 4% / 5%. */
+.ge-film { position: absolute; z-index: 2; pointer-events: none; overflow: hidden; --ge-film-h: 600px;
+  font: 600 clamp(11px, calc(var(--ge-film-h) * .02), 22px)/1.3 var(--ge-kroj); color: #f4f1ea; }
+.ge-film-pole { position: absolute; margin: 0; }
+.ge-film-gl { left: 4%; top: 5%; max-width: 46%; display: grid; gap: .3em; justify-items: start; }
+.ge-film-plakietka { margin: 0; padding: .22em .6em; font-size: .86em; letter-spacing: .14em; color: #ffd9a8;
+  background: rgba(8, 11, 15, .6); border: 1px solid rgba(255, 179, 107, .55); }
+.ge-film-plakietka-2 { color: #bfe2ff; border-color: rgba(150, 200, 240, .5); }
+.ge-film-gp { right: 4%; top: 5%; display: grid; gap: .3em; justify-items: end; text-align: right; }
+.ge-film-przew { margin: 0; font-size: .86em; letter-spacing: .1em; text-shadow: 0 1px 3px rgba(0, 0, 0, .85); font-variant-numeric: tabular-nums; }
+.ge-film-podz { display: flex; flex-direction: column; align-items: flex-end; gap: .15em; font-size: .8em; text-shadow: 0 1px 3px rgba(0, 0, 0, .85); }
+.ge-film-podz-belka { display: block; height: .35em; border: 2px solid #f4f1ea; border-top: 0; box-shadow: 0 1px 2px rgba(0, 0, 0, .7); }
+.ge-film-gs { left: 50%; top: 5%; transform: translateX(-50%); font-size: 1.15em; letter-spacing: .06em; font-variant-numeric: tabular-nums;
+  color: #ffe7c4; text-shadow: 0 1px 3px rgba(0, 0, 0, .9); white-space: nowrap; }
+.ge-film-tl { left: 4%; bottom: 27%; display: grid; gap: .4em; justify-items: start; }
+.ge-film-tytul { margin: 0; font-size: 2.1em; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: #fff;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, .8); }
+.ge-film-stempel { margin: 0; padding: .05em .45em; font-size: 2.2em; font-weight: 800; letter-spacing: .16em; border: .12em solid currentColor;
+  transform: rotate(-4deg); background: rgba(8, 11, 15, .45); text-shadow: 0 1px 4px rgba(0, 0, 0, .8); }
+.ge-film-stempel[data-werdykt="fakt"] { color: #9fd3a0; }
+.ge-film-stempel[data-werdykt="mit"] { color: #f08a7a; }
+.ge-film-stempel[data-werdykt="czesciowo"] { color: #f0c47a; }
+.ge-film-stempel[data-werdykt="legenda"] { color: #c4b4f4; }
+.ge-film-teza { left: 6%; top: 24%; max-width: 46%; margin: 0; font-size: 2em; font-weight: 600; font-style: italic; line-height: 1.25; color: #fff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, .85); }
+.ge-film-plansza { position: absolute; inset: 0; display: grid; place-items: center; }
+.ge-film-plansza-tekst { margin: 0; padding-left: .5em; font-size: 4.4em; font-weight: 300; letter-spacing: .5em; color: #fff; }
+.ge-film-plansza[data-rodzaj="schemat"] .ge-film-plansza-tekst { font-size: 1.4em; font-weight: 600; letter-spacing: .4em; color: #ffd9a8; text-transform: uppercase; }
+.ge-film-etykieta { position: absolute; left: 0; top: 0; }
+.ge-film-etykieta::before { content: ""; position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 0 1.5px rgba(8, 11, 15, .8); }
+.ge-film-etykieta::after { content: ""; position: absolute; left: -.5px; top: calc(-1.6em - 2px); width: 1px; height: calc(1.6em - 2px); background: rgba(255, 255, 255, .8); }
+.ge-film-etykieta-tekst { position: absolute; left: 0; bottom: 1.6em; transform: translateX(-50%); white-space: nowrap; padding: .12em .45em;
+  font-size: .95em; font-weight: 600; letter-spacing: .03em; background: rgba(8, 11, 15, .55); }
+.ge-film[data-pion="true"] .ge-film-gl, .ge-film[data-pion="true"] .ge-film-gp { top: calc(env(safe-area-inset-top, 0px) + 2.5%); }
+.ge-film[data-pion="true"] .ge-film-gs { top: calc(env(safe-area-inset-top, 0px) + 2.5% + 4.6em); }
+.ge-film[data-pion="true"] .ge-film-tl { bottom: 33%; }
+.ge-film[data-pion="true"] .ge-film-teza { max-width: 86%; top: 18%; }
+.ge-film[data-pion="true"] .ge-film-plansza-tekst { font-size: 2.6em; letter-spacing: .3em; }
+/* napisy (KinoKadr.napisy, prefiks ge-kino): rozmiar, położenie i podkład z ukladNapisow (zmienne CSS z napisy().kadr) */
+.ge-kino { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.ge-kino::before { content: ""; position: absolute; left: 0; right: 0; bottom: var(--ge-kino-pas-dol, 0px); height: var(--ge-kino-podklad-h, 0px);
+  background: linear-gradient(0deg, rgba(0, 0, 0, .55), rgba(0, 0, 0, 0)); opacity: 0; transition: opacity .4s; }
+#geologia.ge-kino-mowi .ge-kino::before { opacity: 1; }
+.ge-kino-wers { position: absolute; left: 50%; transform: translateX(-50%); width: max-content;
+  max-width: min(calc(var(--ge-kino-maks-znakow, 72) * .5 * var(--ge-kino-rozmiar, 20px)), 92%);
+  bottom: calc(var(--ge-kino-dol, 24px) + var(--ge-kino-safe, 0) * env(safe-area-inset-bottom, 0px)); text-align: center; }
+.ge-kino-wers-tekst { margin: 0; font: 500 var(--ge-kino-rozmiar, 20px)/1.45 var(--ge-kroj); color: #f6f3ec; letter-spacing: .01em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .95), 0 0 14px rgba(0, 0, 0, .6); }
+.ge-kino-tytul { display: none !important; }
+/* pasek postępu seansu z 9 znacznikami + sterowanie (w rzędzie rozdziałów) */
+.ge-pokaz-dol { flex: 1 1 100%; display: flex; align-items: center; gap: 8px; max-width: 1100px; margin: 0 auto; }
+.ge-pokaz-guzik { padding: 6px 10px; font-size: 12px; letter-spacing: .04em; }
+.ge-postep { position: relative; flex: 1; height: 6px; background: rgba(255, 255, 255, .16); cursor: pointer; }
+.ge-postep-pas { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--ge-akcent); }
+.ge-postep-znaczniki { position: absolute; inset: 0; }
+.ge-postep-znacznik { position: absolute; top: -6px; width: 12px; height: 18px; margin-left: -6px; padding: 0; border: 0; background: none; cursor: pointer; }
+.ge-postep-znacznik::before { content: ""; position: absolute; left: 5px; top: 3px; width: 2px; height: 12px; background: #e9eef3; }
+.ge-postep-znacznik:hover::before, .ge-postep-znacznik:focus-visible::before { background: var(--ge-akcent); }
+/* cisza (KinoKadr.cisza): pasek, rząd rozdziałów i kursor znikają po 3 s bezruchu; pola filmu i napisy zostają */
+.ge-pasek, .ge-rozdzialy { transition: opacity .35s; }
+#geologia.ge-cisza .ge-pasek, #geologia.ge-cisza .ge-rozdzialy { opacity: 0; pointer-events: none; }
+#geologia.ge-cisza, #geologia.ge-cisza .ge-canvas { cursor: none; }
+/* karty: „Odtwórz” (start bez gestu) i końcowa */
+.ge-film-karta { position: absolute; z-index: 7; left: 50%; top: 45%; transform: translate(-50%, -50%); display: grid; gap: 12px;
+  width: max-content; max-width: min(92vw, 560px); padding: 18px 22px; text-align: center; }
+.ge-film-karta-tytul { margin: 0; font-size: 15px; letter-spacing: .14em; text-transform: uppercase; }
+.ge-film-karta-guziki { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.ge-guzik-glowny { color: #0b0e12; background: var(--ge-akcent); border-color: var(--ge-akcent); }
+.ge-do-makiety { margin-left: auto; }
+.ge-do-makiety:not([hidden]) + .ge-podmenu { margin-left: 0; }     /* w makiecie (przycisk ukryty) podmenu zostaje z prawej (7b) */
+@media (max-width: 700px) {
+  .ge-pokaz-guzik { padding: 5px 7px; font-size: 11px; }
+}
+.ge-film-podpis { margin: 0; padding: .15em .5em; font-size: .78em; font-weight: 600; letter-spacing: .06em; color: #e8e2d4;
+  background: rgba(8, 11, 15, .5); }
+/* etykieta lądu poza kadrem: przy krawędzi pola S, bez odnośnika */
+.ge-film-etykieta-krawedz::before, .ge-film-etykieta-krawedz::after { display: none; }
+.ge-film-etykieta-krawedz .ge-film-etykieta-tekst { bottom: 0; transform: translate(-50%, 50%); }
