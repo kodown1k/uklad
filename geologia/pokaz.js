@@ -319,6 +319,7 @@
       var AC = root.AudioContext || root.webkitAudioContext;
       if (!AC) { console.warn('Geologia/uwaga: lektor niedostępny (brak Web Audio) — film z napisami'); return null; }
       var ctx;
+      root.GeologiaLektor.trybOdtwarzania(root.navigator);          // iOS: dźwięk mimo przełącznika wyciszenia (gest)
       try { ctx = new AC({ latencyHint: 'playback' }); } catch (e) { console.warn('Geologia/uwaga: lektor niedostępny (AudioContext: ' + (e && e.message || e) + ')'); return null; }
       var dz = null;
       try { if (root.GeologiaDzwiek) dz = root.GeologiaDzwiek.utworz(ctx); } catch (e) {
@@ -363,6 +364,7 @@
     function wznowAudio() {
       var A = P.audio;
       if (!A || A.ctx.state === 'closed') return;
+      root.GeologiaLektor.trybOdtwarzania(root.navigator);
       A.wznawia = performance.now();
       A.ctx.resume().then(function () { if (P.audio === A) A.wznawia = 0; }, function () { if (P.audio === A) A.wznawia = 0; });
     }

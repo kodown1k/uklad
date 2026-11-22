@@ -8,7 +8,13 @@
    plan nie podaje dla nich współrzędnych.
    Linie szlaków (blok SZLAKI) generuje scripts/gen-szlaki-teneryfy.mjs (te same dane: geologia/teneryfa/szlaki.json).
    Dane tras: kilometry i podejścia z planu liczone „tam i z powrotem”, o ile uwagi nie mówią inaczej;
-   linie OSM to jeden kierunek, uproszczone (Douglas–Peucker ~15 m, zakosy skracają się o kilkanaście %). */
+   linie OSM to jeden kierunek, uproszczone (Douglas–Peucker ~15 m, zakosy skracają się o kilkanaście %).
+   Lektor (Task 8d): opisów punktów nie czytamy (notatki praktyczne). `czesc: '<id części z dane.czesci>'` = punkt leży
+   w tej części wyspy — karta punktu dostaje nagranie tej części („Posłuchaj: <nazwa części>”, GeologiaOpowiesc.wersPinu);
+   test pilnuje odległości pin–część: ≤ promien_km + 2 km dla dużych części (promień ≥ 5 km: masyw, kaldera, dolina — ich punkt
+   to środek, a krańce sięgają dalej, np. Punta de Anaga 11–12 km od środka Anagi), inaczej ≤ max(promien_km, 3 km).
+   Część przypisujemy tylko ze źródłem albo z mapy (punkt leży w niej) — bez tego punkt milczy. Punkt bez pola (hotel, baza,
+   przystanki) — bez lektora. */
 (function (root) {
   var PLAN = 'plan wyjazdu właściciela (raport w panelu, 2026-11)';
   var PLAN_LINK = PLAN + ', link mapy';
@@ -35,25 +41,25 @@
       opis: 'Początek szlaku PR-TF 71.2 (wtorek 24.11, autem).', zrodlo: PLAN + '; pozycja: ' + OSM + ', początek relacji 4259122' },
     { id: 'ifonche', nazwa: 'Ifonche', rodzaj: 'cel', lonLat: [-16.68995, 28.13487],
       opis: 'Osada w chronionym krajobrazie Ifonche; koniec Camino de Ifonche.', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 282718113' },
-    { id: 'chamorga', nazwa: 'Chamorga', rodzaj: 'start', lonLat: [-16.15907, 28.56996],
+    { id: 'chamorga', nazwa: 'Chamorga', rodzaj: 'start', czesc: 'anaga', lonLat: [-16.15907, 28.56996],
       opis: 'Osada w Anadze; start szlaku do Roque Bermejo i latarni (śr 25.11, autem).', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 295989290' },
-    { id: 'roque-bermejo-anaga', nazwa: 'Roque Bermejo (Anaga)', rodzaj: 'atrakcja', lonLat: [-16.13518, 28.57832],
+    { id: 'roque-bermejo-anaga', nazwa: 'Roque Bermejo (Anaga)', rodzaj: 'atrakcja', czesc: 'anaga', lonLat: [-16.13518, 28.57832],
       opis: 'Przysiółek na końcu szlaku PR-TF 6.1.', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 874514216' },
-    { id: 'faro-de-anaga', nazwa: 'Faro de Anaga', rodzaj: 'latarnia', lonLat: [-16.14002, 28.58132],
+    { id: 'faro-de-anaga', nazwa: 'Faro de Anaga', rodzaj: 'latarnia', czesc: 'anaga', lonLat: [-16.14002, 28.58132],
       opis: 'Latarnia na krańcu Anagi.', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 599051999' },
-    { id: 'casas-de-tafada', nazwa: 'Casas de Tafada', rodzaj: 'cel', lonLat: [-16.15269, 28.57715],
+    { id: 'casas-de-tafada', nazwa: 'Casas de Tafada', rodzaj: 'cel', czesc: 'anaga', lonLat: [-16.15269, 28.57715],
       opis: 'Zabudowania na drodze powrotnej do Chamorgi.', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 295993517' },
-    { id: 'parador-del-teide', nazwa: 'Parador del Teide (przystanek 342)', rodzaj: 'start', lonLat: [-16.62726, 28.22383],
+    { id: 'parador-del-teide', nazwa: 'Parador del Teide (przystanek 342)', rodzaj: 'start', czesc: 'las-canadas', lonLat: [-16.62726, 28.22383],
       opis: 'Dno kaldery Las Cañadas, 2150 m; start szlaku (czw 26.11); jedyny autobus w dół o 15:42.', zrodlo: PLAN_LINK },
-    { id: 'degollada-de-guajara', nazwa: 'Degollada de Guajara', rodzaj: 'punkt-widokowy', lonLat: [-16.60002, 28.2179],
+    { id: 'degollada-de-guajara', nazwa: 'Degollada de Guajara', rodzaj: 'punkt-widokowy', czesc: 'las-canadas', lonLat: [-16.60002, 28.2179],
       opis: 'Przełęcz w krawędzi kaldery, 2379 m, 4,8 km od startu; cel dnia (najpóźniejsza zawrotka 13:15).', zrodlo: PLAN_LINK },
-    { id: 'alto-de-guajara', nazwa: 'Alto de Guajara', rodzaj: 'cel', lonLat: [-16.61691, 28.21464],
+    { id: 'alto-de-guajara', nazwa: 'Alto de Guajara', rodzaj: 'cel', czesc: 'las-canadas', lonLat: [-16.61691, 28.21464],
       opis: 'Szczyt 2708 m, 6,9 km od startu — poza oknem autobusu (5 h 45 min marszu według normy).', zrodlo: PLAN + '; pozycja: ' + OSM + ', koniec relacji 416908' },
-    { id: 'roques-de-garcia', nazwa: 'Roques de García', rodzaj: 'atrakcja', lonLat: [-16.63465, 28.22637],
+    { id: 'roques-de-garcia', nazwa: 'Roques de García', rodzaj: 'atrakcja', czesc: 'roques-de-garcia', lonLat: [-16.63465, 28.22637],
       opis: 'Skały tuż obok Paradoru — na czas oczekiwania na autobus.', zrodlo: PLAN_LINK },
-    { id: 'los-silos', nazwa: 'Los Silos', rodzaj: 'start', lonLat: [-16.81671, 28.36582],
+    { id: 'los-silos', nazwa: 'Los Silos', rodzaj: 'start', czesc: 'teno', lonLat: [-16.81671, 28.36582],
       opis: 'Start szlaku PR-TF 53 (pt 27.11, autem).', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 272416771' },
-    { id: 'erjos', nazwa: 'Erjos', rodzaj: 'cel', lonLat: [-16.8044, 28.32761],
+    { id: 'erjos', nazwa: 'Erjos', rodzaj: 'cel', czesc: 'teno', lonLat: [-16.8044, 28.32761],
       opis: 'Koniec szlaku PR-TF 53.', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 11438763253' },
     { id: 'palm-mar', nazwa: 'Palm-Mar', rodzaj: 'start', lonLat: [-16.70396, 28.02686],
       opis: 'Start spaceru po lawie do latarni (sob 28.11; rezerwa); dojazd taksówką z Los Cristianos.', zrodlo: PLAN_LINK },
@@ -63,17 +69,17 @@
       opis: 'Start szlaku na Roque del Conde (nd 29.11); 540 m od przystanku González de Yerro (342).', zrodlo: PLAN_LINK },
     { id: 'roque-del-conde', nazwa: 'Roque del Conde', rodzaj: 'punkt-widokowy', lonLat: [-16.69861, 28.10447],
       opis: 'Płaski szczyt 980 m nad Arona; widok na całe południe wyspy.', zrodlo: PLAN_LINK },
-    { id: 'punta-del-hidalgo', nazwa: 'Punta del Hidalgo', rodzaj: 'start', lonLat: [-16.32174, 28.5692],
+    { id: 'punta-del-hidalgo', nazwa: 'Punta del Hidalgo', rodzaj: 'start', czesc: 'anaga', lonLat: [-16.32174, 28.5692],
       opis: 'Start szlaku PR-TF 10 (pon 30.11, autem).', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 76471275' },
-    { id: 'chinamada', nazwa: 'Chinamada', rodzaj: 'cel', lonLat: [-16.29115, 28.56194],
+    { id: 'chinamada', nazwa: 'Chinamada', rodzaj: 'cel', czesc: 'anaga', lonLat: [-16.29115, 28.56194],
       opis: 'Osada w skale, cel szlaku z Punta del Hidalgo.', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 301437192' },
-    { id: 'masca', nazwa: 'Masca', rodzaj: 'start', lonLat: [-16.8405, 28.30526],
+    { id: 'masca', nazwa: 'Masca', rodzaj: 'start', czesc: 'masca', lonLat: [-16.8405, 28.30526],
       opis: 'Wioska, start zejścia Barranco de Masca (wejście tylko z rezerwacją; dzień do ustalenia z przyjaciółmi).', zrodlo: PLAN + '; pozycja: ' + OSM + ', węzeł 263716278' },
-    { id: 'playa-de-masca', nazwa: 'Playa de Masca', rodzaj: 'plaza', lonLat: [-16.86199, 28.28719],
+    { id: 'playa-de-masca', nazwa: 'Playa de Masca', rodzaj: 'plaza', czesc: 'masca', lonLat: [-16.86199, 28.28719],
       opis: 'Koniec wąwozu; stąd łódź do Los Gigantes.', zrodlo: PLAN + '; pozycja: ' + OSM + ', way 28339463' },
     { id: 'santiago-del-teide-parking', nazwa: 'Santiago del Teide — parking przy cmentarzu', rodzaj: 'przystanek', lonLat: [-16.81042, 28.29473],
       opis: 'Tu zostaje auto w dniu Masci; stąd autobus 355 do wioski.', zrodlo: PLAN_LINK },
-    { id: 'los-gigantes-port', nazwa: 'Los Gigantes — port', rodzaj: 'przystanek', lonLat: [-16.84247, 28.24742],
+    { id: 'los-gigantes-port', nazwa: 'Los Gigantes — port', rodzaj: 'przystanek', czesc: 'los-gigantes', lonLat: [-16.84247, 28.24742],
       opis: 'Koniec rejsu z Playa de Masca; stąd 1 km pieszo na przystanek 7228.', zrodlo: PLAN_LINK }
   ];
 

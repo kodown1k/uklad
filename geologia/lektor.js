@@ -11,9 +11,10 @@
      aktualne(wersy, czasy) → { [id]: czas_s } tylko aktualnych nagrań — to, co pokaz podaje Rozdzialy.plan({ czasy })
        (rozdzial.lektor = jedyne źródło „czy jest lektor”, ruling 8c-1).
    Przeglądarka:
-     GeologiaLektor.utworz(katalog, czasy, ctx?, opcje?) → { przygotuj(ids) → Promise, graj(id, offset_s, kiedy?), zatrzymaj(), pauza(),
+     GeologiaLektor.utworz(katalog, czasy, ctx?, opcje?) → { przygotuj(ids) → Promise, graj(id, offset_s, kiedy?, poKoncu?), zatrzymaj(), pauza(),
        wznow(), cisza(bool), zegar() → s|null, kotwicz(t), przesun(d), planuj(wersy, horyzont_s), stan() → 'gra'|'cisza'|'brak',
-       zwolnij() }
+       zwolnij(), blad(id) → { status } | null (status HTTP ostatniej nieudanej próby, 0 = sieć/dekodowanie) }
+     GeologiaLektor.trybOdtwarzania(navigator) — sesja audio 'playback' (iOS: dźwięk mimo przełącznika wyciszenia), na gest.
      katalog = prefiks adresu (np. 'geologia/teneryfa/lektor/') albo funkcja plik → adres (token zaproszenia, ruling 9-2);
      ctx = AudioContext (wspólny z podkładem geologia/dzwiek.js); opcje.wyjscie = węzeł wejścia (mikser podkładu), inaczej
      ctx.destination. Nagrania rozdziału dekodowane z wyprzedzeniem do AudioBuffer (przygotuj); start wersu planowany
@@ -76,7 +77,18 @@
     return m;
   }
 
-  var api = { sha1: sha1, skrot: skrot, czasWersu: czasWersu, aktualne: aktualne, WYPRZEDZENIE: WYPRZEDZENIE };
+  // iPhone z przełącznikiem wyciszenia: Web Audio milknie, chyba że sesja audio strony ma typ 'playback' (Safari 16.4+,
+  // navigator.audioSession). Wołane na gest, przed utworzeniem/wznowieniem AudioContext (pokaz i lektor pinów makiety).
+  // → true, gdy ustawiono; brak API albo błąd → false (bez wyjątku).
+  function trybOdtwarzania(nav) {
+    try {
+      if (!nav || !nav.audioSession) return false;
+      nav.audioSession.type = 'playback';
+      return nav.audioSession.type === 'playback';
+    } catch (_) { return false; }
+  }
+
+  var api = { sha1: sha1, skrot: skrot, czasWersu: czasWersu, aktualne: aktualne, trybOdtwarzania: trybOdtwarzania, WYPRZEDZENIE: WYPRZEDZENIE };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
 
   /* ---------- przeglądarka ---------- */
@@ -84,7 +96,7 @@
     opcje = opcje || {};
     var adres = typeof katalog === 'function' ? katalog : function (plik) { return String(katalog || '') + plik; };
     var wpisy = czasy && czasy.wersy || null;
-    var bufory = {}, ladowane = {}, zle = {}, proby = {}, zrodla = [], zaplanowane = {}, kotwica = null, wyciszony = false, ostrzezono = false, zwolniony = false;
+    var bufory = {}, ladowane = {}, zle = {}, statusy = {}, proby = {}, zrodla = [], zaplanowane = {}, kotwica = null, wyciszony = false, ostrzezono = false, zwolniony = false;
     var wzm = null;
     function ostrzez(powod) {
       if (ostrzezono) return;
@@ -108,20 +120,22 @@
       if (ladowane[id]) return ladowane[id];
       proby[id] = true;
       ladowane[id] = fetch(adres(wpisy[id].plik), { credentials: 'omit' }).then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + wpisy[id].plik);
+        if (!r.ok) { var e = new Error('HTTP ' + r.status + ' ' + wpisy[id].plik); e.status = r.status; throw e; }
         return r.arrayBuffer();
       }).then(dekoduj).then(function (buf) {
         if (zwolniony) return null;
         bufory[id] = buf; return buf;
       }, function (e) {
-        zle[id] = true; delete ladowane[id];
+        // status HTTP ostatniej nieudanej próby (0 = sieć, dekodowanie); ponowne laduj(id) próbuje od nowa
+        zle[id] = true; statusy[id] = e && e.status || 0; delete ladowane[id];
         ostrzez(id + ': ' + (e && e.message || e));
         return null;
       });
       return ladowane[id];
     }
     function przygotuj(ids) { return Promise.all((ids || []).map(laduj)); }
-    function graj(id, offset_s, kiedy) {
+    // poKoncu (opcjonalne) — wołane, gdy nagranie dogra do końca (zatrzymaj() go nie woła); lektor pinów makiety (Task 8d)
+    function graj(id, offset_s, kiedy, poKoncu) {
       var b = bufory[id];
       if (!b || !wzm) return false;
       var teraz = ctx.currentTime, t = kiedy != null ? kiedy : teraz + WYPRZEDZENIE, off = Math.max(0, offset_s || 0);
@@ -132,7 +146,10 @@
       s.start(t, off);
       var z = { s: s, id: id };
       zrodla.push(z);
-      s.onended = function () { var i = zrodla.indexOf(z); if (i >= 0) zrodla.splice(i, 1); try { s.disconnect(); } catch (_) { /* nic */ } };
+      s.onended = function () {
+        var i = zrodla.indexOf(z); if (i >= 0) zrodla.splice(i, 1); try { s.disconnect(); } catch (_) { /* nic */ }
+        if (typeof poKoncu === 'function') poKoncu(id);
+      };
       return true;
     }
     function zatrzymaj() {
@@ -183,6 +200,8 @@
     }
     return { przygotuj: przygotuj, graj: graj, zatrzymaj: zatrzymaj, pauza: pauza, wznow: wznow, cisza: cisza, zegar: zegar, kotwicz: kotwicz, przesun: przesun,
       planuj: planuj, stan: stan, zwolnij: zwolnij, zrodla: function () { return zrodla.length; },
+      // ostatni błąd wczytania nagrania: { status } (status HTTP, 0 = sieć/dekodowanie) albo null, gdy nagranie jest
+      blad: function (id) { return zle[id] && !bufory[id] ? { status: statusy[id] || 0 } : null; },
       zdekodowane: function () { return Object.keys(bufory).length; } };
   }
   api.utworz = utworz;

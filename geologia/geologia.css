@@ -296,3 +296,8 @@
   .ge-tryb-wulk .ge-plan { max-height: 45%; }
   .ge-wulk-liczby { font-size: 12px; }
 }
+
+/* Lektor na pinach makiety (Task 8d): przycisk w karcie części, wulkanu i punktu turystyki — tylko z nagraniem (zaproszenie) */
+.ge-lektor { display: block; max-width: 100%; min-height: 34px; margin: 2px 0 8px; padding: 9px 12px; text-align: left; line-height: 1.25;
+  white-space: normal; overflow-wrap: anywhere; }
+.ge-lektor-blad { margin: -4px 0 8px; font-size: 12px; line-height: 1.35; color: #ffb38a; }

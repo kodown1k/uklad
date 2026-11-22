@@ -16,7 +16,10 @@
    wstrzas?, luk? (cel po łuku: aimArc), krzywa? ('dojazd' | 'cruise' — odcinek do tego klucza), stop? }. Brakujące pola
    klucza = poprzedni klucz; ujęcie z wejściem D/P zaczyna się tam, gdzie skończyło poprzednie (klucz u = 0 pomijany).
    `obiekt.hc` [km] = wysokość obiektu głównego wewnątrz przekroju (bez niego: teren w punkcie części).
-   Odstępstwa kadrów od R9 (wstawki ~2× szersze: ruling T3; ciągłość szwów D; horyzont SKA-3) — raport Task 8a. */
+   Odstępstwa kadrów od R9 (wstawki ~2× szersze: ruling T3; ciągłość szwów D; horyzont SKA-3) — raport Task 8a.
+   Lektor na pinach makiety (Task 8d): wersPinu(rodzaj, pin) — które piny mówią i czym (część: jej wers; wulkan z opisem: opis;
+   punkt turystyki: wers części z pola `czesc`); wersyPinow() — wersy wszystkich mówiących pinów; wszystkieNagrania() =
+   wszystkieWersy() + wersy pinów spoza niej — lista generatora i odsłuchu lektora (scripts/gen-lektor.mjs). */
 (function (root) {
   var ROZDZIALY = ['polozenie', 'geografia', 'budowa', 'powstanie', 'historia', 'przekroj', 'czesci', 'mity', 'dzis'];
 
@@ -744,6 +747,13 @@
     });
   });
 
+  // Wers do nagrania: id, tekst i tekst czytany (wymowa po fonetyce) — ten sam przepis co w budowa() wyżej.
+  function doNagrania(v) {
+    var x = { id: v.id, tekst: v.tekst };
+    if (v.wymowa || maNazwe(v.tekst)) x.wymowa = fonetyka(v.wymowa || v.tekst);
+    return x;
+  }
+
   // Wszystkie wersy dla generatora lektora (Task 9): rozdziały w kolejności, potem pozostałe czesci[].wers z dane.js
   // (części z okrążenia R9.7 już są w rozdziale `czesci` — jeden wers, jedno nagranie na część).
   function wszystkieWersy() {
@@ -753,15 +763,106 @@
     wynik.forEach(function (x) { if (x.czesc) juz[x.czesc] = true; });
     daneTeneryfy().czesci.forEach(function (c) {
       if (juz[c.id]) return;                                   // część z filmu: jej wers już jest (R9.7)
-      var v = wersCzesci(c), x = { id: v.id, tekst: v.tekst };
-      if (v.wymowa || maNazwe(v.tekst)) x.wymowa = fonetyka(v.wymowa || v.tekst);
+      var x = doNagrania(wersCzesci(c));
       x.czesc = c.id;
       wynik.push(x);
     });
     return wynik;
   }
 
+  // ───────────── lektor na pinach makiety (Task 8d) ─────────────
+  // Opisy wulkanów (geologia/teneryfa/wulkany.js, `opis` STRATO/OSRODKI) czytane w karcie pinu. Wymowa ręczna, bo opisy mają
+  // daty i ułamki, które doWymowy generatora czyta w mianowniku („pięć stycznia”, „jeden przecinek dwa kilometra”);
+  // `tekst` = bieżący opis (test pada, gdy opis się zmieni, a wymowa zostanie stara — wtedy wymowa nie jest używana).
+  // Nazwy z FONETYKA zostają w zapisie oryginalnym (podmienia je fonetyka()); skróty i nazwy spoza FONETYKA zapisane fonetycznie.
+  var WYMOWA_WULKANOW = {
+    teide: { tekst: 'Teide ma 3718 metrów i jest najwyższą górą Hiszpanii oraz najwyższym wulkanem Atlantyku; część źródeł podaje 3715 metrów. Razem z Pico Viejo rośnie w kalderze Las Cañadas od około 170 tysięcy lat; według innych źródeł ich budowa ruszyła po wielkim osuwisku Icod sprzed około 200 tysięcy lat. Na wierzchołku ma krater szeroki na 80 metrów, z czynnymi fumarolami.',
+      wymowa: 'Teide ma trzy tysiące siedemset osiemnaście metrów i jest najwyższą górą Hiszpanii oraz najwyższym wulkanem Atlantyku; część źródeł podaje trzy tysiące siedemset piętnaście metrów. Razem z Pico Viejo rośnie w kalderze Las Cañadas od około stu siedemdziesięciu tysięcy lat; według innych źródeł ich budowa ruszyła po wielkim osuwisku Icod sprzed około dwustu tysięcy lat. Na wierzchołku ma krater szeroki na osiemdziesiąt metrów, z czynnymi fumarolami.' },
+    'pico-viejo': { tekst: 'Pico Viejo to młodszy, zachodni sąsiad Teide: ma 3134 metry według IGN, a 3129 metrów według Wikipedii. Jego krater, szeroki na około 800 metrów, jest największy na całym archipelagu. Na jego południowo-zachodnim zboczu w 1798 roku otworzyła się szczelina erupcji Chahorra.',
+      wymowa: 'Pico Viejo to młodszy, zachodni sąsiad Teide: ma trzy tysiące sto trzydzieści cztery metry według hiszpańskiego Instytutu Geograficznego, a trzy tysiące sto dwadzieścia dziewięć metrów według Wikipedii. Jego krater, szeroki na około ośmiuset metrów, jest największy na całym archipelagu. Na jego południowo-zachodnim zboczu w tysiąc siedemset dziewięćdziesiątym ósmym roku otworzyła się szczelina erupcji Czaorra.' },
+    'siete-fuentes': { tekst: 'Pierwszy z trzech ośrodków erupcji z lat 1704–1705. W ostatni dzień 1704 roku otworzyła się tu szczelina długości około 300 metrów i w kilka dni wyrósł niewielki stożek: 28 metrów według jednej karty Instytutu Geologiczno-Górniczego Hiszpanii, 37 metrów według drugiej. Trzęsienia ziemi towarzyszące tej erupcji zabiły co najmniej 16 osób.',
+      wymowa: 'Pierwszy z trzech ośrodków erupcji z lat tysiąc siedemset cztery i tysiąc siedemset pięć. W ostatni dzień tysiąc siedemset czwartego roku otworzyła się tu szczelina długości około trzystu metrów i w kilka dni wyrósł niewielki stożek: dwadzieścia osiem metrów według jednej karty Instytutu Geologiczno-Górniczego Hiszpanii, trzydzieści siedem metrów według drugiej. Trzęsienia ziemi, które towarzyszyły tej erupcji, zabiły co najmniej szesnaście osób.' },
+    fasnia: { tekst: 'Drugi ośrodek tej samej erupcji ruszył 5 stycznia 1705 roku, około 1,2 kilometra na północny wschód od Siete Fuentes. Wzdłuż szczeliny długości 1,3 kilometra powstały tu małe hornita, stożki żużlowe i jeziorka lawy, a lawa spłynęła dawnym wąwozem Areza na około 7 kilometrów.',
+      wymowa: 'Drugi ośrodek tej samej erupcji ruszył piątego stycznia tysiąc siedemset piątego roku, około tysiąca dwustu metrów na północny wschód od Siete Fuentes. Wzdłuż szczeliny długości tysiąca trzystu metrów powstały tu małe hornita, stożki żużlowe i jeziorka lawy, a lawa spłynęła dawnym wąwozem Aresa na około siedmiu kilometrów.' },
+    arafo: { tekst: 'Ostatni ośrodek erupcji z lat 1704–1705 otworzył się 2 lutego 1705 roku w kalderze Pedro Gil, 7,2 kilometra od dwóch poprzednich. Działał przez 54 dni według Instytutu Geologiczno-Górniczego Hiszpanii, a 53 według Volkiblogu; jego lawa rozlała się wachlarzem w dolinie Güímar i zatrzymała prawie nad morzem, 9 kilometrów od otworów.',
+      wymowa: 'Ostatni ośrodek erupcji z lat tysiąc siedemset cztery – tysiąc siedemset pięć otworzył się drugiego lutego tysiąc siedemset piątego roku w kalderze Pedro Gil, siedem kilometrów i dwieście metrów od dwóch poprzednich. Działał przez pięćdziesiąt cztery dni według Instytutu Geologiczno-Górniczego Hiszpanii, a pięćdziesiąt trzy według Wolkibloga; jego lawa rozlała się wachlarzem w dolinie Güímar i zatrzymała prawie nad morzem, dziewięć kilometrów od otworów.' },
+    garachico: { tekst: 'Wulkan Garachico, zwany też Arenas Negras albo Trevejo, wybuchł 5 maja 1706 roku i usypał stożek wysoki na około 80 metrów. Jego lawa dwukrotnie przelała się przez stary klif i częściowo zniszczyła miasto i port Garachico. Erupcja trwała do 13 czerwca według INVOLCAN; Wikipedia podaje 14 maja.',
+      wymowa: 'Wulkan Garachico, zwany też Arenas Negras albo Trebecho, wybuchł piątego maja tysiąc siedemset szóstego roku i usypał stożek wysoki na około osiemdziesiąt metrów. Jego lawa dwukrotnie przelała się przez stary klif i częściowo zniszczyła miasto i port Garachico. Erupcja trwała do trzynastego czerwca według Inwolkan; Wikipedia podaje czternastego maja.' },
+    chahorra: { tekst: 'Chahorra, zwana Narices del Teide, czyli Nosami Teide, to najdłuższa historyczna erupcja Teneryfy: według INVOLCAN trwała od 9 czerwca do 15 września 1798 roku, czyli 99 dni; Wikipedia podaje koniec 8 września. Wybuchła na południowo-zachodnim zboczu Pico Viejo, wzdłuż szczeliny długości ponad kilometra.',
+      wymowa: 'Czaorra, zwana Narices del Teide, czyli Nosami Teide, to najdłuższa historyczna erupcja Teneryfy: według Inwolkan trwała od dziewiątego czerwca do piętnastego września tysiąc siedemset dziewięćdziesiątego ósmego roku, czyli dziewięćdziesiąt dziewięć dni; Wikipedia podaje koniec ósmego września. Wybuchła na południowo-zachodnim zboczu Pico Viejo, wzdłuż szczeliny długości ponad kilometra.' },
+    chinyero: { tekst: 'Chinyero to miejsce ostatniej erupcji na Teneryfie. Zaczęła się 18 listopada 1909 roku i trwała 9 dni według Volkiblogu albo 10 według Wikipedii; lawa wypływała ze szczeliny długości ponad pół kilometra, nad którą wyrosły dwa stożki.',
+      wymowa: 'Chinyero to miejsce ostatniej erupcji na Teneryfie. Zaczęła się osiemnastego listopada tysiąc dziewięćset dziewiątego roku i trwała dziewięć dni według Wolkibloga albo dziesięć według Wikipedii; lawa wypływała ze szczeliny długości ponad pół kilometra, nad którą wyrosły dwa stożki.' }
+  };
+  function daneWulkanow() {
+    if (root.GeologiaWulkany) return root.GeologiaWulkany;
+    if (typeof require === 'function') return require('./wulkany.js');
+    return null;
+  }
+  function daneTurystyki() {
+    if (root.GeologiaTurystyka) return root.GeologiaTurystyka;
+    if (typeof require === 'function') return require('./turystyka.js');
+    return null;
+  }
+  /* Które piny makiety mówią — jedyne miejsce tej decyzji (karta pinu w widok.js i lista generatora: wszystkieNagrania).
+     wersPinu(rodzaj, pin, dane?) → { id, tekst, wymowa?, etykieta } | null
+       'czesc'     — pin = część z dane.czesci: jej wers (c.wers, nagranie z Task 9); etykieta = nazwa części;
+       'wulkan'    — pin z GeologiaWulkany.grupuj (pole `wpis` = id wpisu STRATO/OSRODKI): czyta `opis` wpisu, id wersu
+                     'teneryfa/wulkan/<id wpisu>' (stały wobec odświeżenia OSM); pin bez wpisu (`pozostale`) → null;
+       'turystyka' — punkt z GeologiaTurystyka.punkty: opisów (notatki praktyczne) nie czytamy — punkt z polem `czesc`
+                     dostaje wers tej części wyspy (etykieta = jej nazwa, przycisk „Posłuchaj: <nazwa>”), bez pola → null.
+     dane = { teneryfa, wulkany: { STRATO, OSRODKI }, turystyka } — domyślnie dane modułu (podmiana tylko w testach). */
+  function wersPinu(rodzaj, pin, dane) {
+    dane = dane || {};
+    if (!pin) return null;
+    var Dt = dane.teneryfa || daneTeneryfy();
+    if (rodzaj === 'czesc') {
+      if (!pin.wers || !pin.wers.id || !pin.wers.tekst) return null;
+      return Object.assign(doNagrania(wersCzesci(pin)), { etykieta: pin.nazwa });
+    }
+    if (rodzaj === 'wulkan') {
+      var Wd = dane.wulkany || daneWulkanow();
+      if (!Wd || !pin.wpis) return null;
+      var wp = (Wd.STRATO || []).concat(Wd.OSRODKI || []).filter(function (x) { return x.id === pin.wpis; })[0];
+      if (!wp || typeof wp.opis !== 'string' || !wp.opis) return null;
+      var r = WYMOWA_WULKANOW[wp.id];
+      return Object.assign(doNagrania({ id: 'teneryfa/wulkan/' + wp.id, tekst: wp.opis, wymowa: r && r.tekst === wp.opis ? r.wymowa : undefined }),
+        { etykieta: wp.nazwa });
+    }
+    if (rodzaj === 'turystyka') {
+      if (!pin.czesc || !Dt) return null;
+      var c = Dt.czesci.filter(function (x) { return x.id === pin.czesc; })[0];
+      return c ? wersPinu('czesc', c, dane) : null;
+    }
+    return null;
+  }
+  // Wersy wszystkich mówiących pinów (bez powtórzeń: kilka punktów turystyki dzieli wers części).
+  function wersyPinow(dane) {
+    dane = dane || {};
+    var Dt = dane.teneryfa || daneTeneryfy(), Wd = dane.wulkany || daneWulkanow(), Td = dane.turystyka || daneTurystyki();
+    var wynik = [], juz = {};
+    function dodaj(x) { if (x && !juz[x.id]) { juz[x.id] = true; wynik.push(x); } }
+    Dt.czesci.forEach(function (c) { dodaj(wersPinu('czesc', c, dane)); });
+    if (Wd) (Wd.STRATO || []).concat(Wd.OSRODKI || []).forEach(function (w) { dodaj(wersPinu('wulkan', { wpis: w.id }, dane)); });
+    if (Td) Td.punkty.forEach(function (p) { dodaj(wersPinu('turystyka', p, dane)); });
+    return wynik;
+  }
+  // Wszystko, co ma nagranie (generator i odsłuch lektora): wersy filmu i części (wszystkieWersy), potem wersy pinów,
+  // których tam nie ma (opisy wulkanów).
+  function wszystkieNagrania() {
+    var wynik = wszystkieWersy(), juz = {};
+    wynik.forEach(function (x) { juz[x.id] = true; });
+    wersyPinow().forEach(function (x) {
+      if (juz[x.id]) return;
+      juz[x.id] = true;
+      var y = { id: x.id, tekst: x.tekst };
+      if (x.wymowa) y.wymowa = x.wymowa;
+      wynik.push(y);
+    });
+    return wynik;
+  }
+
   var api = { ROZDZIALY_TYTULY: ROZDZIALY_TYTULY, BUDZET: BUDZET, ujecia: ujecia, wersy: wersy, wszystkieWersy: wszystkieWersy,
-    TRUDNE_NAZWY: TRUDNE_NAZWY, FONETYKA: FONETYKA, fonetyka: fonetyka, WYMOWA_CZESCI: WYMOWA_CZESCI };
+    TRUDNE_NAZWY: TRUDNE_NAZWY, FONETYKA: FONETYKA, fonetyka: fonetyka, WYMOWA_CZESCI: WYMOWA_CZESCI,
+    WYMOWA_WULKANOW: WYMOWA_WULKANOW, wersPinu: wersPinu, wersyPinow: wersyPinow, wszystkieNagrania: wszystkieNagrania };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GeologiaOpowiesc = api;
 })(typeof window !== 'undefined' ? window : globalThis);
