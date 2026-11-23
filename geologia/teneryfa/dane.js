@@ -66,7 +66,8 @@
     horniman: 'Horniman Museum, „The Legend of Atlantis” (2026-02-16), https://www.horniman.ac.uk/story/the-legend-of-atlantis/',
     livescience: 'Live Science (2024), „«This could be the origin of the Atlantis legend»: Mountain that sank beneath the waves discovered off Canary Islands” (L. Somoza)',
     divulga: 'divulgameteo.es, „Nevadas en Canarias” (PDF, cytuje Fonta o Izañi)',
-    amado: 'Amado P., Aparicio A., García A. (2007), „Tectonic - volcanism relations in the Santiago rift (Tenerife)”, Geophysical Research Abstracts 9, EGU2007-A-03437 (MNCN-CSIC)'
+    amado: 'Amado P., Aparicio A., García A. (2007), „Tectonic - volcanism relations in the Santiago rift (Tenerife)”, Geophysical Research Abstracts 9, EGU2007-A-03437 (MNCN-CSIC)',
+    inwersja: 'Inwersja pasatowa (Carrillo i in. 2016, dane z La Palmy) cytowana w: arXiv 2409.14075 (https://arxiv.org/pdf/2409.14075) i Earth Systems and Environment, Springer 2025 (https://link.springer.com/article/10.1007/s41748-025-00655-6) — (streszczenie/pośrednio — nie pobrano), wg pliku faktów F2.18 (Z37)'
   };
   // URL fichy jak w pliku faktów: fichy 1–9 w katalogu 2020/03, 11–30 w 2020/02, 31–50 w 2020/01.
   function ficha(n, tytul) {
@@ -151,6 +152,14 @@
       tekst: 'Klimat kształtują Atlantyk, pasaty i góry; według klasyfikacji Köppena większość wybrzeży ma klimat półpustynny lub pustynny.' },
     // nasaPyl: „In mid-January 2022, dust from northwest Africa washed over the Canary Islands, causing skies to turn orange, visibility to drop, and air quality to decline.”
     // Wikipedia, strona Calima (Saharan sand): „It usually happens in the summer and lasts 3–5 days.” — rozbieżność pory (NASA: styczeń)
+    // plik faktów F2.18 (Z37, streszczenia przez wyszukiwarkę — tekstu prac nie pobrano): „quasi-stała inwersja temperaturowa średnio
+    // ok. **1300 m n.p.m.** (obecna ok. 78% czasu; dane z La Palmy cytujące Carrillo i in. 2016), druga, wyższa inwersja ok.
+    // **1500–1800 m latem i ok. 2000 m zimą**; Izaña (2373 m) leży ponad warstwą chmur” — jedyne źródło wysokości morza chmur
+    // w UI (dymek „Morze chmur” w widok.js) i warstw chmur A4 (Animacje.warstwyChmur); STROP_CHMUR_KM w scena.js to stała modelu.
+    { id: 'f-morze-chmur', rozdzial: 'geografia', pewnosc: 'srednia', zrodlo: Z.inwersja,
+      tekst: 'Morze chmur trzyma inwersja pasatowa: średnio ok. 1300 m n.p.m., obecna przez ok. 78% czasu; druga, wyższa inwersja leży latem ok. 1500–1800 m, zimą ok. 2000 m. Dane z La Palmy, nie z samej Teneryfy.',
+      liczby: { inwersja: { wartosc: 1300, jednostka: 'm' }, czestosc: { wartosc: 78, jednostka: '%' }, latemOd: { wartosc: 1500, jednostka: 'm' },
+        latemDo: { wartosc: 1800, jednostka: 'm' }, zima: { wartosc: 2000, jednostka: 'm' } } },
     { id: 'f-kalima', rozdzial: 'geografia', pewnosc: 'srednia', zrodlo: Z.nasaPyl + '; Wikipedia (en), „Calima (Saharan sand)” (wikitext pobrany 2026-11-21)',
       tekst: 'Kalima to pył z Sahary niesiony wiatrem nad wyspy: niebo robi się pomarańczowe, widzialność spada. Trwa zwykle 3–5 dni; zdarza się latem, ale też zimą (styczeń 2022, NASA).',
       liczby: { trwanieOd: { wartosc: 3, jednostka: 'dni' }, trwanieDo: { wartosc: 5, jednostka: 'dni' } } },
@@ -170,8 +179,10 @@
       liczby: { od: { wartosc: 4, jednostka: 'mln lat' }, wysokosc: { wartosc: 4000, jednostka: 'm' } } },
     // wGeol: „In this {{cvt|16|x|20|km|mi}} caldera, since about 170,000 years ago, two related stratovolcanoes have formed: [[Teide]] … and its younger, smaller, we[stern neighbour Pico Viejo]”
     // ficha 28: „es un volcán diferenciado y al localizarse en islas de intraplaca es un volcán “intruso”” … „la última de ellas es la de Narices del Teide que tuvo lugar en 1798.”
-    { id: 'f-teide-pico-viejo', rozdzial: 'budowa', pewnosc: 'srednia', zrodlo: Z.wGeol + '; ' + ficha(28, 'Teide-Pico Viejo') + '; ' + Z.wTenerife + ' (ok. 200 tys. lat)',
-      tekst: 'W kalderze od ok. 170 tys. lat (inne źródła: 200 tys.) rosną dwa powiązane stratowulkany — Teide i Pico Viejo. To wulkan zróżnicowany, rzadki na wyspach wewnątrzpłytowych; ostatnia erupcja kompleksu: 1798.',
+    // wTenerife: „Finally, around 200,000 years ago, the giant Icod landslide occurred followed by eruptions that raised the ''Pico Viejo-Teide''”
+    // (200 tys. = osuwisko Icod, po którym ruszyła budowa — nie początek wzrostu; brzmienie jak opis Teide w wulkany.js, ruling 8c-2)
+    { id: 'f-teide-pico-viejo', rozdzial: 'budowa', pewnosc: 'srednia', zrodlo: Z.wGeol + '; ' + ficha(28, 'Teide-Pico Viejo') + '; ' + Z.wTenerife + ' (osuwisko Icod ok. 200 tys. lat temu, po nim erupcje Pico Viejo-Teide)',
+      tekst: 'W kalderze Las Cañadas od ok. 170 tys. lat rosną dwa powiązane stratowulkany — Teide i Pico Viejo; według innych źródeł ich budowa ruszyła po wielkim osuwisku Icod sprzed ok. 200 tys. lat. To wulkan zróżnicowany, rzadki na wyspach wewnątrzpłytowych; ostatnia erupcja kompleksu: 1798.',
       liczby: { od: { wartosc: 170, jednostka: 'tys. lat' } } },
     // IGN: „In Tenerife there are three main rift axes that begin at the three vertices of the island and converge at a triple point in the central zone, where the Edificios Cañadas and the large Teide-Pico Viejo complex emerged.”
     { id: 'f-ryfty', rozdzial: 'budowa', pewnosc: 'wysoka', zrodlo: Z.ign,
@@ -376,7 +387,7 @@
       // wys_m = dzisiejsze dno kaldery (2100 m) jako strop gmachu pod stożkiem; przed zapadnięciem gmach był wyższy (IGN: do ok. 4000 m).
       podloze: { jednostka: 'gmach-las-canadas', wys_m: 2100, pewnosc: 'niska', zrodlo: Z.ign + ' (dno kaldery 2100 m) — przybliżenie: wypełnienie kaldery pod stożkiem pominięte' },
       wielokaty: [[[-16.745, 28.285], [-16.71, 28.305], [-16.66, 28.315], [-16.62, 28.305], [-16.585, 28.29], [-16.575, 28.265], [-16.59, 28.245], [-16.62, 28.235], [-16.66, 28.225], [-16.70, 28.225], [-16.735, 28.24], [-16.75, 28.26], [-16.745, 28.285]]],
-      pewnosc: 'niska', zrodlo: Z.ignMapa + '; wiek: ' + Z.wGeol + ' (ok. 170 tys. lat), ' + Z.wTenerife + ' (ok. 200 tys. lat)' },
+      pewnosc: 'niska', zrodlo: Z.ignMapa + '; wiek: ' + Z.wGeol + ' (ok. 170 tys. lat); ' + Z.wTenerife + ' (budowa po osuwisku Icod sprzed ok. 200 tys. lat)' },
     // IGN mapa (legenda z obrazu): Macizos antiguos / Macizo de Teno / Basaltos tabulares; IGN: „a basaltic lava pile 6.5 Ma slightly inclined towards the west”
     { id: 'tarcza-teno', nazwa: 'Tarcza Teno', skala: 'tarcza', odMa: 6.4, doMa: 5.1,
       skaly: ['bazalty tabularne', 'trachybazalty', 'brekcja', 'dajki'], kolor: '#5f9ad6',

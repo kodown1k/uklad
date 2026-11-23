@@ -16,10 +16,11 @@
    Interfejs (pasek, rząd rozdziałów z paskiem postępu, kursor) chowa KinoKadr.cisza po 3 s bezruchu; na pauzie i karcie
    końcowej zostaje.
    Lektor i podkład (Task 9, spec R6): przy wejściu pokaz pobiera <baza lektora>/czasy.json (baza i token z
-   zrodloLektora — zaproszenie, ruling 9-2; bez tokenu / 403 / 404: bez lektora, jedno „Geologia/uwaga:”), plan liczy się
+   zrodloLektora — zaproszenie, ruling 9-2; GeologiaLektor.pobierzCzasy: jeden limit na czasy.json i próbkę MP3, po błędzie
+   sieci jedna próba z pamięci podręcznej; bez tokenu / 403 / 404 / bez sieci: bez lektora, jedno „Geologia/uwaga:”), plan liczy się
    z czasów aktualnych nagrań (GeologiaLektor.aktualne → Rozdzialy.plan({ czasy }) — obraz idzie za nagraniem, ruling 9-3),
    więc rozdzial.lektor mówi, czy lektor jest (przycisk startu: „Odtwórz z lektorem” albo „Odtwórz” + „lektor na
-   zaproszenie” / „lektor w przygotowaniu”, ruling 9-4). Dźwięk startuje dopiero na gest (karta „Odtwórz” albo klik
+   zaproszenie” / „lektor w przygotowaniu” / „lektor: brak połączenia”, ruling 9-4). Dźwięk startuje dopiero na gest (karta „Odtwórz” albo klik
    zakładki): wspólny AudioContext dla lektora (geologia/lektor.js) i podkładu (geologia/dzwiek.js, gra dla wszystkich).
    Gdy kontekst gra, ZEGAREM FILMU jest AudioContext (GeologiaLektor.zegar); bez kontekstu — klatki (dt). Pauza =
    ctx.suspend(), powrót z pauzy i karty w tle gra od miejsca zatrzymania; przewinięcie = nowa kotwica 150 ms naprzód;
@@ -36,6 +37,9 @@
   var PLAKIETKI = { rekonstrukcja: 'REKONSTRUKCJA', schemat: 'SCHEMAT', hipoteza: 'HIPOTEZA — badacze się spierają', legenda: 'LEGENDA',
     mapa: 'MAPA UPROSZCZONA', dno: 'DNO: ETOPO1, ok. 1,9 km/piksel' };
   var WERDYKTY = { fakt: 'FAKT', mit: 'MIT', czesciowo: 'CZĘŚCIOWO', legenda: 'LEGENDA' };
+  // dopisek karty „Odtwórz” bez lektora: powód z GeologiaLektor.powodBledu / zrodloLektora (host — bez dopisku)
+  var DOPISKI_LEKTORA = { zaproszenie: 'lektor na zaproszenie', wygaslo: 'lektor na zaproszenie', przygotowanie: 'lektor w przygotowaniu',
+    siec: 'lektor: brak połączenia' };
   var POL_C = 0.35;                       // połowa czerni między rozdziałami (C 0,7 s, spec R5)
   var TYTUL_S = 3;                        // tytuł rozdziału na pierwszym ujęciu (pole T-L, R5)
   var STEMPEL_S = 2.6;                    // stempel werdyktu po cięciu K (R9.8)
@@ -73,7 +77,7 @@
     var P = { aktywny: false, gotowy: false, budowa: 0, miejsce: null, plan: null, planKlucz: null, rz: null, sc: null, anim: null, siatka: null,
       ri: 0, t: 0, gra: false, pauza: false, koniec: false, dzwiek: true, karta: false, kadr: null, w: 0, h: 0, ostatnie: null,
       stan: {}, animAkt: null, a2: null, obrys: null, ostatniPomiar: null, tlo: null,
-      czasyLektora: null, zrodlo: null, powodBezLektora: 'przygotowanie', audio: null, czeka: 0, akcenty: [], autoPauza: false };
+      czasyLektora: null, zrodlo: null, powodBezLektora: 'przygotowanie', audio: null, czeka: 0, akcenty: [], autoPauza: false, zegarKontekstu: 0 };
     var ui = null, napisy = null, cisza = null;
     var kamera = null;
 
@@ -194,28 +198,17 @@
         console.warn('Geologia/uwaga: lektor niedostępny (' + powod + ') — film z napisami i podkładem');
         return Promise.resolve(null);
       }
-      var ac = typeof AbortController === 'function' ? new AbortController() : null;
-      var zeg = ac ? setTimeout(function () { ac.abort(); }, 6000) : 0;
-      return fetch(zr.baza + 'czasy.json' + zr.zapytanie, { credentials: 'omit', cache: 'no-cache', signal: ac ? ac.signal : undefined }).then(function (r) {
-        if (!r.ok) { var e = new Error('czasy.json HTTP ' + r.status); e.status = r.status; throw e; }
-        return r.json();
-      }).then(function (cz) {
-        clearTimeout(zeg);
-        if (!cz || typeof cz.glos !== 'string' || !cz.wersy) throw new Error('czasy.json bez glos/wersy');
-        // próbka: pierwsze nagranie rozdziału startowego z tym samym tokenem — 403/404 na MP3 = bez lektora, zanim przycisk
-        // cokolwiek obieca (recenzja 9a M-1)
-        var O = root.GeologiaOpowiesc, w0 = O && O.wersy[rozdzialId] && O.wersy[rozdzialId][0], e0 = w0 && cz.wersy[w0.id];
-        if (!e0) return cz;
-        return fetch(zr.baza + e0.plik + zr.zapytanie, { credentials: 'omit' }).then(function (r) {
-          try { if (r.body && r.body.cancel) r.body.cancel(); } catch (_) { /* nic */ }
-          if (!r.ok) { var e = new Error(e0.plik + ' HTTP ' + r.status); e.status = r.status; throw e; }
-          return cz;
-        }, function (e) { throw new Error(e0.plik + ': ' + (e && e.message || e)); });
-      }, function (e) {
-        clearTimeout(zeg);
-        throw e;
-      }).then(null, function (e) {
-        P.powodBezLektora = e && e.status === 403 ? 'zaproszenie' : e && e.status === 404 ? 'przygotowanie' : 'zaproszenie';
+      // próbka: pierwsze nagranie rozdziału startowego z tym samym tokenem — 403/404 na MP3 = bez lektora, zanim przycisk
+      // cokolwiek obieca (recenzja 9a M-1); limit 6 s obejmuje czasy.json i próbkę, po błędzie sieci jedna próba z pamięci
+      // podręcznej (3 s) — recenzja końcowa I-1
+      var O = root.GeologiaOpowiesc;
+      return root.GeologiaLektor.pobierzCzasy({ adres: zr.baza + 'czasy.json' + zr.zapytanie, limit_ms: 6000, limitPonowienia_ms: 3000,
+        probka: function (cz) {
+          var w0 = O && O.wersy[rozdzialId] && O.wersy[rozdzialId][0], e0 = w0 && cz.wersy[w0.id];
+          return e0 ? { adres: zr.baza + e0.plik + zr.zapytanie, plik: e0.plik } : null;
+        } }).then(null, function (e) {
+        // 401/403 = zaproszenie nieważne lub wygasłe, 404 = nagrań brak; bez odpowiedzi serwera = brak połączenia (nie „na zaproszenie”)
+        P.powodBezLektora = root.GeologiaLektor.powodBledu(e);
         console.warn('Geologia/uwaga: lektor niedostępny (' + (e && e.message || e) + ') — film z napisami i podkładem');
         return null;
       });
@@ -305,6 +298,7 @@
     }
     function wyjdz() {
       P.aktywny = false; P.gotowy = false; P.budowa++; P.gra = false;
+      clearTimeout(P.zegarKontekstu);
       if (cisza) { cisza.zwolnij(); cisza = null; }
       korzen.classList.remove('ge-cisza');
       pokazUI(false);
@@ -422,12 +416,31 @@
     function grajDalej() {
       if (smoke) return;
       if (P.dzwiek && !P.audio && zapewnijAudio()) przygotujLektora(P.ri, true);
-      if (P.audio) { P.audio.zakotwiczony = false; wznowAudio(); }
+      if (P.audio) { P.audio.zakotwiczony = false; wznowAudio(); pilnujKontekstu(P.audio); }
       P.gra = true; P.pauza = false;
       if (ui) ui.kartaStart.hidden = true;
       P.karta = false;
       odswiezGuziki();
       if (cisza) cisza.wstrzymaj(false);
+    }
+    // iPhone: kontekst potrafi nie ruszyć mimo gestu (sesja audio przerwana, gest nieuznany) — film szedłby wtedy niemy na
+    // zegarze klatek. Gdy ok. 1 s po starcie z dźwiękiem kontekst nie gra (wznowienie rozstrzygnięte bez skutku albo wisi
+    // ≥ 3 s), wraca karta „Odtwórz”: klik w nią to nowy gest, który wznawia kontekst (recenzja końcowa M-3). Kontekst, który
+    // gra (Android, komputer), kończy sprawdzanie od razu; pauza, karta w tle, wyciszenie i koniec — też.
+    function pilnujKontekstu(A) {
+      clearTimeout(P.zegarKontekstu);
+      var t0 = performance.now();
+      var sprawdz = function (ms) {
+        P.zegarKontekstu = setTimeout(function () {
+          if (P.audio !== A || !P.aktywny || !P.gra || P.pauza || P.karta || P.koniec || !P.dzwiek || doc.hidden) return;
+          var st = A.ctx.state;
+          if (st === 'running' || st === 'closed') return;
+          if (A.wznawia && performance.now() - t0 < 3000) { sprawdz(250); return; }
+          console.warn('Geologia/uwaga: dźwięk nie ruszył (AudioContext: ' + st + ') — karta „Odtwórz”');
+          pokazKarteStart();
+        }, ms);
+      };
+      sprawdz(1000);
     }
     function start(zDzwiekiem) { ustawDzwiek(zDzwiekiem); grajDalej(); }
     function pokazKarteStart() {
@@ -466,21 +479,26 @@
       if (!P.karta) grajDalej();
     }
     // M i przycisk „Dźwięk” wyciszają lektora i podkład razem; włączenie to gest — tu powstaje AudioContext, gdy go nie było
+    // Włączenie w trakcie filmu wznawia też istniejący, wstrzymany kontekst (iPhone: system go zawiesza, a M / „Dźwięk” to
+    // gest — recenzja końcowa M-3); na pauzie, karcie i końcu kontekst zostaje wstrzymany.
     function ustawDzwiek(wl) {
       P.dzwiek = !!wl;
       if (P.dzwiek && !P.audio && P.gra && zapewnijAudio()) przygotujLektora(P.ri, true);
       if (P.audio) { P.audio.lek.cisza(!P.dzwiek); if (P.audio.dz) P.audio.dz.cisza(!P.dzwiek); }
+      if (P.dzwiek && P.audio && P.gra && !P.pauza && !P.karta && !P.koniec) wznowAudio();
       odswiezGuziki();
     }
     // Czy film ma lektora: jedno źródło — plan rozdziałów (Rozdzialy.plan → rozdzial.lektor, z czasów aktualnych nagrań
     // z czasy.json, który przychodzi tylko z zaproszeniem albo lokalnie). Bez nagrań przycisk nie obiecuje lektora:
-    // „Odtwórz” + dopisek „lektor na zaproszenie” (bez tokenu, 403, wygasłe) albo „lektor w przygotowaniu” (404, nieaktualne).
+    // „Odtwórz” + dopisek „lektor na zaproszenie” (bez tokenu, 401/403, wygasłe), „lektor w przygotowaniu” (404, nieaktualne)
+    // albo „lektor: brak połączenia” (bez odpowiedzi serwera, limit czasu — recenzja końcowa I-1: osoba z zaproszeniem na
+    // szlaku bez zasięgu nie dostaje „na zaproszenie”).
     // Podkład gra dla wszystkich, więc „bez dźwięku”, przycisk „Dźwięk” i M są zawsze (ruling 9-2, 9-4).
     function maLektora() { return !!(P.plan && P.plan.some(function (r) { return r.lektor; })); }
     // host bez lektora (voyager i inne, decyzja właściciela: lektor tylko na kodownik.co) → bez dopisku: strona dla całego
     // świata nie obiecuje zaproszenia do klonu głosu, którego tam nie da się odtworzyć
     function dopisekLektora() {
-      return P.powodBezLektora === 'host' ? null : P.powodBezLektora === 'przygotowanie' ? 'lektor w przygotowaniu' : 'lektor na zaproszenie';
+      return P.powodBezLektora === 'host' ? null : DOPISKI_LEKTORA[P.powodBezLektora] || DOPISKI_LEKTORA.zaproszenie;
     }
     function odswiezLektora() {
       var l = maLektora(), d = dopisekLektora();

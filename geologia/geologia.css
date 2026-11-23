@@ -337,6 +337,10 @@
 .ge-lektor { display: block; max-width: 100%; min-height: 34px; margin: 2px 0 8px; padding: 9px 12px; text-align: left; line-height: 1.25;
   white-space: normal; overflow-wrap: anywhere; }
 .ge-lektor-blad { margin: -4px 0 8px; font-size: 12px; line-height: 1.35; color: #ffb38a; }
+/* brak połączenia (recenzja końcowa I-1): notka-przycisk zamiast „▶ Posłuchaj”; stuknięcie ponawia pobranie listy nagrań */
+.ge-lektor-siec { display: block; max-width: 100%; min-height: 34px; margin: 2px 0 8px; padding: 6px 0; font: inherit; font-size: 12px;
+  line-height: 1.35; text-align: left; color: #ffb38a; background: none; border: 0; cursor: pointer; text-decoration: underline dotted; }
+.ge-lektor-siec:disabled { cursor: default; text-decoration: none; opacity: .8; }
 
 /* 701–1100 px: pas stopki atrybucji (jedna linia, ok. 20 px) wypycha plan dni i karty w dół — stopka nigdy nie nachodzi na kolumny */
 @media (min-width: 701px) and (max-width: 1100px) {

@@ -42,7 +42,7 @@
   var WIATR = [Math.SQRT1_2, -Math.SQRT1_2];   // pasat z NE: kierunek (x, z), Z KTÓREGO wieje
   var DNO_KM = -12;                     // spód ściany przekroju (skorupa sięga 11,9 km)
   var GORA_SCIANY_KM = 4;
-  var STROP_CHMUR_KM = 1.5;
+  var STROP_CHMUR_KM = 1.5;            // stała MODELU warstwy chmur makiety (nie fakt — wysokość w UI: dane f-morze-chmur)
   var SKALA_ETYKIETY = 0.56;          // etykieta rysowana pismem 26 px, na ekranie ok. 15 px
   var R_ZIEMI = 6371, KM_STOPIEN = R_ZIEMI * Math.PI / 180;   // jak Teren.doLokalnych
   var MGIELKA_L = [20, 0];            // km: L kolumny powietrza (pokaz; patrz GLSL_MGIELKA; drugi składnik nieużywany)

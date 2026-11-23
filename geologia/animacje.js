@@ -123,8 +123,19 @@
     return hi;
   }
 
+  // A4: warstwy morza chmur z faktu `f-morze-chmur` (dane.js, plik faktów F2.18 — inwersja pasatowa średnio ok. 1300 m, druga,
+  // wyższa latem 1500–1800 m): warstwa główna (gest 0, cień chmur na terenie) = strop na inwersji; niższa (gest 1) = kłęby
+  // 250 m pod nią; wyższa (gest 2) = strop 50 m pod górną granicą letniej inwersji. Odstępy 250 i 50 m to model obrazu,
+  // nie fakt. Bez faktu → null (A4 nie ma z czego rysować wysokości).
+  function warstwyChmur(dane) {
+    var f = ((dane && dane.fakty) || []).filter(function (x) { return x.id === 'f-morze-chmur'; })[0], l = f && f.liczby;
+    if (!l || !l.inwersja || !l.latemDo) return null;
+    var inw = l.inwersja.wartosc / 1000, gora = l.latemDo.wartosc / 1000;
+    return [{ strop_km: inw, gest: 0 }, { strop_km: Math.round((inw - 0.25) * 1000) / 1000, gest: 1 }, { strop_km: Math.round((gora - 0.05) * 1000) / 1000, gest: 2 }];
+  }
+
   var api = { EPS_MA: EPS_MA, ETAPY: ETAPY, czasMa: czasMa, osA1: osA1, maA1: maA1, fA1: fA1, osMa: osMa, osV: osV, frontLawy: frontLawy, osuwisko: osuwisko,
-    nieboLokalne: nieboLokalne, lst: lst };
+    nieboLokalne: nieboLokalne, lst: lst, warstwyChmur: warstwyChmur };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
   root.Animacje = api;
 
@@ -141,8 +152,7 @@
   // ok. 32° nad horyzontem, Deneb wysoko na NE: łuk Drogi Mlecznej od Strzelca przez zenit (Animacje.lst + nieboLokalne).
   var DATA_A5 = Date.UTC(2026, 6, 20, 22, 30);
   // A1: oś czasu z postojami licznika — osA1(dane) wyżej (zdarzenia osCzasu z `postojA1`, czas osi 60 s, W4–W7).
-  // A4: morze chmur — plik faktów F2.18 (Z37): inwersja pasatowa średnio ok. 1300 m, druga, wyższa 1500–1800 m latem.
-  var WARSTWY_CHMUR = [{ strop_km: 1.3, gest: 0 }, { strop_km: 1.05, gest: 1 }, { strop_km: 1.75, gest: 2 }];
+  // A4: morze chmur — wysokości warstw z faktu f-morze-chmur (warstwyChmur(dane) wyżej, liczone w utworz).
   // Lawa nocą (spec R4, MF „Lawa nocą”): poziomy emisji skorupa / szczeliny / czoło, miękkie nasycenie LUMINANCJI.
   var EMISJA = { skorupa: 1.1, szczeliny: 2.4, czolo: 7.0 };
 
@@ -366,6 +376,8 @@
     var R = sc.renderer, rozm = new T.Vector2();
     var aktywna = null, zbudowane = {}, czesci = {};
     (dane.czesci || []).forEach(function (c) { czesci[c.id] = c; });
+    var WARSTWY_CHMUR = warstwyChmur(dane);
+    if (!WARSTWY_CHMUR) { console.error('Geologia: brak faktu f-morze-chmur w danych — A4 bez warstw chmur'); WARSTWY_CHMUR = []; }
     function lok(ll) { return Teren.doLokalnych(null, ll[0], ll[1]); }
     function wys(x, zz) { var h = sc.wysokosc(x, zz); return h == null ? 0 : h; }
     function zegar(t) { return t != null ? t : performance.now() / 1000; }
@@ -812,7 +824,7 @@
         u.uCzas.value = cz; u.uSlonce.value.copy(w.kier); u.uKolorSlonca.value.copy(w.slonce); u.uAmb.value.copy(w.amb);
       });
       sc.chmury(false);
-      sc.efekty.cienChmur(0.55, WARSTWY_CHMUR[0].strop_km, cz);
+      if (WARSTWY_CHMUR.length) sc.efekty.cienChmur(0.55, WARSTWY_CHMUR[0].strop_km, cz);
       return { czas: cz, warstwy: WARSTWY_CHMUR.map(function (W) { return W.strop_km; }) };
     }
 
@@ -868,5 +880,5 @@
     return { a1Powstanie: a1Powstanie, a2Lawa1706: a2Lawa1706, a3Osuwisko: a3Osuwisko, a4MorzeChmur: a4MorzeChmur, a5Noc: a5Noc,
       swiatlaMiasta: swiatlaMiasta, ukryj: ukryj, zwolnij: zwolnij, stan: function () { return { aktywna: aktywna }; } };
   }
-  root.GeologiaAnimacje = { utworz: utworz, DATA_A5: DATA_A5, WARSTWY_CHMUR: WARSTWY_CHMUR, EMISJA: EMISJA };
+  root.GeologiaAnimacje = { utworz: utworz, DATA_A5: DATA_A5, warstwyChmur: warstwyChmur, EMISJA: EMISJA };
 })(typeof window !== 'undefined' ? window : globalThis);

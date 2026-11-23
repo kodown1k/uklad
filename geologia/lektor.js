@@ -10,6 +10,9 @@
        inaczej null → harmonogram liczy czas z tekstu (Rozdzialy.plan, 12,1 zn./s).
      aktualne(wersy, czasy) → { [id]: czas_s } tylko aktualnych nagrań — to, co pokaz podaje Rozdzialy.plan({ czasy })
        (rozdzial.lektor = jedyne źródło „czy jest lektor”, ruling 8c-1).
+     powodBledu(e) → 'zaproszenie' | 'przygotowanie' | 'siec' — powód braku lektora z błędu pobrania (status HTTP albo jego brak).
+     pobierzCzasy({ adres, limit_ms, limitPonowienia_ms?, probka?, fetch? }) → Promise<czasy> — czasy.json (+ próbka MP3) w jednym
+       limicie czasu; po błędzie sieci jedna ponowna próba z cache 'force-cache' (słaby zasięg na szlaku, recenzja końcowa I-1).
    Przeglądarka:
      GeologiaLektor.utworz(katalog, czasy, ctx?, opcje?) → { przygotuj(ids) → Promise, graj(id, offset_s, kiedy?, poKoncu?), zatrzymaj(), pauza(),
        wznow(), cisza(bool), zegar(zawsze?) → s|null, kotwicz(t), przesun(d), ctxChwili(t) → s|null, planuj(wersy, horyzont_s), stan() → 'gra'|'cisza'|'brak',
@@ -88,7 +91,61 @@
     } catch (_) { return false; }
   }
 
-  var api = { sha1: sha1, skrot: skrot, czasWersu: czasWersu, aktualne: aktualne, trybOdtwarzania: trybOdtwarzania, WYPRZEDZENIE: WYPRZEDZENIE };
+  // Powód braku lektora po nieudanym pobraniu (recenzja końcowa I-1): 401/403/410 → 'zaproszenie' (nieważne albo wygasłe),
+  // 404 i inne 4xx → 'przygotowanie' (serwer odpowiada, pliku nie ma albo jest zły), bez statusu HTTP (fetch odrzucony,
+  // AbortError, limit czasu, urwany odczyt, strona portalu Wi-Fi zamiast JSON) oraz 408/429/5xx → 'siec' (warto ponowić).
+  // Błąd z polem `powod` (napis) zachowuje je.
+  function powodBledu(e) {
+    if (e && typeof e.powod === 'string') return e.powod;
+    var s = e && +e.status || 0;
+    if (s === 401 || s === 403 || s === 410) return 'zaproszenie';
+    if (s >= 400 && s < 500 && s !== 408 && s !== 429) return 'przygotowanie';
+    return 'siec';
+  }
+  function bladHttp(co, status) { var e = new Error(co + ' HTTP ' + status); e.status = status; return e; }
+  // błąd bez odpowiedzi (sieć, przerwany odczyt, zły JSON) z nazwą pliku w opisie; powód liczony z oryginału
+  function bladPliku(co, e) { var e2 = new Error(co + ': ' + (e && e.message || e)); e2.powod = powodBledu(e); return e2; }
+  // Pobranie czasy.json lektora (pokaz i lektor pinów makiety): o = { adres, limit_ms, limitPonowienia_ms?, probka?(czasy) →
+  // { adres, plik } | null, fetch? } → Promise<czasy>; odrzucenie = Error z `powod` (powodBledu) i `proby` (liczba prób).
+  // Limit czasu obejmuje czasy.json i próbkę MP3 (wyścig z zegarem + AbortController — także gdy fetch nie reaguje na abort).
+  // Pierwsza próba `cache: 'no-cache'` (świeży plik po nowych nagraniach); po błędzie sieci jedna ponowna z 'force-cache':
+  // bez zasięgu przeglądarka odda plik z pamięci podręcznej (nieaktualny da najwyżej niezgodny skrót → wers bez nagrania).
+  function pobierzCzasy(o) {
+    var pobierz = o.fetch || function (u, op) { return root.fetch(u, op); };
+    function proba(cache, limit) {
+      var ac = typeof AbortController === 'function' ? new AbortController() : null;
+      var op = { credentials: 'omit', cache: cache, signal: ac ? ac.signal : undefined };
+      var p = Promise.resolve().then(function () { return pobierz(o.adres, op); }).then(function (r) {
+        if (!r.ok) throw bladHttp('czasy.json', r.status);
+        return r.json().then(null, function (e) { throw bladPliku('czasy.json', e); });
+      }, function (e) { throw bladPliku('czasy.json', e); }).then(function (cz) {
+        if (!cz || typeof cz.glos !== 'string' || !cz.wersy) { var e = new Error('czasy.json bez glos/wersy'); e.powod = 'przygotowanie'; throw e; }
+        var pr = o.probka ? o.probka(cz) : null;
+        if (!pr) return cz;
+        return pobierz(pr.adres, op).then(function (r) {
+          try { if (r.body && r.body.cancel) r.body.cancel(); } catch (_) { /* nic */ }
+          if (!r.ok) throw bladHttp(pr.plik, r.status);
+          return cz;
+        }, function (e) { throw bladPliku(pr.plik, e); });
+      });
+      return new Promise(function (ok, zle) {
+        var zeg = setTimeout(function () {
+          if (ac) { try { ac.abort(); } catch (_) { /* nic */ } }
+          var e = new Error('czasy.json: brak odpowiedzi'); e.powod = 'siec'; zle(e);
+        }, limit);
+        p.then(function (cz) { clearTimeout(zeg); ok(cz); }, function (e) { clearTimeout(zeg); zle(e); });
+      });
+    }
+    var limit = o.limit_ms > 0 ? o.limit_ms : 8000, limit2 = o.limitPonowienia_ms > 0 ? o.limitPonowienia_ms : limit / 2;
+    var oznacz = function (n) { return function (e) { if (!e || typeof e !== 'object') e = new Error(String(e)); e.powod = powodBledu(e); e.proby = n; throw e; }; };
+    return proba('no-cache', limit).then(null, function (e) {
+      if (powodBledu(e) !== 'siec') return oznacz(1)(e);
+      return proba('force-cache', limit2).then(null, oznacz(2));
+    });
+  }
+
+  var api = { sha1: sha1, skrot: skrot, czasWersu: czasWersu, aktualne: aktualne, trybOdtwarzania: trybOdtwarzania, powodBledu: powodBledu,
+    pobierzCzasy: pobierzCzasy, WYPRZEDZENIE: WYPRZEDZENIE };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
 
   /* ---------- przeglądarka ---------- */

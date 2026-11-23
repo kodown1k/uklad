@@ -8,7 +8,8 @@
    pokazu: 0 albo 1; audioMakiety = to samo dla lektora pinów makiety, zrodlaMakiety = grające źródła lektora makiety).
    Lektor pinów makiety (Task 8d): przycisk „▶ Posłuchaj” w karcie części, wulkanu i punktu turystyki tylko z nagraniami
    z zaproszenia (opis przy bloku „lektor na pinach makiety”); stan().lektorMakiety = 'brak' | 'laduje' (czasy.json w drodze)
-   | 'gotowy' | 'gra', stan().lektorMakietyWers = id grającego wersu, stan().lektorMakietyZrodla = grające źródła;
+   | 'gotowy' | 'gra', stan().lektorMakietyPowod = powód braku (null | 'siec' | 'zaproszenie' | 'przygotowanie' | 'wygaslo' | 'host'),
+   stan().lektorMakietyWers = id grającego wersu, stan().lektorMakietyZrodla = grające źródła;
    hak sondy karta(rodzaj, id) — karta pinu jak po kliknięciu.
    Lektor i podkład filmów (Task 9): geologia/lektor.js + geologia/dzwiek.js przez pokaz.js; stan().lektor = stan lektora
    pokazu ('gra' | 'cisza' po M | 'brak' bez nagrań/zaproszenia/AudioContext), stan().pokaz.zegar = 'audio' | 'klatki'.
@@ -75,12 +76,18 @@
   var RODZAJE_PUNKTOW = { hotel: 'hotel', baza: 'baza', przystanek: 'przystanek', start: 'początek trasy', cel: 'cel trasy',
     atrakcja: 'atrakcja', plaza: 'plaża', latarnia: 'latarnia', 'punkt-widokowy': 'punkt widokowy' };
   var NAZWY_WIDOKOW = { poludnie: 'Z południa', polnoc: 'Z północy', gora: 'Z góry' };
-  // Opisy pogody (dymki przycisków) — fakty z dane.js / opowiesc.js (f-klimat-pasaty, f-kalima, ujęcie morze-chmur) i wysokość
-  // warstwy z modelu (STROP_CHMUR_KM w scena.js, ten sam opis co dotąd przy przełączniku chmur).
+  // Opisy pogody (dymki przycisków) — fakty z dane.js / opowiesc.js (f-klimat-pasaty, f-kalima, ujęcie morze-chmur). Wysokość
+  // morza chmur TYLKO z faktu f-morze-chmur (recenzja końcowa M-1); STROP_CHMUR_KM w scena.js to stała modelu rysowanej warstwy.
   var OPIS_POGODY = {
-    chmury: 'Morze chmur: pasat z północnego wschodu układa chmury na północnych stokach, na wysokości ok. 1,5 km',
+    chmury: 'Morze chmur: pasat z północnego wschodu układa chmury na północnych stokach',
     kalima: 'Kalima: pył znad Sahary — niebo robi się pomarańczowe, widać coraz mniej'
   };
+  function opisMorzaChmur(D) {
+    var f = D && (D.fakty || []).filter(function (x) { return x.id === 'f-morze-chmur'; })[0], l = f && f.liczby;
+    if (!l || !l.inwersja) return OPIS_POGODY.chmury;
+    return OPIS_POGODY.chmury + ', pod inwersją pasatową średnio ok. ' + liczba(l.inwersja.wartosc) + ' m n.p.m.' +
+      (l.latemOd && l.latemDo ? ' (druga, wyższa inwersja latem: ' + liczba(l.latemOd.wartosc) + '–' + liczba(l.latemDo.wartosc) + ' m)' : '');
+  }
   var M0_CZASU = 12;                    // suwak czasu: 12 mln lat temu → dziś (spec „Wnętrze i czas”)
   var FUNKCJE_ANIM = { a1: 'a1Powstanie', a2: 'a2Lawa1706', a3: 'a3Osuwisko', a4: 'a4MorzeChmur', a5: 'a5Noc' };
   // Kadry haka animacji (makieta, zrzuty): cel = część z danych, az [°] (skąd patrzy kamera), d [km] od celu, h [km n.p.m.
@@ -163,7 +170,7 @@
     ui.poraTekst = el('output', 'ge-pora-wart', 'światło stałe', ui.pora);
     var gPogoda = grupa('Pogoda');
     ui.bPogodnie = guzik(gPogoda, 'Pogodnie', 'Bez chmur i pyłu');
-    ui.bChmury = guzik(gPogoda, 'Morze chmur', OPIS_POGODY.chmury);
+    ui.bChmury = guzik(gPogoda, 'Morze chmur', opisMorzaChmur(window.GeologiaTeneryfa));
     ui.bKalima = guzik(gPogoda, 'Kalima', OPIS_POGODY.kalima);
     var gWarstwy = grupa('Warstwy');
     ui.bTurystyka = guzik(gWarstwy, 'Turystyka', 'Warstwa turystyczna: szlaki z planu wyjazdu, Hard Rock Hotel, plan dni', 'ge-guzik-tur');
@@ -1243,37 +1250,44 @@
   // GeologiaLektor; AudioContext tworzony i wznawiany w obsłudze kliknięcia (gest — iOS/Android). Jedno nagranie naraz;
   // zamknięcie i otwarcie karty, Esc, wyjście z makiety, start pokazu i zamknięcie zakładki zatrzymują nagranie, wyjście
   // z makiety zwalnia kontekst. 403/404/wygasłe zaproszenie → brak przycisków i jedno „Geologia/uwaga: lektor niedostępny (…)”.
-  var lm = { stan: 'brak', czasy: null, zr: null, nr: 0, nrGry: 0, ostrzezono: false, ctx: null, lek: null, gra: null };
+  // Brak połączenia (recenzja końcowa I-1 — szlak bez zasięgu): czasy.json przez GeologiaLektor.pobierzCzasy (limit 8 s, po
+  // błędzie sieci jedna próba z pamięci podręcznej, 4 s); gdy i ta zawiedzie, lm.powod = 'siec' i karta pinu z nagraniem ma
+  // notkę-przycisk „Lektor: brak połączenia — spróbuj ponownie”. Otwarcie karty (najwcześniej ODSTEP_PONOWIENIA_MS po końcu
+  // ostatniej próby) albo stuknięcie notki ponawia pobranie — najwyżej jedno w toku; po udanym przyciski stają w otwartych kartach.
+  var lm = { stan: 'brak', czasy: null, zr: null, nr: 0, nrGry: 0, ostrzezono: false, ctx: null, lek: null, gra: null, powod: null, koniecProby: 0 };
+  var ODSTEP_PONOWIENIA_MS = 5000;
   function ostrzezLektorMakiety(powod) {
     if (lm.ostrzezono) return;
     lm.ostrzezono = true;
     console.warn('Geologia/uwaga: lektor niedostępny (' + powod + ') — makieta bez przycisków lektora');
   }
-  function wczytajLektorMakiety() {
-    var nr = ++lm.nr;
-    lm.czasy = null; lm.stan = 'brak'; lm.ostrzezono = false;
+  // ponowienie = ta sama makieta po błędzie sieci (bez drugiego ostrzeżenia w konsoli)
+  function wczytajLektorMakiety(ponowienie) {
+    var nr = ++lm.nr, GL = window.GeologiaLektor;
+    lm.czasy = null; lm.stan = 'brak';
+    if (!ponowienie) { lm.ostrzezono = false; lm.powod = null; }
     var zr = L.zrodloLektoraStrony ? L.zrodloLektoraStrony(st.miejsce) : null;
     lm.zr = zr;
-    if (!zr || !zr.baza) { if (zr && zr.powod === 'wygaslo') ostrzezLektorMakiety('zaproszenie wygasło'); return; }
-    if (!window.GeologiaLektor || !window.GeologiaOpowiesc || !window.GeologiaOpowiesc.wersPinu) return;
+    if (!zr || !zr.baza) { lm.powod = zr ? zr.powod : null; if (zr && zr.powod === 'wygaslo') ostrzezLektorMakiety('zaproszenie wygasło'); return; }
+    if (!GL || !GL.pobierzCzasy || !window.GeologiaOpowiesc || !window.GeologiaOpowiesc.wersPinu) return;
     lm.stan = 'laduje';
-    var ac = typeof AbortController === 'function' ? new AbortController() : null;
-    var zeg = ac ? setTimeout(function () { ac.abort(); }, 8000) : 0;
-    fetch(zr.baza + 'czasy.json' + zr.zapytanie, { credentials: 'omit', cache: 'no-cache', signal: ac ? ac.signal : undefined }).then(function (r) {
-      if (!r.ok) throw new Error('czasy.json HTTP ' + r.status);
-      return r.json();
-    }).then(function (cz) {
-      clearTimeout(zeg);
+    GL.pobierzCzasy({ adres: zr.baza + 'czasy.json' + zr.zapytanie, limit_ms: 8000, limitPonowienia_ms: 4000 }).then(function (cz) {
       if (nr !== lm.nr) return;
-      if (!cz || typeof cz.glos !== 'string' || !cz.wersy) throw new Error('czasy.json bez glos/wersy');
-      lm.czasy = cz; lm.stan = 'gotowy';
+      lm.czasy = cz; lm.stan = 'gotowy'; lm.powod = null;
       odswiezPrzyciskiLektora();
-    }).then(null, function (e) {
-      clearTimeout(zeg);
+    }, function (e) {
       if (nr !== lm.nr) return;
-      lm.czasy = null; lm.stan = 'brak';
-      ostrzezLektorMakiety(e && e.name === 'AbortError' ? 'czasy.json: brak odpowiedzi' : (e && e.message || e));
+      lm.czasy = null; lm.stan = 'brak'; lm.powod = GL.powodBledu(e); lm.koniecProby = performance.now();
+      ostrzezLektorMakiety(e && e.message || e);
+      odswiezPrzyciskiLektora();
     });
+  }
+  // brak lektora z powodu sieci: ponów (otwarcie karty — z odstępem; stuknięcie notki — od razu), najwyżej jedna próba w toku
+  function ponowLektorMakiety(odRazu) {
+    if (lm.stan !== 'brak' || lm.powod !== 'siec' || !mk) return false;
+    if (!odRazu && performance.now() - lm.koniecProby < ODSTEP_PONOWIENIA_MS) return false;
+    wczytajLektorMakiety(true);
+    return lm.stan === 'laduje';
   }
   function wersKarty(rodzaj, pin) {
     var O = window.GeologiaOpowiesc, GL = window.GeologiaLektor;
@@ -1284,7 +1298,13 @@
   // Karta mówi wersem pinu (rodzaj, pin); przycisk stoi za elementem `po` (nazwa w karcie). Bez nagrania — bez przycisku.
   function lektorKarty(karta, rodzaj, pin, po) {
     karta._lektor = rodzaj ? { rodzaj: rodzaj, pin: pin, po: po } : null;
+    if (rodzaj && pinMowi(karta._lektor) && ponowLektorMakiety(false)) { odswiezPrzyciskiLektora(); return; }
     wstawPrzyciskLektora(karta);
+  }
+  // pin ma wers do nagrania (bez sprawdzania aktualności — czasy.json może nie być)
+  function pinMowi(d) {
+    var O = window.GeologiaOpowiesc;
+    return !!(d && d.pin && O && O.wersPinu && O.wersPinu(d.rodzaj, d.pin));
   }
   function napisLektora(b, gra) {
     b.textContent = gra ? '■ Zatrzymaj' : b.dataset.napis;
@@ -1294,6 +1314,7 @@
     var d = karta._lektor, stary = karta.querySelector('.ge-lektor');
     var w = d && !karta.hidden && d.po.parentNode ? wersKarty(d.rodzaj, d.pin) : null;
     if (stary && (!w || stary.dataset.wers !== w.id)) { if (lm.gra && lm.gra.b === stary) zatrzymajLektorMakiety(); stary.remove(); stary = null; bladLektora(karta, null); }
+    notkaSieci(karta, !w && d && !karta.hidden && d.po.parentNode && lm.powod === 'siec' && (lm.stan === 'brak' || lm.stan === 'laduje') && pinMowi(d) ? d : null);
     if (!w || stary) return;
     var tur = d.rodzaj === 'turystyka';
     var b = el('button', 'ge-guzik ge-lektor', null, null);
@@ -1359,6 +1380,20 @@
     if (!k) { k = el('p', 'ge-lektor-blad', null, null); k.setAttribute('role', 'status'); b.parentNode.insertBefore(k, b.nextSibling); }
     k.textContent = tekst;
   }
+  // notka „brak połączenia” w karcie pinu z nagraniem (d = dane lektora karty) albo null = zdejmij; stuknięcie ponawia od razu
+  function notkaSieci(karta, d) {
+    var n = karta.querySelector('.ge-lektor-siec');
+    if (!d) { if (n) n.remove(); return; }
+    if (!n) {
+      n = el('button', 'ge-lektor-siec', null, null); n.type = 'button';
+      n.addEventListener('click', function () { if (ponowLektorMakiety(true)) odswiezPrzyciskiLektora(); });
+      d.po.parentNode.insertBefore(n, d.po.nextSibling);
+    }
+    var laduje = lm.stan === 'laduje', t = laduje ? 'Lektor: łączę…' : 'Lektor: brak połączenia — spróbuj ponownie';
+    if (n.textContent !== t) n.textContent = t;
+    n.disabled = laduje;
+    n.title = laduje ? 'Pobieram listę nagrań lektora' : 'Stuknij, aby spróbować ponownie (albo otwórz kartę jeszcze raz)';
+  }
   // karta zamknięta: jej nagranie milknie, przycisk znika z DOM
   function zdejmijLektorKarty(karta) {
     zatrzymajLektorMakiety(karta);
@@ -1366,14 +1401,15 @@
     var b = karta.querySelector('.ge-lektor');
     if (b) b.remove();
     bladLektora(karta, null);
+    notkaSieci(karta, null);
   }
-  function wylaczLektorMakiety() { lm.czasy = null; lm.stan = 'brak'; odswiezPrzyciskiLektora(); }
+  function wylaczLektorMakiety() { lm.czasy = null; lm.stan = 'brak'; lm.powod = 'zaproszenie'; odswiezPrzyciskiLektora(); }
   function zwolnijLektorMakiety() {
     lm.nr++;                            // spóźniony czasy.json nie wróci do zamkniętej makiety
     zatrzymajLektorMakiety();
     if (lm.lek) { try { lm.lek.zwolnij(); } catch (_) { /* nic */ } }
     if (lm.ctx) { try { var p = lm.ctx.close(); if (p && p.catch) p.catch(function () { /* nic */ }); } catch (_) { /* nic */ } }
-    lm.lek = null; lm.ctx = null; lm.czasy = null; lm.zr = null; lm.stan = 'brak';
+    lm.lek = null; lm.ctx = null; lm.czasy = null; lm.zr = null; lm.stan = 'brak'; lm.powod = null;
     if (ui) [ui.kCzesc, ui.kWulk, ui.kTur].forEach(zdejmijLektorKarty);
   }
 
@@ -1710,7 +1746,7 @@
         warstwa: mk && mk.tur ? mk.tur.stan() : null, widok: mks.widok, kompas: { azymut: mks.azymut },
         wulkany: mks.wulkany, wulkanyWidoczna: wulkanyWidoczna(), kartaWulkanu: mks.wulk, warstwaWulkanow: mk && mk.wulk ? mk.wulk.stan() : null,
         legendaWulkanow: mk && mk.grupyWulk ? window.GeologiaWulkany.legenda(mk.grupyWulk, window.GeologiaWulkany.LITERATURA) : null,
-        lektorMakiety: lm.stan, lektorMakietyWers: lm.gra ? lm.gra.id : null, lektorMakietyZrodla: lm.lek ? lm.lek.zrodla() : 0,
+        lektorMakiety: lm.stan, lektorMakietyPowod: lm.powod, lektorMakietyWers: lm.gra ? lm.gra.id : null, lektorMakietyZrodla: lm.lek ? lm.lek.zrodla() : 0,
         kamera: mk ? { poz: mk.sc.kamera.position.toArray(), cel: mk.ster ? mk.ster.target.toArray() : null,
           min: mk.ster ? mk.ster.minDistance : null, max: mk.ster ? mk.ster.maxDistance : null } : null };
     },

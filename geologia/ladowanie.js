@@ -169,12 +169,10 @@
   var doc = root.document, korzen = doc.getElementById('geologia'), przycisk = doc.getElementById('zakGeologia');
   var zap = parsujZapytanieGeologii(root.location.search);
   var ladowanie = null, miejscaZaladowane = {};
-  if (!korzen || !root.Zakladki) { console.error('Geologia: brak #geologia albo zakladki.js — zakładka nieaktywna'); return; }
-  if (przycisk && zap.widoczna) przycisk.hidden = false;
-
   // Zaproszenie do lektora (ruling 9-2): token z linku → sessionStorage (tylko na czas karty), wycięty z paska adresu
   // od razu po odczycie (zrzut ekranu ani skopiowany adres go nie niosą); widok i tak przepisuje hash po otwarciu.
   var KLUCZ_ZAPROSZENIA = 'geologia-lektor';
+  var pamiec = null;
   function zapamietajZaproszenie(s) {
     if (!s || (!s.zaproszenie && !s.lektor)) return;
     // nowy link nadpisuje tylko to, co niesie (sama baza nie kasuje zapamiętanego tokenu)
@@ -190,7 +188,6 @@
     var h = root.location.hash, czysty = h.replace(/&(zaproszenie|lektor)=[^&]*/g, '');
     if (czysty !== h) { try { root.history.replaceState(null, '', root.location.pathname + root.location.search + czysty); } catch (_) { /* file:// */ } }
   }
-  var pamiec = null;
   function zapamietane() {
     var z = pamiec;
     if (!z) { try { z = JSON.parse(root.sessionStorage.getItem(KLUCZ_ZAPROSZENIA) || 'null'); } catch (_) { z = null; } }
@@ -203,6 +200,14 @@
   }
   api.zrodloLektoraStrony = zrodloLektoraStrony;
   api.zapamietaneZaproszenie = zapamietane;   // hak sondy
+
+  // Recenzja końcowa M-4: wycięcie tokenu JUŻ przy wykonaniu tego pliku — klasyczny skrypt bez defer, w trakcie parsowania
+  // strony, więc przed skryptami odroczonymi i modułami (beacon Cloudflare Web Analytics w Solar System.html jest modułem
+  // i czyta location.href) i przed DOMContentLoaded (`otworz` zostaje dla linków wklejonych później w tej samej karcie).
+  zapamietajZaproszenie(parsujHashGeologii(root.location.hash));
+
+  if (!korzen || !root.Zakladki) { console.error('Geologia: brak #geologia albo zakladki.js — zakładka nieaktywna'); return; }
+  if (przycisk && zap.widoczna) przycisk.hidden = false;
 
   // Pasek nakładki istnieje od pierwszego `przelacz` (rejestr przenosi do niego #zakladki przed `otworz`).
   function pasek() {
