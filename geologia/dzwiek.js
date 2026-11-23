@@ -35,10 +35,10 @@
   }
 
   function poziomy(u, f, opcje) {
-    var zero = { wiatr: 0, morze: 0, pomruk: 0, ton: 0 };
+    var zero = { wiatr: 0, morze: 0, pomruk: 0, ton: 0, fumarole: 0 };
     if (!u || u.wejscie === 'Cc') return zero;
     f = clamp01(+f || 0);
-    if (u.typ === 'plansza') return { wiatr: 0, morze: 0, pomruk: 0, ton: 0.35 };
+    if (u.typ === 'plansza') return { wiatr: 0, morze: 0, pomruk: 0, ton: 0.35, fumarole: 0 };
     var h = opcje && isFinite(opcje.wys_km) ? opcje.wys_km : wysKluczy(u, f);
     if (h === null) h = 2;
     var an = u.animacja && u.animacja.nazwa, pora = u.swiatlo && u.swiatlo.pora, noc = pora === 'noc' || an === 'a5';
@@ -53,14 +53,16 @@
     if (u.woda !== 'realna') morze = 0;
     // pomruk ziemi i lawy: lawa 1706 (A2) i osuwisko (A3) pełne, wzrost wyspy (A1) — zależnie od tego, czy góra rośnie
     var pomruk = 0;
-    if (an === 'a2') pomruk = u.animacja.od >= 1 ? 0.25 : 0.95;        // świt po erupcji: lawa stygnie
+    if (an === 'a2') pomruk = u.lawaStygnie >= 2 ? 0 : u.animacja.od >= 1 ? 0.25 : 0.95;   // świt po erupcji: lawa stygnie; D1 (dziś): cisza
     else if (an === 'a3') pomruk = 0.85;
     else if (an === 'a1') pomruk = u.animacja.od === u.animacja.do ? 0.2 : 0.55;
     else if (u.przekroj || /\/komora$/.test(u.id || '')) pomruk = 0.3;
     if (noc) pomruk = 0;
     // ton przestrzeni: stały, mocniejszy z orbity i nocą
     var ton = kosmos ? 0.6 : noc ? 0.5 : u.poziom === 'archipelag' ? 0.45 : 0.3;
-    return { wiatr: clamp01(wiatr), morze: clamp01(morze), pomruk: clamp01(pomruk), ton: clamp01(ton) };
+    // syk fumaroli (decyzja P9, recenzja kinowa r1): cichy szum > 2,5 kHz pod wersem „Posłuchaj: … syczą fumarole”
+    var fumarole = u.dzwiekFumarol ? 1 : 0;
+    return { wiatr: clamp01(wiatr), morze: clamp01(morze), pomruk: clamp01(pomruk), ton: clamp01(ton), fumarole: fumarole };
   }
 
   var AKCENT = { 'start-a3': 'uderzenie', 'lawa-na-klifie': 'syk', 'przebicie-tafli': 'syk' };
@@ -154,6 +156,10 @@
     });
     lpT.connect(tremT); tremT.connect(gT); gT.connect(podklad);
     lfo(0.07, 0.2, tremT.gain);
+    // fumarole: szum biały przez górnoprzepustowy 2,5 kHz, cicho (poziom niezmierzony względem lektora — cel −24 dB)
+    var gF = gain(0), puF = gain(0.6);
+    petla(A).connect(filtr('highpass', 2500, 0.7)).connect(puF); puF.connect(gF); gF.connect(podklad);
+    lfo(0.21, 0.35, puF.gain);
 
     // pomiar sygnału (sonda: cisza w czerni celowej Cc) — analizatory na wyjściu podkładu i na wejściu lektora do miksera
     var anP = w(ctx.createAnalyser()), anL = w(ctx.createAnalyser()), probki = null;
@@ -169,7 +175,7 @@
       return r > 1e-10 ? 20 * Math.log10(r) : -200;
     }
 
-    var poz = { wiatr: 0, morze: 0, pomruk: 0, ton: 0 }, nastTrzask = 0;
+    var poz = { wiatr: 0, morze: 0, pomruk: 0, ton: 0, fumarole: 0 }, nastTrzask = 0;
     // szybko = wejście w czerń celową Cc: cisza w ułamku sekundy (τ 0,03 s → −40 dB po 0,14 s), nie w 1–2 s jak przy zmianie ujęcia
     function ustaw(p, szybko) {
       var t = ctx.currentTime, k = szybko ? 0 : 1, f = function (tau) { return k ? tau : 0.03; };
@@ -180,6 +186,7 @@
       lpP.frequency.setTargetAtTime(300 + 700 * poz.pomruk, t, f(0.3));
       gSyk.gain.setTargetAtTime(poz.pomruk * 0.25, t, f(0.3));
       gT.gain.setTargetAtTime(poz.ton * 0.9, t, f(0.6));
+      gF.gain.setTargetAtTime((poz.fumarole || 0) * 0.12, t, f(0.5));
       gTrz.gain.setTargetAtTime(szybko ? 0 : 1, t, f(0.1));   // trzaski zaplanowane z wyprzedzeniem też milkną w Cc
       // trzaski Poissona 4–18/s, planowane 0,15 s naprzód (proces bez pamięci — odstępy wykładnicze)
       if (poz.pomruk > 0.05 && ctx.state === 'running') {
@@ -218,7 +225,7 @@
     }
     function cisza(wl) { mute.gain.setTargetAtTime(wl ? 0 : 1, ctx.currentTime, 0.02); }
     // cisza zaplanowana na chwilę kiedy (czas kontekstu) — przed czernią celową Cc; anulujWyciszenie() przy skoku w filmie
-    var GLOSNOSCI = [gW.gain, gM.gain, gP.gain, gSyk.gain, gT.gain, gTrz.gain];
+    var GLOSNOSCI = [gW.gain, gM.gain, gP.gain, gSyk.gain, gT.gain, gTrz.gain, gF.gain];   // z sykiem fumaroli (MON-2: wycisz przed Cc)
     function wycisz(kiedy) { GLOSNOSCI.forEach(function (g) { g.setTargetAtTime(0, Math.max(ctx.currentTime, kiedy), 0.03); }); }
     function anulujWyciszenie() { var t = ctx.currentTime; GLOSNOSCI.forEach(function (g) { g.cancelScheduledValues(t); }); }
     function zwolnij() {

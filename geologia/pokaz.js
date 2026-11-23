@@ -34,6 +34,9 @@
 (function (root) {
   var RAD = Math.PI / 180;
   var FUNKCJE_ANIM = { a1: 'a1Powstanie', a2: 'a2Lawa1706', a3: 'a3Osuwisko', a4: 'a4MorzeChmur', a5: 'a5Noc' };
+  // światła okien poza częściami `miasto`: dolina La Orotava (La Orotava, Puerto de la Cruz) — „światła brzegu” w D6 i D4
+  // (recenzja kinowa r1, C5: północne wybrzeże było ciemne, jedyne miasta z oknami to Garachico i La Laguna)
+  var SWIATLA_DOLIN = { orotava: true };
   var PLAKIETKI = { rekonstrukcja: 'REKONSTRUKCJA', schemat: 'SCHEMAT', hipoteza: 'HIPOTEZA — badacze się spierają', legenda: 'LEGENDA',
     mapa: 'MAPA UPROSZCZONA', dno: 'DNO: ETOPO1, ok. 1,9 km/piksel' };
   var WERDYKTY = { fakt: 'FAKT', mit: 'MIT', czesciowo: 'CZĘŚCIOWO', legenda: 'LEGENDA' };
@@ -47,6 +50,8 @@
   var SZKLO_S = 2.5;                      // woda realna → szklana (R9.4 W2)
   var KRAWEDZ_X = 0.92;                 // etykieta kierunkowa: krawędź pola S (margines kadru 4%) w NDC
   var MAKS_ETYKIET = 3;
+  var NASYC_JEDNOSTEK = 0.6;            // nasycenie barw jednostek w filmie (recenzja kinowa r1, I5; makieta bez granicy)
+  var MAKS_WARSTW = 2;                  // podpisy warstw przekroju naraz (recenzja kinowa r1, C4)
   // Ekspozycja filmu (spec R4, strojone pomiarem Geologia.pomiar() w smoke; makieta zostaje przy 1 / 1 / 1):
   var MGIELKA_OD = 5, MGIELKA_DO = 60;   // km wysokości kamery: mgiełka kolumny powietrza od 0 do pełnej
   var JASNOSC_WODY = 2.5;                // mnożnik barwy głębokiej wody (kadry z przewagą oceanu: EKS-1 średnia ≥ 70)
@@ -106,6 +111,12 @@
       for (var i = 0; i < MAKS_ETYKIET; i++) {
         var e = el('div', 'ge-film-etykieta', null, ui.film); e.hidden = true;
         ui.etykiety.push({ el: e, tekst: el('span', 'ge-film-etykieta-tekst', null, e), id: null });
+      }
+      // podpisy warstw przekroju: nakładki ekranowe stałego rozmiaru (1,1 × napis lektora) z kreską do pasma (P12, C4)
+      ui.warstwy = [];
+      for (i = 0; i < MAKS_WARSTW; i++) {
+        var ew = el('div', 'ge-film-etykieta ge-film-warstwa', null, ui.film); ew.hidden = true;
+        ui.warstwy.push({ el: ew, tekst: el('span', 'ge-film-etykieta-tekst', null, ew), id: null });
       }
       napisy = KK.napisy(korzen, { prefiks: 'ge-kino' });
       ui.kino = korzen.querySelector('.ge-kino');
@@ -240,6 +251,7 @@
         przewyzszenie: 1.5, ostrze: true });
       kamera = P.sc.kamera;
       var cz = P.sc.scena.getObjectByName('czesci'); if (cz) cz.visible = false;      // etykiety pokazu: DOM w polu S
+      if (P.sc.podpisyWarstwNaScianie) P.sc.podpisyWarstwNaScianie(false);            // podpisy warstw: DOM (C4)
       P.anim = root.GeologiaAnimacje ? root.GeologiaAnimacje.utworz(T, P.sc, D) : null;
       P.stan = {}; P.animAkt = null; P.a2 = null; P.obrys = null;
       zbudujZnaczniki();
@@ -538,7 +550,7 @@
 
     /* ---------- montaż i stan obrazu w chwili t ---------- */
     function ujecieAnim(r, u) { return r.animacje.filter(function (a) { return a.ujecie === u.id; })[0] || null; }
-    function fAnim(a, t) { return a.f[0] + (a.f[1] - a.f[0]) * clamp01((t - a.od) / Math.max(1e-6, a.do - a.od)); }
+    function fAnim(a, t) { return R.fAnimacji(a, t); }
     function zdarzeniaUjecia(r, u, t, prefiks) {
       return r.zdarzenia.filter(function (z) { return z.ujecie === u.id && z.t <= t && z.co.indexOf(prefiks) === 0; });
     }
@@ -603,7 +615,7 @@
       var sc = P.sc, ch = R.chwila(r, t), u = r.ujecia[ch.indeks], S = P.stan, D = root.GeologiaTeneryfa || {};
       var an = ujecieAnim(r, u), nazwaAn = an ? an.nazwa : (r.stan.chmury ? 'a4' : null);
       // barwy i tryb bloku (przekrój: makieta-blok na czarnym tle)
-      if (S.kolorowanie !== u.kolorowanie) { S.kolorowanie = u.kolorowanie; sc.kolorowanie(u.kolorowanie); }
+      if (S.kolorowanie !== u.kolorowanie) { S.kolorowanie = u.kolorowanie; sc.kolorowanie(u.kolorowanie, NASYC_JEDNOSTEK); }
       var blok = u.plakietka === 'schemat';
       if (S.blok !== blok) { S.blok = blok; sc.blok(blok); }
       ustawSwiatlo(ch.slonce);
@@ -675,7 +687,10 @@
             var a4 = r.animacje.filter(function (x) { return x.nazwa === 'a4'; })[0];
             return a4 ? (t < a4.od ? a4.f[0] : a4.f[1]) : 0;
           })();
-          var wyn = P.anim[FUNKCJE_ANIM[nazwaAn]](f, t);
+          var zgas = 0;
+          if (nazwaAn === 'a2') zdarzeniaUjecia(r, u, t, 'port-znika').forEach(function (z) { zgas = Math.max(zgas, gladko((t - z.t) / 4)); });
+          if (nazwaAn === 'a2' && u.lawaStygnie > 0) zgas = 1;                        // H11 i D1: po erupcji
+          var wyn = P.anim[FUNKCJE_ANIM[nazwaAn]](f, t, nazwaAn === 'a2' ? u.lawaStygnie || 0 : undefined, zgas);
           if (nazwaAn === 'a1') P.sc.efekty.zar(ZAR_A1);        // żar A1 w filmie słabszy niż w makiecie (EKS-1: H6 w dzień)
           P.animAkt = nazwaAn;
           P.a2 = nazwaAn === 'a2' ? wyn : null;
@@ -691,14 +706,16 @@
     function swiatlaMiast(r, u, ch, t, nazwaAn) {
       if (!P.anim) return;
       var D = root.GeologiaTeneryfa || {}, el0 = ch.slonce.el;
-      var wl = el0 < 5 && !(ch.czasMa > 0) && nazwaAn !== 'a2';
-      var zg = clamp01((el0 + 1) / 6);
+      // pełne światła od el ≤ 3°, narastanie od 8° (recenzja kinowa r1, I12a: przy el 4° na wersie „zapalają się okna” 83% było
+      // zgaszonych)
+      var wl = el0 < 8 && !(ch.czasMa > 0) && nazwaAn !== 'a2';
+      var zg = clamp01((el0 - 3) / 5);
       zdarzeniaUjecia(r, u, t, 'okna-gasna').forEach(function (z) { zg = Math.max(zg, gladko((t - z.t) / 5)); });
       var k = wl ? zg.toFixed(2) : 'x';
       if (P.stan.miasta === k && !wl) return;
       P.stan.miasta = k;
       (D.czesci || []).forEach(function (cz) {
-        if (cz.rodzaj !== 'miasto') return;
+        if (cz.rodzaj !== 'miasto' && !SWIATLA_DOLIN[cz.id]) return;
         if (wl) P.anim.swiatlaMiasta(cz.id, zg);
         else { var o = P.sc.scena.getObjectByName('swiatla-' + cz.id); if (o) o.visible = false; }
       });
@@ -708,6 +725,17 @@
       var zd = zdarzeniaUjecia(r, u, t, 'obrys:'), D = root.GeologiaTeneryfa || {};
       var id = zd.length ? zd[zd.length - 1].co.slice(6) : null;
       if (P.animAkt === 'a2') return;
+      // żar w kraterze (`zar:<część>`, recenzja kinowa r1, I8 — Guayota): łuna terenu na okręgu r 150 m wokół części
+      var zz = zdarzeniaUjecia(r, u, t, 'zar:'), cz0 = zz.length && (D.czesci || []).filter(function (x) { return x.id === zz[zz.length - 1].co.slice(4); })[0];
+      if (cz0) {
+        var sz = gladko((t - zz[zz.length - 1].t) / 1.2), kz = 'zar|' + cz0.id + '|' + sz.toFixed(2);
+        if (P.obrys === kz) return;
+        P.obrys = kz;
+        var c0 = Teren.doLokalnych(null, cz0.lonLat[0], cz0.lonLat[1]), pz = [];
+        for (var j = 0; j <= 12; j++) pz.push([c0[0] + 0.15 * Math.cos(j / 12 * 2 * Math.PI), c0[1] + 0.15 * Math.sin(j / 12 * 2 * Math.PI)]);
+        P.sc.efekty.luna(pz, [0.8 * sz, 0.27 * sz, 0.06 * sz], 0.05);
+        return;
+      }
       var k = id ? id + '|' + gladko((t - zd[zd.length - 1].t) / 0.8).toFixed(2) : '';
       if (P.obrys === k) return;
       P.obrys = k;
@@ -725,20 +753,21 @@
     /* ---------- nakładki filmu ---------- */
     function ustawTekst(e, t) { if (e.textContent !== t) e.textContent = t; var h = !t; if (e.hidden !== h) e.hidden = h; }
     function krycie(e, a) { var v = a >= 0.999 ? '' : a.toFixed(3); if (e.style.opacity !== v) e.style.opacity = v; }
-    function plakietka(r, u, an) {
+    function plakietka(r, u, an, ch) {
       if (u.typ === 'plansza') return ['', ''];
       var t1 = u.plakietka ? PLAKIETKI[u.plakietka] || u.plakietka.toUpperCase() : '';
       if (t1 && u.plakietka === 'rekonstrukcja' && an && (an.nazwa === 'a2' || an.nazwa === 'a3') && an.f[0] !== an.f[1]) t1 += ' · czas przyspieszony';
-      var t2 = u.woda === 'szklana' && u.plakietka !== 'dno' && u.poziom !== 'glob' ? PLAKIETKI.dno : '';
+      // M8 (recenzja kinowa r1): plakietka dna tylko, gdy woda w tej chwili jest szklana (W5: znika na `woda:realna`)
+      var t2 = u.woda === 'szklana' && (!ch || ch.woda === 'szklana') && u.plakietka !== 'dno' && u.poziom !== 'glob' ? PLAKIETKI.dno : '';
       return [t1, t2];
     }
     function licznik(r, u, ch, an, t) {
       var D = root.GeologiaTeneryfa || {};
-      if (u.typ === 'plansza' || u.poziom === 'glob') return '';
+      if (u.typ === 'plansza' || u.poziom === 'glob' || u.lawaStygnie >= 2) return '';
       if (an && an.nazwa === 'a2') {
         var e = (D.erupcje || []).filter(function (x) { return x.przebieg && x.przebieg.length; })[0];
         if (!e) return '';
-        var f = fAnim(an, t), pr = e.przebieg, i = f < 0.08 ? 0 : f < 0.1 ? 1 : f < 0.6 ? 2 : f < 1 ? 3 : 4;
+        var pr = e.przebieg, i = R.etapA2(an, t);
         return String(pr[Math.min(pr.length - 1, i)].kiedy).split(',')[0];
       }
       var er = r.zdarzenia.filter(function (z) { return z.ujecie === u.id && z.co.indexOf('erupcja:') === 0; });
@@ -765,9 +794,21 @@
       if (!k) return;
       var zaslonieta = o.zaslona[3] > 0.98;
       // G-L plakietka, G-S licznik
-      var pl = plakietka(r, u, an);
+      var pl = plakietka(r, u, an, o.ch);
       ustawTekst(ui.plak, pl[0]); ustawTekst(ui.plak2, pl[1]); ustawTekst(ui.plak3, u.typ === 'plansza' ? '' : u.podpis || '');
       ustawTekst(ui.gs, licznik(r, u, o.ch, an, t));
+      // telefon (recenzja kinowa r1, I9): licznik pod plakietkami, gdy na nie nachodzi (dwie plakietki, długa w 3 wierszach)
+      if (k.h > k.w) {
+        var klGs = ui.plak.textContent + '|' + ui.plak2.textContent + '|' + ui.plak3.textContent + '|' + ui.gs.textContent.length + '|' + k.w + 'x' + k.h;
+        if (P.gsKlucz !== klGs) {
+          P.gsKlucz = klGs;
+          if (ui.gs.style.top) ui.gs.style.top = '';
+          if (!ui.gs.hidden) {
+            var rg = ui.gl.getBoundingClientRect(), rs = ui.gs.getBoundingClientRect(), rf = ui.film.getBoundingClientRect();
+            if (rg.height > 0 && rs.left < rg.right && rs.top < rg.bottom + 4) ui.gs.style.top = (rg.bottom - rf.top + 6).toFixed(0) + 'px';
+          }
+        }
+      } else if (ui.gs.style.top) { ui.gs.style.top = ''; P.gsKlucz = null; }
       // G-P: przewyższenie z podziałką (nie na globie, nie na planszy; w rozdziale ze zdarzeniem `podpis:przewyzszenie` od niego)
       var podpis = r.zdarzenia.filter(function (z) { return z.co === 'podpis:przewyzszenie'; })[0];
       var gp = u.poziom !== 'glob' && u.typ !== 'plansza' && !(podpis && t < podpis.t) && !zaslonieta;
@@ -782,7 +823,10 @@
         ustawTekst(ui.podzTekst, dl + ' km');
       }
       // T-L: tytuł rozdziału 3 s na pierwszym ujęciu po planszach; stempel werdyktu po cięciu na dowód mitu
-      var pierwsze = r.ujecia.filter(function (x) { return x.typ !== 'plansza'; })[0], tt = t - pierwsze.od;
+      // po planszy tytułowej (polozenie: zimny start → TENERYFA → glob) tytuł rozdziału wchodzi na glob, nie nad noc 1706
+      // (decyzja P6, recenzja kinowa r1)
+      var iPl = -1; r.ujecia.forEach(function (x, j) { if (iPl < 0 && x.typ === 'plansza' && x.wejscie !== 'Cc') iPl = j; });
+      var pierwsze = r.ujecia.filter(function (x, j) { return x.typ !== 'plansza' && j > iPl; })[0], tt = t - pierwsze.od;
       var aT = tt >= 0 && tt <= TYTUL_S + 0.6 ? Math.min(gladko(tt / 0.5), 1 - gladko((tt - TYTUL_S) / 0.6)) : 0;
       ustawTekst(ui.tytul, aT > 0.001 ? r.tytul : ''); krycie(ui.tytul, aT);
       var mit = /-(teza|dowod)$/.exec(u.id) ? (D.mity || []).filter(function (m) { return u.id.indexOf('/' + m.id + '-') >= 0; })[0] : null;
@@ -888,6 +932,10 @@
         // ląd z odległością poza kadrem: znacznik przy krawędzi pola S w jego kierunku (R9.1: „przy prawej krawędzi”)
         if (o) lista[lista.length - 1].krawedz = true;
       });
+      (u.etykietyOd || []).forEach(function (q) {
+        var z = r.zdarzenia.filter(function (x) { return x.ujecie === u.id && x.co === q.kiedy && x.t <= t; })[0], cz = czesc(q.czesc);
+        if (z && cz) dodaj('od:' + q.kiedy, q.nazwa, cz.lonLat);
+      });
       r.zdarzenia.forEach(function (z) {
         if (z.ujecie !== u.id || z.t > t) return;
         var m = /^(etykieta|obrys):(.+)$/.exec(z.co), cz = m && czesc(m[2]);
@@ -944,6 +992,55 @@
         krycie(E.el, a);
       });
       for (var i = uzyte; i < MAKS_ETYKIET; i++) { if (!ui.etykiety[i].el.hidden) ui.etykiety[i].el.hidden = true; ui.etykiety[i].id = null; }
+      podpisyWarstw(r, u, t, zaslonieta, dolS);
+    }
+    // Podpisy warstw przekroju (recenzja kinowa r1, C4; decyzja właściciela P12): najwyżej MAKS_WARSTW najświeżej zapalonych
+    // warstw, każda w kotwicy pasma najbliższej środka pola S (widoczna część pasma), drugi podpis nie nachodzi na pierwszy;
+    // „profil: dane” w ujęciu `profil`. Rozmiar stały na ekranie (CSS: 1,1 × --ge-kino-rozmiar), nie w kilometrach świata.
+    function podpisyWarstw(r, u, t, zaslonieta, dolS) {
+      var lista = [], k = P.kadr, uzyte = 0, v = new T.Vector3(), zajete = [];
+      if (u.plakietka === 'schemat' && P.sc.kotwicePrzekroju) {
+        var kotw = P.sc.kotwicePrzekroju(), e = P.sc.przewyzszenie();
+        var poId = {}; kotw.forEach(function (q) { poId[q.id] = q; });
+        r.zdarzenia.forEach(function (z) {
+          if (z.t > t || z.co.indexOf('warstwa:') !== 0) return;
+          var q = poId[z.co.slice(8)];
+          if (q) lista.push({ q: q, t0: z.t });
+        });
+        if (/\/profil$/.test(u.id) && poId.profil) lista.push({ q: poId.profil, t0: u.od + 1 });
+        // X6 `osady` nie wymusza podpisu „Osady dna oceanu”: `w-osady` to osady pelagiczne (dane.js), a wers mówi o gruzie
+        // osuwisk, którego przekrój nie ma jako warstwy (recenzja kodu r1, Important 2; ruling 11-1)
+        lista = lista.reverse();                                                     // najświeższe najpierw
+        var fs = parseFloat(getComputedStyle(korzen).getPropertyValue('--ge-kino-rozmiar')) || 0.024 * k.h;
+        lista.forEach(function (x) {
+          if (uzyte >= MAKS_WARSTW || ui.warstwy.slice(0, uzyte).some(function (E) { return E.id === x.q.id; })) return;
+          var naj = null, d0 = Infinity;
+          x.q.punkty.forEach(function (pt) {
+            v.set(pt[0], pt[1] * e, pt[2]).project(kamera);
+            if (!(v.z < 1) || Math.abs(v.x) > 0.75 || v.y < dolS || v.y > 0.7) return;
+            var px = (v.x + 1) / 2 * k.w, py = (1 - v.y) / 2 * k.h;
+            if (zajete.some(function (o) { return Math.abs(o[1] - py) < 2.4 * fs && Math.abs(o[0] - px) < 0.35 * k.w; })) return;
+            var d = Math.hypot(v.x, v.y - 0.15);
+            if (d < d0) { d0 = d; naj = [px, py]; }
+          });
+          if (!naj) return;
+          zajete.push(naj);
+          var E = ui.warstwy[uzyte++];
+          if (E.id !== x.q.id) { E.id = x.q.id; E.tekst.textContent = x.q.tekst; E.szerKlucz = null; }
+          E.el.hidden = false;
+          E.el.style.transform = 'translate(' + naj[0].toFixed(1) + 'px,' + naj[1].toFixed(1) + 'px)';
+          // napis nie wychodzi za kadr (jak etykiety miejsc, KAD-4): przesunięty w bok, kropka i kreska zostają na paśmie
+          var kl = x.q.tekst + '|' + k.w + '|' + fs;
+          if (E.szerKlucz !== kl) { E.szer = E.tekst.offsetWidth; E.szerKlucz = kl; }
+          var mE = Math.max(4, 0.03 * k.w), dxE = 0;
+          if (naj[0] - E.szer / 2 < mE) dxE = mE - (naj[0] - E.szer / 2);
+          else if (naj[0] + E.szer / 2 > k.w - mE) dxE = k.w - mE - (naj[0] + E.szer / 2);
+          var ml = dxE ? dxE.toFixed(1) + 'px' : '';
+          if (E.tekst.style.marginLeft !== ml) E.tekst.style.marginLeft = ml;
+          krycie(E.el, zaslonieta ? 0 : krycieEtykiet(r, t) * gladko((t - x.t0) / 0.4));
+        });
+      }
+      for (var i = uzyte; i < MAKS_WARSTW; i++) { if (!ui.warstwy[i].el.hidden) ui.warstwy[i].el.hidden = true; ui.warstwy[i].id = null; }
     }
 
     /* ---------- klatka ---------- */
@@ -1109,6 +1206,10 @@
       if (i < 0) return null;
       ustawRozdzial(i, clamp01(+ulamek || 0) * P.plan[i].czas);
       klatka(0);
+      // I13 (recenzja kinowa r1, recenzja kodu r1): pierwsza klatka po skoku bywa niepełna (zimne otwarcie telefonu: czarna
+      // wyspa z łatami barw w 2 z 4 prób), druga — już nie. W filmie następna klatka idzie po 16 ms; smoke renderuje tylko
+      // po zmianie, więc zrzut łapał tę pierwszą. Hak dokłada drugą klatkę (najbliższa ramka pętli widoku).
+      if (smoke) P.brudny = true;
       return stan();
     }
     function stan() {

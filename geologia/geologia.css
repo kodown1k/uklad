@@ -258,7 +258,7 @@
 .ge-kino-wers { position: absolute; left: 50%; transform: translateX(-50%); width: max-content;
   max-width: min(calc(var(--ge-kino-maks-znakow, 72) * .5 * var(--ge-kino-rozmiar, 20px)), 92%);
   bottom: calc(var(--ge-kino-dol, 24px) + var(--ge-kino-safe, 0) * env(safe-area-inset-bottom, 0px)); text-align: center; }
-.ge-kino-wers-tekst { margin: 0; font: 500 var(--ge-kino-rozmiar, 20px)/1.45 var(--ge-kroj); color: #f6f3ec; letter-spacing: .01em;
+.ge-kino-wers-tekst { margin: 0; font: 500 var(--ge-kino-rozmiar, 20px)/1.45 var(--ge-kroj); color: #f6f3ec; letter-spacing: .01em; text-wrap: balance;
   text-shadow: 0 1px 3px rgba(0, 0, 0, .95), 0 0 14px rgba(0, 0, 0, .6); }
 .ge-kino-tytul { display: none !important; }
 /* pasek postępu seansu z 9 znacznikami + sterowanie (w rzędzie rozdziałów) */
@@ -293,6 +293,11 @@
   background: rgba(8, 11, 15, .5); }
 /* etykieta lądu poza kadrem: przy krawędzi pola S, bez odnośnika */
 .ge-film-etykieta-krawedz::before, .ge-film-etykieta-krawedz::after { display: none; }
+/* podpis warstwy przekroju: 1,1 × napis lektora, stały na ekranie (recenzja kinowa r1, C4) */
+.ge-film-warstwa .ge-film-etykieta-tekst { font-size: calc(1.1 * var(--ge-kino-rozmiar, 20px)); font-weight: 600;
+  white-space: normal; width: max-content; max-width: 78vw; text-align: center; }   /* telefon: długa nazwa w dwóch wierszach */
+.ge-film-warstwa::after { top: calc(-1.6 * 1.1 * var(--ge-kino-rozmiar, 20px) - 2px); height: calc(1.6 * 1.1 * var(--ge-kino-rozmiar, 20px) - 2px); }
+.ge-film-warstwa .ge-film-etykieta-tekst { bottom: calc(1.6 * 1.1 * var(--ge-kino-rozmiar, 20px)); }
 .ge-film-etykieta-krawedz .ge-film-etykieta-tekst { bottom: 0; transform: translate(-50%, 50%); }
 .ge-film-etykieta-prawa .ge-film-etykieta-tekst { transform: translate(-100%, 50%); }   /* przy prawej krawędzi kadru, strzałka na zewnątrz */
 .ge-film-etykieta-lewa .ge-film-etykieta-tekst { transform: translate(0, 50%); }

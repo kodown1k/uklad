@@ -202,7 +202,10 @@
       '  E = mix(E, geTemp(0.62) * EM_SZCZELINY * (0.55 + 0.45 * goraco), szcz * (1.0 - 0.6 * waly));',
       // kaskada z klifu: skorupa pęka, smugi wzdłuż spadku (ramiona lawy)
       '  float smugi = 0.5 + 0.5 * sin(w * 21.99 + 3.0 * geSzum(vec2(s * 40.0 - uCzas * 0.4, w * 3.0)));',
-      '  E = mix(E, geTemp(0.7) * EM_SZCZELINY * (0.6 + 0.7 * smugi), klif * 0.85);',
+      // ramiona: trzy jęzory w poprzek kaskady, między nimi ciemna skorupa (recenzja kinowa r1, C2 — jednolita wstęga
+      // świeciła na pół kadru telefonu i podnosiła średnią nocy do 48)
+      '  float ramiona = smoothstep(0.35, 0.75, 0.5 + 0.5 * sin(w * 9.42 + 1.6 + 2.2 * geSzum(vec2(s * 9.0, w * 1.5))));',
+      '  E = mix(E, geTemp(0.7) * EM_SZCZELINY * (0.6 + 0.7 * smugi) * (0.12 + 0.88 * ramiona), klif * 0.85);',
       '  float czolo = 1.0 - smoothstep(0.0, 0.07, wiek);',
       '  E = mix(E, geTemp(0.92) * EM_CZOLO * (0.75 + 0.25 * geSzum(vec2(s * 60.0, w * 6.0 + uCzas))), czolo * (1.0 - 0.5 * waly));',
       '  gl_FragColor = vec4(geNasyc(E * uSila), 1.0);',
@@ -249,9 +252,9 @@
   }
 
   var SWIATLA_VERT = [
-    'attribute vec2 aSw;', 'uniform float uPx; uniform float uCzas; uniform float uSila;', 'varying float vA;',     // aSw = (zgaszone 0…1, los)
+    'attribute vec2 aSw;', 'uniform float uPx; uniform float uPxDod; uniform float uCzas; uniform float uSila;', 'varying float vA;',     // aSw = (zgaszone 0…1, los)
     'void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv;',
-    '  gl_PointSize = uPx * (2.2 + 1.8 * aSw.y);',
+    '  gl_PointSize = uPx * (2.2 + 1.8 * aSw.y) + uPxDod;',
     '  vA = uSila * (1.0 - aSw.x) * (0.85 + 0.15 * sin(uCzas * (1.3 + 2.0 * aSw.y) + aSw.y * 40.0)); }'
   ].join('\n');
   var SWIATLA_FRAG = [
@@ -262,25 +265,30 @@
 
   // Gwiazdy: kierunek z (RA, Dec) liczony w shaderze dla szerokości i czasu gwiazdowego (ten sam wzór co nieboLokalne).
   var GWIAZDY_VERT = [
-    'attribute vec4 aGw;', 'uniform float uLat; uniform float uLst; uniform float uPx; uniform float uCzas;',
-    'varying vec3 vKol; varying float vA;',
+    'attribute vec4 aGw;', 'uniform float uLat; uniform float uLst; uniform float uPx; uniform float uPxDod; uniform float uCzas;',
+    'varying vec3 vKol; varying float vA; varying float vHalo;',
     'void main() {',
     '  float H = uLst - aGw.x, d = aGw.y;',
     '  vec3 k = vec3(-cos(d) * sin(H), sin(uLat) * sin(d) + cos(uLat) * cos(d) * cos(H), -(cos(uLat) * sin(d) - sin(uLat) * cos(d) * cos(H)));',
     '  gl_Position = projectionMatrix * modelViewMatrix * vec4(k, 1.0);',
     '  float V = aGw.z, bv = clamp(aGw.w, -0.3, 1.9);',
-    '  gl_PointSize = uPx * (2.4 + clamp(2.4 - 0.6 * V, 0.0, 3.0));',
+    // gwiazdy jaśniejsze niż 2 mag: poświata 3× średnicy jądra (punkt 3× większy, jądro w shaderze tej samej wielkości)
+    '  vHalo = smoothstep(2.4, 1.6, V);',
+    '  gl_PointSize = (uPx * (2.8 + clamp(2.4 - 0.6 * V, 0.0, 3.0)) + uPxDod) * (1.0 + 2.0 * vHalo);',
     // barwa z B−V (niebieskobiałe → białe → pomarańczowe), jasność z wielkości gwiazdowej, ekstynkcja przy horyzoncie
     '  vKol = mix(vec3(0.72, 0.82, 1.0), vec3(1.0, 0.97, 0.92), smoothstep(-0.3, 0.4, bv));',
     '  vKol = mix(vKol, vec3(1.0, 0.72, 0.45), smoothstep(0.5, 1.7, bv));',
     // jasność na ekranie (sRGB, bez mapowania tonów): V 0 → 1,0, V 2 → 0,66, V 4 → 0,32 (liniowo w magnitudo, bo oko też)
-    '  vA = clamp(1.0 - 0.17 * V, 0.28, 1.0) * smoothstep(-0.01, 0.14, k.y) * (0.88 + 0.12 * sin(uCzas * 3.1 + aGw.x * 91.0));',
+    // dolna granica 0,4 (było 0,28): przy jądrze Gaussa najsłabsze gwiazdy zostawiały 1–2 px nad tłem (recenzja kinowa r1, C5)
+    '  vA = clamp(1.0 - 0.17 * V, 0.4, 1.0) * smoothstep(-0.01, 0.14, k.y) * (0.88 + 0.12 * sin(uCzas * 3.1 + aGw.x * 91.0));',
     '}'
   ].join('\n');
   var GWIAZDY_FRAG = [
-    'uniform float uSila;', 'varying vec3 vKol; varying float vA;',
+    'uniform float uSila;', 'varying vec3 vKol; varying float vA; varying float vHalo;',
     'void main() { vec2 c = gl_PointCoord * 2.0 - 1.0; float r2 = dot(c, c); if (r2 > 1.0) discard;',
-    '  gl_FragColor = vec4(vKol * vA * uSila * (exp(-r2 * 3.0) + 0.08), 1.0); }'
+    '  float s = 1.0 + 2.0 * vHalo, rj = r2 * s * s;',
+    '  float I = (rj < 1.0 ? exp(-rj * 2.0) + 0.08 : 0.0) + vHalo * 0.22 * exp(-r2 * 3.5);',
+    '  gl_FragColor = vec4(vKol * vA * uSila * I, 1.0); }'
   ].join('\n');
   // Droga Mleczna: jasność z szerokości i długości galaktycznej kierunku (równikowe → galaktyczne, macierz J2000),
   // pasmo ok. 10° z jaśniejszym zgrubieniem ku centrum i ciemną szczeliną Wielkiej Rysy; dodawana w sRGB jak kopuła nieba.
@@ -303,7 +311,8 @@
       // poświata nocnego nieba przy horyzoncie (airglow, łuna dalekich miast): sylwetka gór odcina się od nieba
       // (spec R4: różnica median sylwetka/niebo ≥ 8 sRGB)
       '  float posw = exp(-max(U, 0.0) / 0.25) * smoothstep(-0.08, 0.0, U);',
-      '  gl_FragColor = vec4((vec3(0.60, 0.64, 0.74) * I * 0.17 + vec3(0.10, 0.12, 0.17) * posw) * uSila, 1.0);',
+      // poświata ×0,6 (recenzja kinowa r1, C5: mediana nieba 26 sRGB gasiła słabe gwiazdy; sylwetka nadal ≥ 8 nad terenem)
+      '  gl_FragColor = vec4((vec3(0.60, 0.64, 0.74) * I * 0.17 + vec3(0.06, 0.072, 0.10) * posw) * uSila, 1.0);',
       '}'
     ].join('\n');
   }
@@ -334,7 +343,10 @@
       '  float kleby = clamp(0.78 + 1.1 * (n1 - n2) + 0.25 * (n1 - 0.5), 0.45, 1.15);',
       '  a *= 0.75 + 0.25 * smoothstep(0.25, 0.6, n1);',
       '  vec3 V = normalize(cameraPosition - vSwiat);',
-      '  a *= smoothstep(0.015, 0.12, abs(V.y));',                                   // warstwa widziana z boku nie tnie zbocza kreską
+      // warstwa widziana z boku nie tnie zbocza kreską — tylko gdy kamera jest przy warstwie; z ≥ 0,6 km nad (pod) nią pokład
+      // widziany pod kątem 1–3° (tele znad Anagi, G3) zostaje w kadrze (recenzja kinowa r1, C3)
+      '  float dyK = smoothstep(0.45, 0.9, abs(cameraPosition.y - vSwiat.y));',
+      '  a *= smoothstep(mix(0.015, 0.003, dyK), mix(0.12, 0.025, dyK), abs(V.y));',
       '  vec3 c = vec3(0.93) * (uAmb * 1.15 + uKolorSlonca * max(uSlonce.y, 0.05) * 0.85 * wlasny * kleby) * (0.84 + 0.16 * d);',
       '  if (cameraPosition.y < vSwiat.y) c *= 0.72;',
       '  if (a < 0.004) discard;',
@@ -386,6 +398,10 @@
       return rozm.y / (2 * Math.tan(sc.kamera.fov * RAD / 2));
     }
     function pikselStrony() { return R.getPixelRatio ? R.getPixelRatio() : 1; }
+    // punkty świetlne (okna, gwiazdy) rosną z wysokością kadru: rozmiar × max(piksel strony, wys. bufora / 800) — stała liczba
+    // pikseli znikała na 3440×1440 (mediana 4 px) i na telefonie; w kadrze pionowym +1 px (recenzja kinowa r1, C5)
+    function skalaPunktow() { R.getDrawingBufferSize(rozm); return Math.max(pikselStrony(), rozm.y / 800); }
+    function dodPunktow() { R.getDrawingBufferSize(rozm); return rozm.x < rozm.y ? pikselStrony() : 0; }
 
     function materialCzastek(o) {
       var u = T.UniformsUtils.merge([T.UniformsLib.fog, {
@@ -447,7 +463,7 @@
       var g = z(new T.BufferGeometry());
       g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setAttribute('aSw', new T.BufferAttribute(sw, 2));
       pkt.forEach(function (p, k) { sw[k * 2 + 1] = p[2]; });
-      var m = z(new T.ShaderMaterial({ uniforms: { uPx: { value: 1 }, uCzas: { value: 0 }, uSila: { value: 1 } }, vertexShader: SWIATLA_VERT,
+      var m = z(new T.ShaderMaterial({ uniforms: { uPx: { value: 1 }, uPxDod: { value: 0 }, uCzas: { value: 0 }, uSila: { value: 1 } }, vertexShader: SWIATLA_VERT,
         fragmentShader: SWIATLA_FRAG, transparent: true, depthWrite: false, blending: T.AdditiveBlending, fog: false }));
       var pts = new T.Points(g, m); pts.frustumCulled = false; pts.renderOrder = 6; pts.name = 'swiatla-' + id;
       grupa.add(pts);
@@ -469,7 +485,7 @@
         if (sw.array[k * 2] !== v) { sw.array[k * 2] = v; zm = true; }
       });
       if (zm) sw.needsUpdate = true;
-      M.pts.material.uniforms.uPx.value = pikselStrony();
+      M.pts.material.uniforms.uPx.value = skalaPunktow(); M.pts.material.uniforms.uPxDod.value = dodPunktow();
       M.pts.material.uniforms.uCzas.value = t;
     }
     function swiatlaMiasta(id, zgaszone) {
@@ -623,7 +639,7 @@
       // pasat z NE znosi dym na SW (wznos: x −, z +)
       A.dym = przenies(czastki(280, { okres: 11, wznos: [-0.35, 1.2, 0.35], rozrzut: [0.2, 0, 2.4], rozmiar: 0.12, krycie: 0.3,
         kolorA: [0.06, 0.05, 0.05], kolorB: [0.035, 0.035, 0.04], podswietl: [0.9, 0.28, 0.05], kolejnosc: 7 }, 21), A.grupa);
-      A.para = przenies(czastki(110, { okres: 6, wznos: [0.1, 0.9, -0.1], rozrzut: [0.15, 0, 2.4], rozmiar: 0.22, krycie: 0.6,
+      A.para = przenies(czastki(110, { okres: 6, wznos: [0.1, 0.9, -0.1], rozrzut: [0.15, 0, 2.4], rozmiar: 0.22, krycie: 0.4,
         kolorA: [0.55, 0.52, 0.5], kolorB: [0.22, 0.22, 0.24], podswietl: [1.0, 0.42, 0.1], kolejnosc: 8 }, 22), A.grupa);
       A.ogien = przenies(czastki(120, { okres: 1.6, wznos: [0, 0.16, 0], rozrzut: [0.03, 0.16, 0.5], rozmiar: 0.035, krycie: 1,
         kolorA: [1.0, 0.55, 0.15], kolorB: [0.8, 0.16, 0.02], addytywnie: true, kolejnosc: 9 }, 23), A.grupa);
@@ -637,7 +653,30 @@
         });
       }
       A.G = G;
+      // sylweta zabudowy portu (decyzja P5, recenzja kinowa r1): ciemne bryły w punktach świateł Garachico (szer. 40–70 m,
+      // wys. 8–16 m × przewyższenie), oświetlane łuną lawy (światło zbiorcze) — stawka H10 to port i domy, nie same iskry
+      if (G && G.pkt.length) {
+        var bl = losowy(53), geoB = z(new T.BoxGeometry(1, 1, 1)); geoB.translate(0, 0.5, 0);
+        var matB = z(new T.MeshLambertMaterial({ color: 0x2a2420 }));
+        A.domy = z(new T.InstancedMesh(geoB, matB, G.pkt.length));   // dispose przy zwolnij (bufor instanceMatrix na GPU)
+        A.domy.userData.wym = G.pkt.map(function () { return [0.04 + 0.03 * bl(), 0.008 + 0.008 * bl(), 0.04 + 0.03 * bl(), bl() * Math.PI]; });
+        A.domy.name = 'domy-garachico'; A.domy.frustumCulled = false; A.domy.e = -1;
+        A.grupa.add(A.domy);
+      }
       return A;
+    }
+    function ulozDomy(A) {
+      var e = sc.przewyzszenie(), D = A.domy, kl = e + '|' + A.G.lawa.join('');
+      if (!D || D.e === kl) return;
+      D.e = kl;
+      var m = new T.Matrix4(), q = new T.Quaternion(), pz = new T.Vector3(), sk = new T.Vector3(), os = new T.Vector3(0, 1, 0);
+      A.G.pkt.forEach(function (p, k) {
+        // domy tylko na nadbrzeżnej równinie (≤ 40 m n.p.m.) i nie tam, gdzie leży lawa
+        var w = D.userData.wym[k], h0 = wys(p[0], p[1]) / e, jest = h0 <= 0.04 && !A.G.lawa[k];
+        pz.set(p[0], wys(p[0], p[1]) - 0.004 * e, p[1]); sk.set(jest ? w[0] : 1e-6, jest ? w[1] * e + 0.004 * e : 1e-6, jest ? w[2] : 1e-6); q.setFromAxisAngle(os, w[3]);
+        m.compose(pz, q, sk); D.setMatrixAt(k, m);
+      });
+      D.instanceMatrix.needsUpdate = true;
     }
     function ulozLawe(A) {
       var e = sc.przewyzszenie();
@@ -655,13 +694,14 @@
       A.mesh.geometry.computeBoundingSphere();
     }
     // Bazy cząstek A2 i łuna (wołane tylko przy zmianie punktu czoła albo przewyższenia).
-    function ulozBazyA2(A, k, cz, e, plonie) {
+    function ulozBazyA2(A, k, cz, e, plonie, styg) {
       var krokL = Math.max(1, Math.ceil((k + 1) / 23)), i, n = 0;
       if (!A.luna) A.luna = [];
       for (i = 0; i <= k; i += krokL) { A.luna[n] = A.luna[n] || [0, 0]; A.luna[n][0] = A.pr[i].x; A.luna[n][1] = A.pr[i].z; n++; }
       A.luna[n] = A.luna[n] || [0, 0]; A.luna[n][0] = cz.x; A.luna[n][1] = cz.z; n++;
       A.luna.length = n;
-      sc.efekty.luna(plonie ? A.luna : null, [1.0 * 0.55, 0.34 * 0.55, 0.07 * 0.55], 0.28);
+      var zr = 0.45 * (1 - 0.97 * (styg || 0));            // łuna 0,45 (było 0,55): kadr H10 z C2, stok przy lawie 20–70 sRGB
+      sc.efekty.luna(plonie ? A.luna : null, [1.0 * zr, 0.34 * zr, 0.07 * zr], 0.28);
       // dym: 55% przy czole (0,4 km), 25% nad szczeliną erupcyjną, reszta wzdłuż płonącej części; para po dojściu do morza
       var dp = A.dym.geometry.attributes.position, los = losowy(31), kCzola = Math.max(0, k - 16);
       for (i = 0; i < dp.count; i++) {
@@ -684,33 +724,41 @@
         A.ogien.material.uniforms.uWznos.value.set(0, 0.16 * e, 0);
       }
     }
-    function a2Lawa1706(f, t_s) {
+    // styg (0…1, ujęcie `lawaStygnie`): lawa ostygła — emisja ×0,02 (skorupa ≤ 0,15, czarna delta), bez łuny, ognia i dymu,
+    // para słabnie o połowę (recenzja kinowa r1, I15: świt osiem dni po erupcji nie może być bardziej ognisty niż kulminacja)
+    // zgas (0…1, zdarzenie `port-znika` w H10 — decyzja P5): gaśnie 65% świateł miasta (kolejność stała), poza tymi pod lawą
+    function a2Lawa1706(f, t_s, styg, zgas) {
       var A = zbudowane.a2 || zbudujA2();
       pokaz('a2');
-      f = clamp01(+f || 0);
+      // styg 2 = dziś (D1, decyzja P1): lawa zastygła jak w H11, bez pary
+      var dzisLawa = +styg >= 2;
+      f = clamp01(+f || 0); styg = clamp01(+styg || 0);
+      A.mat.uniforms.uSila.value = 1 - 0.98 * styg;
       var t = zegar(t_s), e = sc.przewyzszenie(), sF = f * A.L;
       ulozLawe(A);
       A.mat.uniforms.uFront.value = sF; A.mat.uniforms.uCzas.value = t;
       // czoło: punkt toru, łuna z płonącej części (≤ 24 punkty), światło zbiorcze sceny nad czołem
       var k = 0; while (k < A.pr.length - 1 && A.pr[k + 1].s <= sF) k++;
       var cz = A.pr[k], plonie = f > 0.002, L = sc.dekoracje.lawa, i;
-      L.intensity = plonie ? 2.2 : 0;
+      L.intensity = plonie ? 1.5 * (1 - styg) : 0;      // 1,5 (było 2,2): kadr H10 z C2 — stok przy lawie ≤ 70 sRGB także na telefonie
       // łuna, światło i bazy cząstek zależą tylko od punktu czoła k i przewyższenia — przeliczane przy ich zmianie
-      var klucz = k + '|' + e + '|' + plonie;
+      var klucz = k + '|' + e + '|' + plonie + '|' + styg;
       if (klucz !== A.klucz) {
         A.klucz = klucz;
         A.przeliczone = (A.przeliczone || 0) + 1;
-        ulozBazyA2(A, k, cz, e, plonie);
+        ulozBazyA2(A, k, cz, e, plonie, styg);
         L.position.set(cz.x, wys(cz.x, cz.z) + 0.12 * e, cz.z); L.color.setRGB(1, 0.45, 0.16); L.distance = 2.2; L.decay = 2;
       }
-      ustawCzastki(A.dym, t, plonie ? 1 : 0);
-      ustawCzastki(A.para, t, gladko(0.95, 1.0, f));
-      ustawCzastki(A.ogien, t, plonie ? 1 : 0);
+      ustawCzastki(A.dym, t, plonie ? 1 - styg : 0);
+      ustawCzastki(A.para, t, dzisLawa ? 0 : gladko(0.95, 1.0, f) * (1 - 0.5 * styg));
+      ustawCzastki(A.ogien, t, plonie ? 1 - styg : 0);
       var zg = 0;
       if (A.G) {
         A.G.prog.forEach(function (s, j) { A.G.lawa[j] = sF >= s ? 1 : 0; zg += A.G.lawa[j]; });
-        A.G.pts.visible = true;
+        A.G.pts.visible = !dzisLawa;                        // D1 (dzień, dziś): bez świateł okien
+        A.G.ogolne = 0.65 * clamp01(+zgas || 0);
         odswiezMiasto(A.G, t);
+        if (A.domy) ulozDomy(A);
       }
       // kierunek toru przy czole (uśredniony na 0,6 km wstecz — kadr „za czołem” nie skacze na załamaniach)
       var wst = A.pr[Math.max(0, k - 24)], kl = Math.hypot(cz.x - wst.x, cz.z - wst.z) || 1;
@@ -840,7 +888,7 @@
       }
       var g = z(new T.BufferGeometry());
       g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setAttribute('aGw', new T.BufferAttribute(gw, 4));
-      var uN = { uLat: { value: LAT_TEIDE * RAD }, uLst: { value: 0 }, uPx: { value: 1 }, uCzas: { value: 0 }, uSila: { value: 0 } };
+      var uN = { uLat: { value: LAT_TEIDE * RAD }, uLst: { value: 0 }, uPx: { value: 1 }, uPxDod: { value: 0 }, uCzas: { value: 0 }, uSila: { value: 0 } };
       A.gwiazdy = new T.Points(g, z(new T.ShaderMaterial({ uniforms: uN, vertexShader: GWIAZDY_VERT, fragmentShader: GWIAZDY_FRAG,
         transparent: true, depthWrite: false, blending: T.AdditiveBlending, fog: false, toneMapped: false })));
       A.gwiazdy.frustumCulled = false; A.gwiazdy.renderOrder = -998; A.gwiazdy.name = 'gwiazdy';
@@ -861,7 +909,7 @@
       A.droga.position.copy(kop.position); A.droga.scale.setScalar(Rk * 0.96);
       var l = lst(DATA_A5 + f * 1.5 * 3600000, LON_TEIDE), sila = gladko(0, 0.35, f);
       var u = A.gwiazdy.material.uniforms;
-      u.uLst.value = l * RAD; u.uPx.value = pikselStrony(); u.uCzas.value = zegar(t_s); u.uSila.value = sila;
+      u.uLst.value = l * RAD; u.uPx.value = skalaPunktow(); u.uPxDod.value = dodPunktow(); u.uCzas.value = zegar(t_s); u.uSila.value = sila;
       A.droga.material.uniforms.uSila.value = sila;
       return { lst: l, gwiazdy: A.n, sila: sila };
     }

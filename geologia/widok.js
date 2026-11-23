@@ -614,6 +614,9 @@
     var pkt = [[ld.x0, 0, ld.z0], [ld.x1, 0, ld.z0], [ld.x0, 0, ld.z1], [ld.x1, 0, ld.z1]];
     var s = sc.srodekPrzekroju; pkt.push([s[0], 3.7 * e, s[1]]);
     var d = dopasujOdleglosc([cx, 0, cz], u, pkt, 0.9, 0.86, 0.74);
+    // ekran pionowy: dopasowanie w pionie zostawiało wyspę na 38% szerokości — start ×1,3 bliżej (recenzja kinowa r1,
+    // I12c chciała ×1,8 — przy ×1,5 Teno i jego etykieta wychodzą za lewą krawędź 390 px)
+    if (sc.kamera.aspect < 1) d /= 1.3;
     return { poz: [cx + u[0] * d, u[1] * d, cz + u[2] * d], cel: [cx, 0, cz] };
   }
   // Najmniejsza odległość wzdłuż u, przy której wszystkie punkty mieszczą się w NDC [−mx, mx] × [−dol, gora].

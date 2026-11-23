@@ -358,7 +358,7 @@
   ].join('\n');
 
   var GLSL_TEREN_PARS = [
-    'uniform float uTryb;', 'uniform float uPrzew;', 'uniform float uSzklo;', 'uniform float uMaIndeksy;', 'uniform float uMloda;',
+    'uniform float uTryb;', 'uniform float uNasycMaks;', 'uniform float uPrzew;', 'uniform float uSzklo;', 'uniform float uMaIndeksy;', 'uniform float uMloda;',
     'uniform sampler2D uIndeksy;', 'uniform sampler2D uPaleta;', 'uniform vec4 uWyc[3];', 'uniform float uLWyc;', 'uniform vec3 uKolorWody;',
     'varying float vWys;', 'varying vec3 vSwiat;', 'varying float vEwoK;', 'varying float vEwoZar;',
     // efekty animacji: łuna lawy (odległość od toru), żar rosnących komórek (A1), cień chmur A4 na świetle klucza
@@ -429,7 +429,12 @@
     'else if (uTryb < 1.5) {',
     '  if (geH < 0.0) geKol = mix(geHex(38.0, 54.0, 70.0), geHex(66.0, 86.0, 102.0), smoothstep(-3000.0, -100.0, geH));',
     // alfa palety = odsłonięcie jednostki (pokaz: mapa wlewana według wieku); makieta ma zawsze 255
-    '  else if (geJ > 0.5) { vec4 geP = texture2D(uPaleta, vec2((geJ + 0.5) / 256.0, 0.5)); geKol = mix(geHex(146.0, 142.0, 132.0), geS2L(geP.rgb), geP.a); }',
+    // nasycenie barwy jednostki ≤ uNasycMaks (HSV, sRGB): pokaz 0,6 — czysta czerwień stożka Teide gasiła cieniowanie rzeźby
+    // (recenzja kinowa r1, I5); makieta 1 (bez zmiany), barwy jak w legendzie z `j.kolor` (recenzja kodu r1)
+    '  else if (geJ > 0.5) { vec4 geP = texture2D(uPaleta, vec2((geJ + 0.5) / 256.0, 0.5)); vec3 geC = geP.rgb;',
+    '    float geMx = max(geC.r, max(geC.g, geC.b)), geS = geMx > 1e-4 ? (geMx - min(geC.r, min(geC.g, geC.b))) / geMx : 0.0;',
+    '    if (geS > uNasycMaks) geC = geMx - (geMx - geC) * (uNasycMaks / geS);',
+    '    geKol = mix(geHex(146.0, 142.0, 132.0), geS2L(geC), geP.a); }',
     '  else geKol = geHex(146.0, 142.0, 132.0);',
     '} else if (uTryb < 2.5) geKol = geKrajobraz(geH, geN.a * 2.0 - 1.0, geNw, geJ);',
     'else geKol = vec3(0.2);',                                     // „kalibracja”: jednolite albedo 0,2 do pomiaru światła
@@ -456,12 +461,15 @@
     '}'
   ].join('\n');
 
-  // Mgła wodna pod taflą w stanie „szklana”: droga promienia pod wodą, widzialność 25 km.
+  // Mgła wodna pod taflą w stanie „szklana” (decyzja P7, recenzja kinowa r1): rośnie z GŁĘBOKOŚCIĄ punktu (skala 3 km —
+  // stok przy tafli czysty, dno abysalu w błękicie) i słabo z drogą promienia pod wodą (120 km); wcześniej sama droga (25 km)
+  // zamieniała stok widziany z 80–100 km w jednolity ciemny prostokąt.
   var GLSL_TEREN_WODA = [
     'if (uSzklo > 0.001 && vSwiat.y < 0.0) {',
     '  float geDl = length(vSwiat - cameraPosition);',
     '  float gePod = geDl * clamp(-vSwiat.y / max(max(cameraPosition.y, 0.0) - vSwiat.y, 1e-3), 0.0, 1.0);',
-    '  gl_FragColor.rgb = mix(gl_FragColor.rgb, uKolorWody, (1.0 - exp(-gePod / 25.0)) * uSzklo);',
+    '  float geGl = -vSwiat.y / max(uPrzew, 1e-3);',
+    '  gl_FragColor.rgb = mix(gl_FragColor.rgb, uKolorWody, (1.0 - exp(-geGl / 3.0 - gePod / 120.0)) * uSzklo);',
     '}'
   ].join('\n');
 
@@ -549,7 +557,7 @@
     '  float piana = (1.0 - smoothstep(0.015, 0.11, dist)) * step(h, 2.0) * (0.55 + 0.45 * geSzum(xz * 22.0 + uCzas * 0.3));',
     '  kol = mix(kol, vec3(0.78, 0.80, 0.80) * (uAmb + uKolorSlonca * max(uSlonce.y, 0.0)), piana * 0.65);',
     '  float daleko = smoothstep(25.0, 110.0, length(cameraPosition - vSwiat));',
-    '  float geAlfa = mix(1.0, mix(0.25, 1.0, daleko), uSzklo);',
+    '  float geAlfa = mix(1.0, mix(0.25, 0.35, daleko), uSzklo);',               // szklana: krycie ≤ 0,35 także z daleka (P7)
     // pokaz: ląd spoza danych (Afryka, Madera) z tekstury globu — ta sama barwa co na poziomie `glob` (przenikanie P)
     '  if (uDaleko > 0.5 && !geW(xz, uProstA) && !geW(xz, uProstW)) {',
     '    vec2 ll = vec2(uSrodekLL.x + xz.x / uKmStopien.x, uSrodekLL.y - xz.y / uKmStopien.y);',
@@ -684,6 +692,9 @@
     // pokaz (Task 8): świt po erupcji (az 70°, el 6°) i kalima — pył Sahary: wypełnienie mocne, kontrast celowo niski, mgła bliska
     swit:     { klucz: 0xffc08a, k: 0.62, wyp: 0xb8b8c8, f: 0.24, zenit: '#4a6390', horyzont: '#e6b690', tarcza: '#ffcf9a', moc: 0.9 },
     kalima:   { klucz: 0xffd6a0, k: 0.6, wyp: 0xe0c49c, f: 0.42, zenit: '#a88660', horyzont: '#d9b88c', tarcza: '#ffe0b0', moc: 0.5, mgla: [6, 70] },
+    // pod pokładem chmur (G1, spec R9.2 „rozproszone pod chmurami, klucz ×0,4”): klucz dnia ×0,4, wypełnienie szare
+    // mocniejsze, niebo = spód chmur (szare, bez tarczy), mgła 3–16 km (szczyt w chmurze) — recenzja kinowa r1, C3
+    pochmurno: { klucz: 0xe8ecf0, k: 0.36, wyp: 0xc4ccd4, f: 0.42, zenit: '#7d8790', horyzont: '#a9b1b8', tarcza: '#000000', moc: 0, mgla: [3, 16] },
   };
   var NIEBO_PRZEKROJU = { zenit: '#07090c', horyzont: '#1a2028' };
 
@@ -743,7 +754,7 @@
     });
     var tPaleta = z(new T.DataTexture(paleta, 256, 1, T.RGBAFormat, T.UnsignedByteType));
     tPaleta.magFilter = tPaleta.minFilter = T.NearestFilter; tPaleta.generateMipmaps = false; tPaleta.needsUpdate = true;
-    var U = { uTryb: { value: 0 }, uPrzew: { value: e }, uSzklo: { value: 0 }, uPaleta: { value: tPaleta }, uKolorWody: { value: hexLin(T, '#123a52') } };
+    var U = { uTryb: { value: 0 }, uNasycMaks: { value: 1 }, uPrzew: { value: e }, uSzklo: { value: 0 }, uPaleta: { value: tPaleta }, uKolorWody: { value: hexLin(T, '#123a52') } };
     // czas geologiczny (wspólne dla terenu, głębi cienia i wody) i efekty animacji (łuna, żar, cień chmur)
     var tab = function (n, f) { var a = []; for (var i = 0; i < n; i++) a.push(f()); return a; };
     var UE = { uEwoMa: { value: 0 }, uEwoDno: { value: Ew.DNO },
@@ -1063,6 +1074,11 @@
     var tz = dane.czesci && dane.czesci.filter(function (c) { return c.id === 'teide'; })[0];
     var srodekPrzekroju = tz ? Teren.doLokalnych(siatka, tz.lonLat[0], tz.lonLat[1]) : [0, 0];
     var przek = null, sciana = null;
+    // pokaz (recenzja kinowa r1, C4 — decyzja właściciela P12): podpisy warstw jako nakładki ekranowe, nie tekst w teksturze
+    // (tekst w kilometrach świata rósł z dojazdem do 6,4% wysokości kadru). Bez podpisów ściana zostawia kotwice: punkty
+    // środka pasm (świat: x, z, y w km bez przewyższenia) — pokaz wybiera z nich te w widocznej części kadru.
+    var podpisyNaScianie = true, kotwiceSciany = [];
+    function krotkaNazwa(n) { return String(n).replace(/\s*\(.*\)$/, '').replace(/:.*$/, ''); }
     function zwolnijSciane() {
       if (!sciana) return;
       scena.remove(sciana);
@@ -1098,7 +1114,9 @@
           var g2 = Math.min(gor, pow);
           if (g2 <= dol) continue;
           var odsl = odslonWarstwy ? odslonWarstwy(w.id) : 1;
-          if (!(odsl > 0.5)) { x.fillStyle = '#23272d'; x.fillRect(px, yNaPx(g2), 1, yNaPx(dol) - yNaPx(g2) + 1); continue; }
+          // warstwa jeszcze nie nazwana: barwa w 25% krycia na ciemnej ścianie (recenzja kinowa r1, I14 — ściana nie jest pustą
+          // płytą przez 20 s; pełne krycie i podpis na swoim wersie)
+          if (!(odsl > 0.5)) { x.fillStyle = '#23272d'; x.fillRect(px, yNaPx(g2), 1, yNaPx(dol) - yNaPx(g2) + 1); x.globalAlpha = 0.25; x.fillStyle = kolWarstwy(w); x.fillRect(px, yNaPx(g2), 1, yNaPx(dol) - yNaPx(g2) + 1); x.globalAlpha = 1; continue; }
           x.fillStyle = kolWarstwy(w);
           x.fillRect(px, yNaPx(g2), 1, yNaPx(dol) - yNaPx(g2) + 1);
           // granice schematu: przerywane (niska pewność — kreska rzadsza)
@@ -1121,8 +1139,30 @@
         x.restore();
       }
       var rozm = Math.max(0.8, L / 95), wysNapisu = rozm / kmPxX * sy;   // wysokość napisu w px płótna
-      napis('SCHEMAT — wnętrze z danych warstw', 18, H - wysNapisu * 0.9, rozm * 1.1, '#ffd9a8');
       var kMax = 0; probki.forEach(function (p, i) { if (p.h > probki[kMax].h) kMax = i; });
+      kotwiceSciany = [];
+      if (!podpisyNaScianie) {
+        // kotwice pasm: co ok. 1 km wzdłuż ściany, gdzie pasmo ma ≥ 0,25 km grubości (poza stożkiem Teide); stożek i
+        // zbiornik — w próbce najbliższej Teide
+        var kT = 0; dT.forEach(function (d, i) { if (d < dT[kT]) kT = i; });
+        var krok = Math.max(1, Math.round(probki.length / (L / 1.0)));
+        warstwy.forEach(function (w) {
+          var gor = -w.doGlebokosci_m / 1000, dol = -w.odGlebokosci_m / 1000, pk = [];
+          if (w.skala === 'stratowulkan' || w.skala === 'komora') {
+            var p = probki[kT], g = Math.min(gor, p.h);
+            if (g > dol) pk.push([p.x, (g + dol) / 2, p.z]);
+          } else for (var i = 0; i < probki.length; i += krok) {
+            if (dT[i] < 7.5) continue;
+            var g2 = Math.min(gor, probki[i].h);
+            if (g2 - dol >= 0.25) pk.push([probki[i].x, g2 - Math.min(0.35 * (g2 - dol), 0.5), probki[i].z]);   // górna część pasma (napis nad kropką)
+          }
+          if (pk.length) kotwiceSciany.push({ id: w.id, tekst: krotkaNazwa(w.nazwa), pewnosc: w.pewnosc, punkty: pk });
+        });
+        kotwiceSciany.push({ id: 'profil', tekst: 'profil: dane', punkty: [[probki[kMax].x, probki[kMax].h, probki[kMax].z]] });
+        var t0 = new T.CanvasTexture(c); t0.encoding = T.sRGBEncoding; t0.anisotropy = 4;
+        return t0;
+      }
+      napis('SCHEMAT — wnętrze z danych warstw', 18, H - wysNapisu * 0.9, rozm * 1.1, '#ffd9a8');
       // „profil: dane” w słupie wody nad najgłębszym dnem przy końcu linii (nad profilem ściany już nie ma)
       var kDno = -1;
       probki.forEach(function (p, i) { var f = i / (probki.length - 1); if ((f < 0.3 || f > 0.7) && p.h < 0 && (kDno < 0 || p.h < probki[kDno].h)) kDno = i; });
@@ -1166,7 +1206,7 @@
       g.computeBoundingSphere();
       sciana = new T.Mesh(g, new T.MeshBasicMaterial({ map: rysujSciane(L.dl, probki), side: T.DoubleSide, fog: false, toneMapped: false,
         clippingPlanes: ostrzeSciany ? [ostrzeSciany] : null }));
-      sciana.scale.y = e; sciana.name = 'przekroj'; sciana.userData.probki = probki;
+      sciana.scale.y = e; sciana.name = 'przekroj'; sciana.userData.probki = probki; sciana.userData.L = L;
       scena.add(sciana);
     }
     function przekroj(arg) {
@@ -1387,6 +1427,8 @@
       }
       // rozrzedzanie etykiet w kolejności priorytetu (wybrana część pierwsza); zajęte są etykiety I kropki pinów
       // o wyższym priorytecie — etykieta Pico Viejo nie przykryje kropki Teide
+      // wąski ekran (telefon): najwyżej 4 etykiety części naraz (recenzja kinowa r1, I12c)
+      var ileEt = 0, maksEt = rozm.x < 600 ? 4 : Infinity;
       for (a = -1; a < piny.length; a++) {
         g = a < 0 ? wyb : piny[a];
         if (!g || (a >= 0 && g === wyb)) continue;
@@ -1398,6 +1440,8 @@
           var b = i * 4;
           if (x0 < zajete[b + 2] && x0 + w > zajete[b] && y0 < zajete[b + 3] && y1 > zajete[b + 1]) ok = false;
         }
+        if (ok && g !== wyb && ileEt >= maksEt) ok = false;
+        if (ok) ileEt++;
         P.etykieta.visible = P.widoczna = ok;
         if (q.z < 1) { zajete[nz * 4] = q.x - r0; zajete[nz * 4 + 1] = q.y - r0; zajete[nz * 4 + 2] = q.x + r0; zajete[nz * 4 + 3] = q.y + r0; nz++; }
         if (ok) { zajete[nz * 4] = x0 - 4; zajete[nz * 4 + 1] = y0 - 2; zajete[nz * 4 + 2] = x0 + w + 4; zajete[nz * 4 + 3] = y1 + 2; nz++; }
@@ -1723,8 +1767,17 @@
 
     return {
       scena: scena, kamera: kamera, teren: wyspa.mesh, ocean: ocean, czesci: czesci,
-      kolorowanie: function (tryb) { U.uTryb.value = { geologia: 1, krajobraz: 2, kalibracja: 3 }[tryb] || 0; return tryb; },
+      // nasycMaks: górna granica nasycenia barw jednostek (pokaz 0,6); bez niej 1 — makieta jak legenda
+      kolorowanie: function (tryb, nasycMaks) { U.uTryb.value = { geologia: 1, krajobraz: 2, kalibracja: 3 }[tryb] || 0; U.uNasycMaks.value = nasycMaks > 0 ? nasycMaks : 1; return tryb; },
       przekroj: przekroj,
+      // pokaz: podpisy warstw poza teksturą (nakładki ekranowe) — przebudowa ściany przy zmianie; kotwice bieżącej ściany
+      podpisyWarstwNaScianie: function (tak) {
+        tak = tak !== false;
+        if (tak === podpisyNaScianie) return;
+        podpisyNaScianie = tak;
+        if (sciana && sciana.material.map) { var L0 = sciana.userData.L; if (L0) zbudujSciane(L0); }
+      },
+      kotwicePrzekroju: function () { return sciana ? kotwiceSciany : []; },
       chmury: function (wl) { chmuryMesh.visible = !!wl; return chmuryMesh.visible; },
       woda: function (stan, f) { f = f == null ? 1 : Math.max(0, Math.min(1, +f)); U.uSzklo.value = uWoda.uSzklo.value = stan === 'szklana' ? f : 1 - f; return U.uSzklo.value; },
       swiatlo: swiatlo, przewyzszenie: przewyzszenie, pick: pick, podswietl: podswietl, najedz: najedz, kotwica: kotwica, animuj: animuj, zwolnij: zwolnij,

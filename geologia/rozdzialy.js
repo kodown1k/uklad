@@ -10,8 +10,7 @@
        czasMa?: [od, do], chmury }, przewyzszenie: [{ t, e }] }
      Czas ujęcia = max(cel_s, naturalny), naturalny = wejście + wersy (KinoKadr.harmonogram z `wymowa || tekst`, tempo
      12,1 zn./s, przerwa 0,35 s; `czasy` z nagrań wygrywają) + oddech. Gdy nagrania przekraczają cel ujęcia, nadwyżka
-     jest odbierana z ciszy innych ujęć z lektorem (proporcjonalnie, nie poniżej ich czasu naturalnego), więc rozdział
-     trzyma cel R8. `lektor` = choć jeden wers rozdziału ma czas z nagrania (`czasy`) — jedyne źródło prawdy dla UI
+     wydłuża rozdział (decyzja właściciela P10, recenzja kinowa r1 — wcześniej była odbierana z ciszy innych ujęć). `lektor` = choć jeden wers rozdziału ma czas z nagrania (`czasy`) — jedyne źródło prawdy dla UI
      pokazu, czy lektor istnieje (bez nagrań przycisk startu nie obiecuje dźwięku). Nadwyżka cel_s nad naturalnym idzie w ¼ na wejście (≤ 1,5 s), reszta po równo za każdym wersem.
      `krzywe` = korzeniowy kino.js (dojazd, cruise, logLerp, aimArc) — wstrzyknięte, nigdy window.Kino (ruling G-C).
    Rozdzialy.kamera(rozdzial, t, siatka, proporcja = 2.39) → { poz: [x, y, z], cel: [x, y, z], fov, przechyl, pozR, celR,
@@ -36,6 +35,9 @@
 (function (root) {
   var RAD = Math.PI / 180, R_ZIEMI = 6371;
   var TEMPO = 12.1, PRZERWA = 0.35, MIN_WERS = 2.2;
+  // MON-3: suma filmu [s] — jedna granica dla wszystkich wariantów (bez nagrań, z nagraniami, próby ×0,8 i ×1,3): decyzja
+  // właściciela P10 (nagranie dłuższe od celu wydłuża rozdział) i ruling 11-2 recenzji kodu r1; testy czytają tę stałą
+  var FILM_S = [720, 940];
   var CIECIA = { K: 1, C: 1, Cc: 1, B: 1 };
   var WEJSCIE = { C: 0.6, B: 0.7, Cc: 0.6, K: 0.4, P: 0.6, D: 0.3 };       // od granicy ujęcia do pierwszego wersu [s]
   var POL_C = 0.35, POL_B = 0.3;                                          // połowa czerni C (0,7 s) i bieli B (0,6 s)
@@ -189,6 +191,24 @@
 
   // oś czasu A1: Animacje.osA1 (postoje na zdarzeniach osCzasu z `postojA1`, M0 = najstarsza jednostka, spec R9.4)
   function maA1(ctx, f) { return AN().maA1(ctx.dane, f); }
+  // f animacji planu w chwili t: liniowo od..do albo odcinkami między kluczami (an.klucze, zdarzenia ujęcia)
+  function fAnimacji(an, t) {
+    var k = an.klucze;
+    if (!k || !k.length) return an.f[0] + (an.f[1] - an.f[0]) * clamp01((t - an.od) / Math.max(1e-6, an.do - an.od));
+    if (t <= k[0].t) return k[0].f;
+    for (var i = 1; i < k.length; i++) if (t < k[i].t) return k[i - 1].f + (k[i].f - k[i - 1].f) * (t - k[i - 1].t) / Math.max(1e-6, k[i].t - k[i - 1].t);
+    return k[k.length - 1].f;
+  }
+  // etap przebiegu erupcji 1706 (dane: erupcje[].przebieg, indeks) w chwili t animacji A2 — licznik G-S. Drugie przelanie
+  // przez klif (13 V, indeks 4) dopiero w ujęciu, które zaczyna się w stanie f = 1 (H11), albo na samym końcu ujęcia
+  // dojścia do morza: H10 stoi na f = 1 od „Port znika”, ale to wciąż noc 5 V (recenzja kodu r1, Important 1)
+  function etapA2(an, t) {
+    var f = fAnimacji(an, t);
+    if (f < 0.08) return 0;
+    if (f < 0.1) return 1;
+    if (f < 0.6) return 2;
+    return f >= 1 && (an.f[0] >= 1 || t >= an.do - 1e-3) ? 4 : 3;
+  }
 
   /* ---------- plan ---------- */
   function plan(o) {
@@ -230,18 +250,14 @@
       var zaw = Math.max(0, (u0.zawieszeniePo_s || 0) - (ws.length ? PRZERWA : 0));
       return { ws: ws, lead: lead, plan0: plan0, nat: lead + mowa + (u0.oddechPo_s || 0) + zaw };
     });
-    // 2) nagranie dłuższe od celu w jednym ujęciu zjada nadwyżkę ciszy pozostałych ujęć z lektorem (nie poniżej ich czasu
-    // naturalnego) — rozdział trzyma cel R8, póki starcza ciszy; plansze (bez wersów) mają stały czas
-    var ponad = 0, cisza = 0;
-    miary.forEach(function (m, i) {
-      if (!m.ws.length) return;
-      ponad += Math.max(0, m.nat - ujO[i].cel_s); cisza += Math.max(0, ujO[i].cel_s - m.nat);
-    });
-    var sciskaj = cisza > 0 ? Math.min(1, ponad / cisza) : 0;
+    // 2) długość ujęcia: plansza (bez wersów) — cel_s; z lektorem — max(cel_s, czas naturalny). Decyzja właściciela 23.11
+    // (recenzja kinowa r1, P10/I6): nagranie dłuższe od celu WYDŁUŻA rozdział — nie odbiera ciszy innym ujęciom (dawne
+    // ściskanie zjadało oddechy: mowa 80–84% rozdziału przy celu ok. 75%); okna R8 nie wiążą przy nagraniach (ruling 9-3),
+    // suma filmu w FILM_S (MON-3, test LEK-2)
     ujO.forEach(function (u0, i) {
       var u = {}, k, m = miary[i];
       for (k in u0) if (k !== 'kamera' && k !== 'zdarzenia') u[k] = u0[k];
-      var dl = !m.ws.length ? u0.cel_s : m.nat >= u0.cel_s ? m.nat : u0.cel_s - sciskaj * (u0.cel_s - m.nat), zapas = dl - m.nat;
+      var dl = !m.ws.length ? u0.cel_s : Math.max(u0.cel_s, m.nat), zapas = dl - m.nat;
       var dodLead = m.ws.length ? Math.min(1.5, 0.25 * zapas) : 0, przerwaDod = m.ws.length ? (zapas - dodLead) / m.ws.length : 0;
       var kursor = t + m.lead + dodLead;
       m.plan0.forEach(function (h) {
@@ -279,7 +295,19 @@
       zdarzenia.forEach(function (z) { if (z.ujecie === u.id && z.co === 'start-' + u.animacja.nazwa) start = z.t; });
       // `animacjaPoWersie`: chwila stoi na `od` do końca ostatniego wersu ujęcia (W5: licznik na postoju przez cały wers)
       if (u.animacjaPoWersie) wersy.forEach(function (w) { if (w.ujecie === u.id && w.koniec > start) start = w.koniec; });
-      animacje.push({ nazwa: u.animacja.nazwa, od: start, do: u.do, f: [u.animacja.od, u.animacja.do], ujecie: u.id });
+      var an = { nazwa: u.animacja.nazwa, od: start, do: u.do, f: [u.animacja.od, u.animacja.do], ujecie: u.id };
+      // klucze przypięte do zdarzeń ujęcia ([zdarzenie, po_s, f]): f odcinkami liniowo, przed pierwszym i po ostatnim stoi
+      if (u.animacjaKlucze) {
+        an.klucze = u.animacjaKlucze.map(function (k) {
+          var z = zdarzenia.filter(function (x) { return x.ujecie === u.id && x.co === k[0]; })[0];
+          if (!z) throw new Error('Rozdzialy: ' + u.id + ': klucz animacji przy nieznanym zdarzeniu ' + k[0]);
+          return { t: Math.min(u.do, Math.max(start, z.t + k[1])), f: k[2] };
+        }).sort(function (a, b) { return a.t - b.t; });
+        // brzegi ujęcia: od `od` z f[0], do `do` z f[1] (klucze wewnątrz przejmują resztę)
+        an.klucze.unshift({ t: start, f: u.animacja.od });
+        an.klucze.push({ t: u.do, f: u.animacja.do });
+      }
+      animacje.push(an);
     });
     // przebicie tafli (ruling 8b-10): chwila, w której licznik A1 schodzi poniżej Ma wynurzenia jednostki (dane:
     // jednostki[].wynurzenie.Ma; ewolucja.js: pierwszy ląd nad taflą tuż po tym Ma) — z krzywej, nie z wersu
@@ -432,7 +460,7 @@
   // odjazd wymagany w kluczu [km od celu]: telefon (R/sin(0,85·β), poziomy wyspa/wstawka) i gęstość (H ≥ 45 komórek)
   function odjazdKlucza(r, k, u, siatka, proporcja) {
     var W = wew(r), tel = proporcja < 1.5, fov = tel ? fovTel(k.fov, u.poziom === 'glob' ? FOV_MAX_GLOB : FOV_MAX) : k.fov;
-    var H = GESTOSC * komorka(u.poziom, siatka, proporcja, W.ctx.meta) * 1.02;
+    var H = (u.gestosc || GESTOSC) * komorka(u.poziom, siatka, proporcja, W.ctx.meta) * 1.02;
     var dG = H / (2 * Math.tan(fov / 2 * RAD)), dT = 0;
     // telefon: odjazd tylko z wysokości ≥ 1,4 km (płynnie od 0,4 km) — teleobiektyw znad tafli (sylwetka, port z morza,
     // ujęcia podwodne) zostaje przy kadrze kinowym, inaczej odjeżdżałby na setki km w ocean i za sąsiednie wyspy
@@ -604,8 +632,7 @@
     if (u.czasMa) {
       if (u.animacja && u.animacja.nazwa === 'a1') {
         var an = r.animacje.filter(function (a) { return a.ujecie === u.id; })[0];
-        var f = an.f[0] + (an.f[1] - an.f[0]) * clamp01((t - an.od) / (an.do - an.od));
-        Ma = maA1(wew(r).ctx, f);
+        Ma = maA1(wew(r).ctx, fAnimacji(an, t));
       } else Ma = u.czasMa[0];
     }
     // woda: zdarzenie `woda:X` w ujęciu przełącza stan (realna → szklana przez 2,5 s; na czas zmiany liczymy realną)
@@ -689,6 +716,6 @@
 
   var api = { plan: plan, kamera: kamera, metryki: metryki, chwila: chwila, ndc: ndc, wysokoscKadru: wysokoscKadru,
     komorka: function (poziom, siatka, proporcja, poziomy) { return komorka(poziom, siatka, proporcja, metaPoziomow(poziomy)); },
-    doSceny: doSceny, zeSceny: zeSceny, PRZENIKANIE: PRZENIKANIE, GESTOSC: GESTOSC, TEMPO: TEMPO };
+    doSceny: doSceny, zeSceny: zeSceny, PRZENIKANIE: PRZENIKANIE, GESTOSC: GESTOSC, TEMPO: TEMPO, FILM_S: FILM_S, fAnimacji: fAnimacji, etapA2: etapA2 };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Rozdzialy = api;
 })(typeof window !== 'undefined' ? window : globalThis);
