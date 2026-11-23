@@ -48,6 +48,13 @@
    siatka terenu co drugą próbkę (jak na telefonie).
    `&krzywe` (tylko smoke): doładowuje mysliwce/kino.js i loguje `GEOLOGIA_KRZYWE ok|zle` (ruling G-C).
    `&warstwa=turystyka|wulkany|turystyka,wulkany` = warstwy przed markerem, `&widok=poludnie|polnoc|gora` = kadr z przycisków kompasu.
+   Pora dnia i pogoda (Task 8e): grupa „Pora” w pasku — „Stałe” (domyślne światło makiety: dzień, az 250°, el 30° — jak przed
+   8e), „Teraz” (Słońce nad Teide z zegara urządzenia, odświeżane co 60 s zegarem, nie pętlą renderu) i suwak godziny 0:00–23:50 (co 10 min)
+   dzisiejszego dnia w czasie wyspy (Atlantic/Canary) z etykietą „14:30 · Słońce 32° nad horyzontem”; pozycja Słońca
+   z geologia/slonce.js (ephemeris.js), pora z GeologiaSlonce.poraZeSlonca, noc makiety z minimum „księżycowym”.
+   Grupa „Pogoda”: Pogodnie / Morze chmur / Kalima (wyłączne; jedno źródło stanu mks.pogoda — mks.chmury z niego wynika).
+   Kalima = mgła i ochra presetu 'kalima' w jasności bieżącej pory (GeologiaSlonce.parametrySwiatla). Adres: `&pora=teraz|HH:MM`,
+   `&pogoda=pogodnie|chmury|kalima` (hash makiety i hak smoke). stan().pora | pogoda | slonce, diagnostyka().swiatlo.
    Tekst z danych trafia do DOM wyłącznie przez textContent. Błędy własne: prefiks „Geologia: ”,
    ostrzeżenia nie będące błędem: „Geologia/uwaga: ”. */
 (function () {
@@ -68,6 +75,12 @@
   var RODZAJE_PUNKTOW = { hotel: 'hotel', baza: 'baza', przystanek: 'przystanek', start: 'początek trasy', cel: 'cel trasy',
     atrakcja: 'atrakcja', plaza: 'plaża', latarnia: 'latarnia', 'punkt-widokowy': 'punkt widokowy' };
   var NAZWY_WIDOKOW = { poludnie: 'Z południa', polnoc: 'Z północy', gora: 'Z góry' };
+  // Opisy pogody (dymki przycisków) — fakty z dane.js / opowiesc.js (f-klimat-pasaty, f-kalima, ujęcie morze-chmur) i wysokość
+  // warstwy z modelu (STROP_CHMUR_KM w scena.js, ten sam opis co dotąd przy przełączniku chmur).
+  var OPIS_POGODY = {
+    chmury: 'Morze chmur: pasat z północnego wschodu układa chmury na północnych stokach, na wysokości ok. 1,5 km',
+    kalima: 'Kalima: pył znad Sahary — niebo robi się pomarańczowe, widać coraz mniej'
+  };
   var M0_CZASU = 12;                    // suwak czasu: 12 mln lat temu → dziś (spec „Wnętrze i czas”)
   var FUNKCJE_ANIM = { a1: 'a1Powstanie', a2: 'a2Lawa1706', a3: 'a3Osuwisko', a4: 'a4MorzeChmur', a5: 'a5Noc' };
   // Kadry haka animacji (makieta, zrzuty): cel = część z danych, az [°] (skąd patrzy kamera), d [km] od celu, h [km n.p.m.
@@ -103,7 +116,10 @@
   // makieta: scena, sterowanie, stan przełączników
   var mk = null, budowa = 0, rzezby = {};
   var mks = { kolorowanie: 'teren', przekroj: null, chmury: false, przew: 1.5, przewCel: 1.5, czesc: null, mity: false, hover: null, czas: 0, anim: null,
-    turystyka: false, tur: null, widok: null, azymut: null, wulkany: false, wulk: null };
+    turystyka: false, tur: null, widok: null, azymut: null, wulkany: false, wulk: null,
+    // Task 8e: pora = null (stałe) | 'teraz' | minuta dnia wyspy 0…1439 (suwak 0…1430 co 10 min); pogoda = 'pogodnie' | 'chmury' | 'kalima' (chmury z niej)
+    pora: null, pogoda: 'pogodnie', slonce: null };
+  var zegarPory = 0;
   var nacisk = null, ciag = null, wskaznik = null;
   var pokaz = null;                     // geologia/pokaz.js — tworzony przy pierwszym wejściu w pokaz
 
@@ -135,7 +151,20 @@
     ui.katSuwak.type = 'range'; ui.katSuwak.min = '0'; ui.katSuwak.max = '179'; ui.katSuwak.step = '1'; ui.katSuwak.value = '90';
     ui.katSuwak.title = 'Kierunek linii przekroju: 0° = północ–południe, 90° = zachód–wschód';
     ui.katTekst = el('output', 'ge-kat-wart', '90°', ui.kat);
-    ui.bChmury = guzik(grupa('Chmury'), 'Morze chmur', 'Warstwa chmur pasatowych na wysokości ok. 1,5 km');
+    // pora dnia (Task 8e): Stałe / Teraz / suwak godziny wyspy z etykietą; pogoda: trzy wyłączne przyciski
+    var gPora = grupa('Pora dnia'); gPora.classList.add('ge-grupa-pora');
+    ui.bStale = guzik(gPora, 'Stałe', 'Światło stałe makiety: popołudniowe słońce z zachodu-południowego zachodu');
+    ui.bTeraz = guzik(gPora, 'Teraz', 'Słońce nad Teneryfą w tej chwili (zegar urządzenia, czas wyspy)');
+    ui.pora = el('label', 'ge-pora', null, gPora);
+    ui.poraSuwak = el('input', 'ge-pora-suwak', null, ui.pora);
+    ui.poraSuwak.type = 'range'; ui.poraSuwak.min = '0'; ui.poraSuwak.max = '1430'; ui.poraSuwak.step = '10';
+    ui.poraSuwak.setAttribute('aria-label', 'Godzina na Teneryfie (dziś, czas wyspy)');
+    ui.poraSuwak.title = 'Godzina na Teneryfie (dziś, czas wyspy) — Słońce z efemeryd';
+    ui.poraTekst = el('output', 'ge-pora-wart', 'światło stałe', ui.pora);
+    var gPogoda = grupa('Pogoda');
+    ui.bPogodnie = guzik(gPogoda, 'Pogodnie', 'Bez chmur i pyłu');
+    ui.bChmury = guzik(gPogoda, 'Morze chmur', OPIS_POGODY.chmury);
+    ui.bKalima = guzik(gPogoda, 'Kalima', OPIS_POGODY.kalima);
     var gWarstwy = grupa('Warstwy');
     ui.bTurystyka = guzik(gWarstwy, 'Turystyka', 'Warstwa turystyczna: szlaki z planu wyjazdu, Hard Rock Hotel, plan dni', 'ge-guzik-tur');
     ui.bWulkany = guzik(gWarstwy, 'Wulkany', 'Warstwa wulkanów: stożki z OpenStreetMap w trzech grupach, licznik i opisy', 'ge-guzik-wulk');
@@ -246,7 +275,14 @@
     ui.bGeologia.addEventListener('click', function () { ustawKolorowanie('geologia'); });
     ui.bPrzekroj.addEventListener('click', function () { ustawPrzekroj(mks.przekroj ? null : { kat_st: +ui.katSuwak.value, przesuniecie_km: 0 }, true); });
     ui.katSuwak.addEventListener('input', function () { if (mks.przekroj) ustawPrzekroj({ kat_st: +ui.katSuwak.value, przesuniecie_km: mks.przekroj.przesuniecie_km }, false); });
-    ui.bChmury.addEventListener('click', function () { ustawChmury(!mks.chmury); });
+    ui.bChmury.addEventListener('click', function () { ustawPogode(mks.pogoda === 'chmury' ? 'pogodnie' : 'chmury'); });
+    ui.bKalima.addEventListener('click', function () { ustawPogode(mks.pogoda === 'kalima' ? 'pogodnie' : 'kalima'); });
+    ui.bPogodnie.addEventListener('click', function () { ustawPogode('pogodnie'); });
+    ui.bStale.addEventListener('click', function () { ustawPore(null); });
+    ui.bTeraz.addEventListener('click', function () { ustawPore(mks.pora === 'teraz' ? null : 'teraz'); });
+    // przeciąganie: światło na bieżąco, adres dopiero po puszczeniu (replaceState przy każdym kroku Chrome dławi)
+    ui.poraSuwak.addEventListener('input', function () { ustawPore(+ui.poraSuwak.value, true); });
+    ui.poraSuwak.addEventListener('change', function () { adres(); });
     ui.bPrzew.forEach(function (b) { b.addEventListener('click', function () { ustawPrzewyzszenie(+b.dataset.przew); }); });
     ui.bMity.addEventListener('click', function () { if (mks.mity) zamknijMity(); else pokazMity(); });
     ui.bPelny.addEventListener('click', pelnyEkran);
@@ -283,7 +319,11 @@
     ui.bGeologia.setAttribute('aria-pressed', String(mks.kolorowanie === 'geologia'));
     ui.bPrzekroj.setAttribute('aria-pressed', String(!!mks.przekroj));
     ui.kat.hidden = !mks.przekroj;
-    ui.bChmury.setAttribute('aria-pressed', String(mks.chmury));
+    ui.bChmury.setAttribute('aria-pressed', String(mks.pogoda === 'chmury'));
+    ui.bKalima.setAttribute('aria-pressed', String(mks.pogoda === 'kalima'));
+    ui.bPogodnie.setAttribute('aria-pressed', String(mks.pogoda === 'pogodnie'));
+    ui.bStale.setAttribute('aria-pressed', String(mks.pora === null));
+    ui.bTeraz.setAttribute('aria-pressed', String(mks.pora === 'teraz'));
     ui.bPrzew.forEach(function (b) { b.setAttribute('aria-pressed', String(+b.dataset.przew === mks.przewCel)); });
     ui.bMity.setAttribute('aria-pressed', String(mks.mity));
     ui.bPelny.setAttribute('aria-pressed', String(doc.fullscreenElement === korzen));
@@ -349,7 +389,7 @@
   }
   function adres() {
     if (smoke) return;
-    var h = '#geologia=' + st.miejsce + (st.tryb === 'makieta' ? '&tryb=makieta' + (aktywneWarstwy() ? '&warstwa=' + aktywneWarstwy() : '') : '&rozdzial=' + st.rozdzial);
+    var h = '#geologia=' + st.miejsce + (st.tryb === 'makieta' ? '&tryb=makieta' + (aktywneWarstwy() ? '&warstwa=' + aktywneWarstwy() : '') + adresPory() : '&rozdzial=' + st.rozdzial);
     try { history.replaceState(null, '', location.pathname + location.search + h); } catch (_) { /* file:// */ }
   }
   var zegarKom = null;
@@ -502,7 +542,7 @@
     mk = { sc: sc, ster: null, rz: rz, maxDyst: 500, lot: null };
     sc.kamera.aspect = (gl.w || 16) / (gl.h || 9); sc.kamera.updateProjectionMatrix();
     sc.kolorowanie(mks.kolorowanie);
-    sc.chmury(mks.chmury);
+    zastosujNiebo();                    // pora i pogoda (Task 8e); bez parametrów — to samo światło co budowa sceny
     if (T.OrbitControls) utworzSterowanie(); else console.warn('Geologia/uwaga: brak OrbitControls — makieta bez obracania kamerą');
     zwinPasek((mks.turystyka || mks.wulkany) && waskiEkran());     // stan paska ze stanu warstw przy każdym wejściu, zanim policzymy kadr
     odswiezNarzedzia();                 // układ nakładek (pasek z ostrzeżeniem, plan, przesunięcie kadru) przed dopasowaniem kadru
@@ -724,7 +764,78 @@
     mk.kadrAuto = null;
     return true;
   }
-  function ustawChmury(wl) { mks.chmury = !!wl; if (mk) mk.sc.chmury(mks.chmury); odswiezNarzedzia(); }
+  /* ---------- pora dnia i pogoda (Task 8e) ---------- */
+  function ustawPogode(p) {
+    mks.pogoda = (window.GeologiaSlonce ? window.GeologiaSlonce.POGODY : ['pogodnie', 'chmury', 'kalima']).indexOf(p) >= 0 ? p : 'pogodnie';
+    zastosujNiebo(); odswiezNarzedzia(); adres();
+  }
+  function ustawPore(v, bezAdresu) {
+    mks.pora = v === 'teraz' ? 'teraz' : v == null || !isFinite(v) ? null : Math.max(0, Math.min(1439, Math.round(+v)));   // 00:00–23:59 jak adres
+    pilnujZegaraPory();
+    zastosujNiebo(); odswiezNarzedzia();
+    if (!bezAdresu) adres();
+  }
+  // „Teraz”: zegar co 60 s tylko w makiecie z porą 'teraz' (render i tak idzie co klatkę — tu tylko nowa pozycja Słońca)
+  function pilnujZegaraPory() {
+    var trzeba = aktywny && st.tryb === 'makieta' && mks.pora === 'teraz';
+    if (trzeba && !zegarPory) zegarPory = setInterval(zastosujNiebo, 60000);
+    else if (!trzeba && zegarPory) { clearInterval(zegarPory); zegarPory = 0; }
+  }
+  function lonLatSlonca() {
+    var D = window.GeologiaTeneryfa, t = D && (D.czesci || []).filter(function (c) { return c.id === 'teide'; })[0];
+    return t ? t.lonLat : null;
+  }
+  // Pora z adresu ('teraz' | 'HH:MM') → stan (null | 'teraz' | minuta dnia)
+  function poraZAdresu(v) {
+    if (v === 'teraz') return 'teraz';
+    var m = typeof v === 'string' ? /^(\d{2}):(\d{2})$/.exec(v) : null;
+    return m ? +m[1] * 60 + +m[2] : null;
+  }
+  function adresPory() {
+    var GS = window.GeologiaSlonce, a = '';
+    if (mks.pora === 'teraz') a += '&pora=teraz';
+    else if (mks.pora != null && GS) a += '&pora=' + GS.godzinaTekst(mks.pora);   // mks.pora ≤ 1439: adres = etykieta
+    if (mks.pogoda !== 'pogodnie') a += '&pogoda=' + mks.pogoda;
+    return a;
+  }
+  // Słońce i pogoda → światło sceny makiety (bez sceny: tylko stan i etykieta). Animacja haka ma własne światło ujęcia.
+  function zastosujNiebo() {
+    var GS = window.GeologiaSlonce, teraz = Date.now(), a = null;
+    mks.chmury = mks.pogoda === 'chmury';
+    mks.slonce = null;
+    if (GS && mks.pora != null) {
+      var ll = lonLatSlonca();
+      if (!ll) console.error('Geologia: brak Teide w GeologiaTeneryfa.czesci — pora dnia bez pozycji Słońca, światło stałe');
+      else {
+        var ms = mks.pora === 'teraz' ? teraz : GS.msGodzinyWyspy(teraz, mks.pora), s = GS.slonce(ms, ll[1], ll[0]);
+        var min = mks.pora === 'teraz' ? GS.czasWyspy(ms).min : mks.pora;
+        mks.slonce = { az: s.az, el: s.el, pora: GS.poraZeSlonca(s.el), min: min, ms: ms };
+        a = { pora: mks.slonce.pora, az: s.az, el: s.el };
+      }
+    }
+    if (!a) a = GS ? { pora: GS.STALE.pora, az: GS.STALE.az, el: GS.STALE.el } : { pora: 'dzien', az: 250, el: 30 };
+    a.pogoda = mks.pogoda;
+    var arg = GS ? GS.parametrySwiatla(a, S.PORY) : a;
+    if (mk) {
+      if (!mks.anim) mk.sc.swiatlo(arg);
+      mk.sc.chmury(mks.chmury);
+    }
+    pokazPore();
+  }
+  function pokazPore() {
+    if (!ui) return;
+    var GS = window.GeologiaSlonce, t;
+    if (mks.slonce && GS) {
+      t = GS.etykietaPory(mks.slonce.min, mks.slonce.el);
+      if (+ui.poraSuwak.value !== mks.slonce.min) ui.poraSuwak.value = String(mks.slonce.min);   // „Teraz”: suwak idzie za zegarem
+    } else {
+      t = 'światło stałe';
+      if (GS && ui.poraSuwak.dataset.ustawiony !== '1') { ui.poraSuwak.value = String(GS.czasWyspy(Date.now()).min); }
+    }
+    ui.poraSuwak.dataset.ustawiony = '1';
+    if (ui.poraTekst.textContent !== t) ui.poraTekst.textContent = t;
+    ui.poraSuwak.setAttribute('aria-valuetext', t);
+  }
   function ustawPrzewyzszenie(x) { mks.przewCel = x; if (smoke || !mk) { mks.przew = x; if (mk) mk.sc.przewyzszenie(x); } odswiezNarzedzia(); }
   function ustawPrzekroj(p, kadruj) {
     if (!p) {
@@ -1509,6 +1620,8 @@
     var wS = tryb === 'makieta' && typeof s.warstwa === 'string' ? s.warstwa.split(',') : [];
     if (wS.indexOf('turystyka') >= 0) { mks.turystyka = true; if (mk) ustawTurystyke(true); }
     if (wS.indexOf('wulkany') >= 0) { mks.wulkany = true; if (mk) ustawWulkany(true); }
+    if (tryb === 'makieta' && s.pora) mks.pora = poraZAdresu(s.pora);
+    if (tryb === 'makieta' && s.pogoda) mks.pogoda = s.pogoda;
     korzen.hidden = false;
     try {
       zapewnijGL();
@@ -1524,7 +1637,8 @@
     if (smoke && /[?&]krzywe(?=[&=]|$)/.test(location.search)) sprawdzKrzywe();
     aktywny = true; ostatni = 0;
     if (!tStart) tStart = performance.now();
-    if (tryb === 'makieta') wejdzMakieta();
+    pilnujZegaraPory();
+    if (tryb === 'makieta') { wejdzMakieta(); zastosujNiebo(); }
     else { komunikat(''); utworzPokaz().wejdz(miejsce, rozdzial); gl.w = 0; dopasuj(); }
     if (!rafId) rafId = requestAnimationFrame(krok);
     if (!smoke) korzen.focus({ preventScroll: true });
@@ -1543,7 +1657,9 @@
     if (ui) zwinPasek(false);           // zwinięcie wynika ze stanu warstwy — przy wyjściu z zakładki zdejmowane
     mks.przekroj = null; mks.chmury = false; mks.kolorowanie = 'teren'; mks.przew = mks.przewCel = 1.5; mks.czas = 0; mks.anim = null;
     mks.turystyka = false; mks.tur = null; mks.widok = null; mks.azymut = null; mks.wulkany = false; mks.wulk = null;
-    if (ui) { ui.czasSuwak.value = '1000'; pokazCzas(0, false); }
+    mks.pora = null; mks.pogoda = 'pogodnie'; mks.slonce = null;
+    pilnujZegaraPory();                 // aktywny = false → zegar „Teraz” zatrzymany
+    if (ui) { ui.czasSuwak.value = '1000'; pokazCzas(0, false); ui.poraSuwak.dataset.ustawiony = ''; pokazPore(); }
   }
   // G-C: po wczytaniu mysliwce/kino.js (które podmienia globalny obiekt krzywych) zapamiętane krzywe mają dalej swoje funkcje.
   function sprawdzKrzywe() {
@@ -1572,7 +1688,9 @@
         rzezba: rz ? { hMax: rz.hMax, hMin: rz.hMin, hMaxJson: rz.meta.hMax, hMinJson: rz.meta.hMin } : null,
         kolorowanie: mks.kolorowanie, przekroj: mks.przekroj ? { kat_st: mks.przekroj.kat_st, przesuniecie_km: mks.przekroj.przesuniecie_km,
           maks_m: mks.przekroj.profil ? mks.przekroj.profil.maks_m : null } : null,
-        chmury: mks.chmury, przewyzszenie: mks.przew, przewyzszenieCel: mks.przewCel, czesc: mks.czesc, mity: mks.mity,
+        chmury: mks.chmury, pogoda: mks.pogoda, pora: mks.pora == null ? null : mks.pora === 'teraz' ? 'teraz' : window.GeologiaSlonce.godzinaTekst(mks.pora),
+        slonce: mks.slonce ? { az: mks.slonce.az, el: mks.slonce.el, pora: mks.slonce.pora, min: mks.slonce.min, ms: mks.slonce.ms } : null,
+        poraTekst: ui ? ui.poraTekst.textContent : null, przewyzszenie: mks.przew, przewyzszenieCel: mks.przewCel, czesc: mks.czesc, mity: mks.mity,
         przelot: !!(mk && mk.lot), pelnyEkran: doc.fullscreenElement === korzen, scena: mk ? mk.sc.stan() : null,
         czas: mks.czas, anim: mks.anim ? { nazwa: mks.anim.nazwa, f: mks.anim.f } : null,
         czasTekst: ui ? ui.czasWart.textContent : null, rekonstrukcja: ui ? !ui.czasPlak.hidden : false,
@@ -1594,7 +1712,9 @@
       if (!gl) return null;
       var m = gl.renderer.info.memory, pr = gl.renderer.info.programs;
       return { geometrie: m.geometries, tekstury: m.textures, programy: pr ? pr.length : 0, audio: pokaz ? pokaz.audio() : 0,
-        audioMakiety: lm.ctx ? 1 : 0, zrodlaMakiety: lm.lek ? lm.lek.zrodla() : 0 };
+        audioMakiety: lm.ctx ? 1 : 0, zrodlaMakiety: lm.lek ? lm.lek.zrodla() : 0,
+        // światło sceny makiety (Task 8e): pora presetu, az, el — to, co faktycznie świeci; pogoda ze stanu makiety
+        swiatlo: mk ? (function (w) { return { pora: w.pora, az: w.az, el: w.el, pogoda: mks.pogoda, dostroj: !!w.dostroj }; })(mk.sc.stan().swiatlo) : null };
     },
     // Haki sondy (scripts/probe-geologia.mjs) — scena makiety, renderer, rzut kotwicy części na ekran (px w oknie).
     scena: function () { return mk ? mk.sc : null; },
@@ -1625,6 +1745,9 @@
       return q ? { x: r.left + q.x, y: r.top + q.y, z: q.z } : null;
     },
     widok: function (nazwa, plynnie) { return ustawWidok(nazwa, !!plynnie); },
+    // haki sondy (Task 8e): pora (null | 'teraz' | minuta dnia wyspy) i pogoda jak z przycisków / suwaka
+    pora: function (v) { ustawPore(v); return mks.pora; },
+    pogoda: function (p) { ustawPogode(p); return mks.pogoda; },
     // hak sondy (Task 8d): karta pinu jak po kliknięciu — 'czesc' | 'wulkan' (id pinu; warstwa Wulkany włączona) | 'punkt'
     karta: function (rodzaj, id) {
       if (!mk || st.tryb !== 'makieta') return false;

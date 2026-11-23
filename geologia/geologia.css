@@ -39,6 +39,23 @@
 .ge-kat { display: flex; align-items: center; gap: 6px; color: var(--ge-atrament-2); font-size: 12px; }
 .ge-suwak { width: 90px; accent-color: var(--ge-akcent); }
 .ge-kat-wart { min-width: 3.2em; color: var(--ge-atrament); font-variant-numeric: tabular-nums; }
+/* pora dnia (Task 8e): suwak godziny wyspy, pod nim etykieta „14:30 · Słońce 32° nad horyzontem” (na szerokim ekranie
+   jeden wiersz paska — suwak i etykieta jedno pod drugim, wysokość przycisku) */
+.ge-pora { display: flex; flex-direction: column; align-items: stretch; gap: 1px; min-width: 0; color: var(--ge-atrament-2); }
+/* #geologia: suwak strony (Solar System.html: input[type=range] { height: 3px; background }) ma wyższą specyficzność niż sama
+   klasa — ścieżka 3 px rysowana tłem pośrodku wyższego pola (cel palca na telefonie) */
+#geologia .ge-pora-suwak { width: auto; min-width: 110px; height: 14px; margin: 0; accent-color: var(--ge-akcent);
+  background: linear-gradient(transparent calc(50% - 1.5px), rgba(255, 255, 255, .18) calc(50% - 1.5px), rgba(255, 255, 255, .18) calc(50% + 1.5px), transparent calc(50% + 1.5px)); }
+.ge-pora-wart { color: var(--ge-atrament); font-size: 10px; line-height: 1.2; letter-spacing: -.01em; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* runda 1 (M-2): węższe Stałe/Teraz — grupa Pora krótsza o ok. 20 px */
+.ge-narzedzia .ge-grupa-pora .ge-guzik { padding-left: 6px; padding-right: 6px; }
+/* runda 1 (M-2): średnie ekrany (701–1599 px) — ciaśniejsze przyciski i odstępy narzędzi, żeby Pora i Pogoda nie dokładały
+   wiersza paska (powyżej 1600 px wygląd bez zmian) */
+@media (min-width: 701px) and (max-width: 1599px) {
+  .ge-narzedzia { column-gap: 8px; }
+  .ge-pasek { column-gap: 10px; }
+  .ge-narzedzia .ge-guzik { padding-left: 6px; padding-right: 6px; letter-spacing: .03em; }
+}
 
 .ge-makieta { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .ge-makieta > * { pointer-events: auto; }
@@ -107,6 +124,12 @@
   .ge-karty { top: auto; height: 46%; }
   .ge-legenda { bottom: 40px; max-height: 40%; }
   .ge-suwak { width: 80px; }
+  /* pora: suwak na całą szerokość wiersza paska, cel palca ≥ 44 px wysokości; etykieta obok */
+  /* runda 1 (M-2): Stałe, Teraz i suwak w jednym wierszu, etykieta pod suwakiem — pasek niższy o ok. 25 px */
+  .ge-grupa-pora { flex: 1 1 100%; flex-wrap: nowrap; }
+  .ge-pora { flex: 1 1 auto; flex-direction: column; align-items: stretch; gap: 0; }
+  #geologia .ge-pora-suwak { width: auto; min-width: 0; height: 44px; }
+  .ge-pora-wart { font-size: 10.5px; }
 }
 
 /* ---------- Task 7b: kompas, widoki, warstwa turystyczna ---------- */

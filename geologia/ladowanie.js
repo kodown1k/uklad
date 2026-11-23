@@ -9,11 +9,13 @@
             ruling 9-2: link-zaproszenie do lektora; strona zapamiętuje je w sessionStorage i wycina z paska adresu)
             (domyślnie pokaz, rozdział `polozenie`; makieta = bez rozdziału; `warstwa` tylko w makiecie: lista po przecinku
             z WARSTWY — `turystyka`, `wulkany`, `turystyka,wulkany`; nieznane pozycje odrzucane, kolejność jak WARSTWY, bez powtórzeń;
-            pusta po odrzuceniu → bez pola);
+            pusta po odrzuceniu → bez pola; Task 8e: `&pora=teraz|HH:MM` (00:00–23:59, czas wyspy) i `&pogoda=pogodnie|chmury|kalima`
+            tylko w makiecie → pola `pora`, `pogoda`; inne wartości odrzucane — bez pola);
             #geologia=<nieznane> → miejsce domyślne + pole `nieznane`. Obcy hash → null.
    Zapytanie: ?geologia = przycisk zakładki widoczny (do czasu gotowości jest ukryty); hak testowy
             ?smoke&geologia=<miejsce>[&rozdzial=<id>|&makieta|&tryb=makieta][&t=0..1][&czas=<Ma>][&przekroj=<°>[&przesuniecie=<km>]][&geologiczna]
             [&jakosc=pelna][&kontrola=biel|czern][&anim=a1..a5&f=0..1][&warstwa=<lista>][&widok=poludnie|polnoc|gora]
+            [&pora=teraz|HH:MM][&pogoda=pogodnie|chmury|kalima]
             (marker GEOLOGIA_READY <miejsce> <rozdzial|makieta>). `&makieta` = `&tryb=makieta`;
             `&warstwa=turystyka` = warstwa turystyczna makiety (Task 7b), `&warstwa=wulkany` = warstwa wulkanów (Task 8c),
             obie naraz `&warstwa=turystyka,wulkany`; `&widok` = kadr z przycisków kompasu;
@@ -43,13 +45,14 @@
   ];
   // Kolejność leniwego ładowania: tylko pliki, które istnieją. Kolejne zadania dopisują swoje PRZED widok.js —
   // widok.js jest ostatni, bo korzysta z reszty. Pliki konkretnego miejsca: GeologiaMiejsca.MIEJSCA[].pliki.
-  var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/ewolucja.js', 'geologia/scena.js', 'geologia/gwiazdy.js', 'geologia/animacje.js',
+  var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/ewolucja.js', 'geologia/scena.js', 'geologia/slonce.js', 'geologia/gwiazdy.js', 'geologia/animacje.js',
     'geologia/rozdzialy.js', 'geologia/turystyka-scena.js', 'geologia/wulkany-scena.js', 'geologia/lektor.js', 'geologia/dzwiek.js',
     'geologia/pokaz.js', 'geologia/widok.js'];
   var KONTROLE = ['biel', 'czern'];
   var ANIMACJE = ['a1', 'a2', 'a3', 'a4', 'a5'];
   var WARSTWY = ['turystyka', 'wulkany'];
   var WIDOKI = ['poludnie', 'polnoc', 'gora'];    // ta sama lista co Kompas.WIDOKI (geologia/turystyka-scena.js)
+  var POGODY = ['pogodnie', 'chmury', 'kalima'];  // ta sama lista co GeologiaSlonce.POGODY (geologia/slonce.js)
   // Lektor na zaproszenie (Task 9): token nginx secure_link = <expires: unix s>.<md5: base64url 22 zn.>
   var ZAPROSZENIE = /^(\d{9,11})\.([A-Za-z0-9_-]{22})$/;
   var BAZA_LEKTORA = 'lektor/';
@@ -90,6 +93,18 @@
     return znane.length ? znane.join(',') : null;
   }
 
+  // Pora makiety z adresu (Task 8e): 'teraz' albo 'HH:MM' (00:00–23:59, czas wyspy; godzina jedno- lub dwucyfrowa) → napis
+  // znormalizowany ('teraz' | 'HH:MM') albo null.
+  function pora(v) {
+    if (typeof v !== 'string') return null;
+    var s = dekoduj(v).trim().toLowerCase();
+    if (s === 'teraz') return s;
+    var m = /^(\d{1,2}):(\d{2})$/.exec(s);
+    if (!m || +m[1] > 23 || +m[2] > 59) return null;
+    return (m[1].length < 2 ? '0' : '') + m[1] + ':' + m[2];
+  }
+  function pogoda(v) { var s = typeof v === 'string' ? dekoduj(v).trim().toLowerCase() : null; return POGODY.indexOf(s) >= 0 ? s : null; }
+
   function parsujHashGeologii(hash) {
     if (typeof hash !== 'string') return null;
     var s = hash.charAt(0) === '#' ? hash.slice(1) : hash;
@@ -107,6 +122,9 @@
       wynik.tryb = 'makieta'; wynik.rozdzial = null;
       var lw = w ? warstwy(w[1]) : null;
       if (lw) wynik.warstwa = lw;
+      var po = /&pora=([^&]*)/.exec(reszta), pg = /&pogoda=([^&]*)/.exec(reszta);
+      if (po && pora(po[1])) wynik.pora = pora(po[1]);
+      if (pg && pogoda(pg[1])) wynik.pogoda = pogoda(pg[1]);
     } else if (r && czyRozdzial(r[1])) wynik.rozdzial = r[1];
     if (nieznane) wynik.nieznane = nieznane;
     var zp = /&zaproszenie=([^&]*)/.exec(reszta), lk = /&lektor=([^&]*)/.exec(reszta);
@@ -134,11 +152,13 @@
       f: ANIMACJE.indexOf(an) >= 0 ? (f === null ? 1 : Math.max(0, Math.min(1, f))) : null,
       warstwa: warstwy(wa),
       widok: WIDOKI.indexOf(wi) >= 0 ? wi : null,
+      pora: pora(wart('pora')), pogoda: pogoda(wart('pogoda')),
       lektor: wart('lektor') === 'lokalny' ? 'lokalny' : null
     };
   }
 
   var api = { MIEJSCA_ID: MIEJSCA_ID, TRYBY: TRYBY, ROZDZIALY: ROZDZIALY, PLIKI: PLIKI, ANIMACJE: ANIMACJE, WARSTWY: WARSTWY, WIDOKI: WIDOKI,
+    POGODY: POGODY, pora: pora, pogoda: pogoda,
     BAZA_LEKTORA: BAZA_LEKTORA, HOST_LEKTORA: HOST_LEKTORA, parsujHashGeologii: parsujHashGeologii, parsujZapytanieGeologii: parsujZapytanieGeologii, warstwy: warstwy,
     zrodloLektora: zrodloLektora, krzywe: null };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
@@ -263,6 +283,8 @@
       var makieta = zap.tryb === 'makieta';
       var s = { miejsce: zap.miejsce, tryb: makieta ? 'makieta' : 'pokaz', rozdzial: makieta ? null : (zap.rozdzial || 'polozenie') };
       if (makieta && zap.warstwa) s.warstwa = zap.warstwa;
+      if (makieta && zap.pora) s.pora = zap.pora;
+      if (makieta && zap.pogoda) s.pogoda = zap.pogoda;
       root.Zakladki.przelacz('geologia', s);
     } else if (parsujHashGeologii(root.location.hash)) root.Zakladki.zAdresu(root.location.hash);
   }

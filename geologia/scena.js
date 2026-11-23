@@ -1208,9 +1208,10 @@
     }
 
     // --- światło i niebo ---
-    var sw = { pora: 'dzien', az: 250, el: 30 }, kier = new T.Vector3();
+    // sw.p = preset pory z nałożonym `dostroj` (makieta, Task 8e: pogoda i minimum nocy); pokaz woła bez dostroj — sam preset
+    var sw = { pora: 'dzien', az: 250, el: 30, dostroj: null, p: PORY.dzien }, kier = new T.Vector3();
     function niebo() {
-      var p = PORY[sw.pora] || PORY.dzien, nz = przek || blokWl ? NIEBO_PRZEKROJU : p;
+      var p = sw.p || PORY.dzien, nz = przek || blokWl ? NIEBO_PRZEKROJU : p;
       var cz = new T.Color(nz.zenit).multiplyScalar(jasnNieba), ch = new T.Color(nz.horyzont).multiplyScalar(jasnNieba), ct = new T.Color(p.tarcza);
       uNiebo.uZenit.value.set(cz.r, cz.g, cz.b); uNiebo.uHoryzont.value.set(ch.r, ch.g, ch.b);
       uNiebo.uKolorTarczy.value.set(ct.r, ct.g, ct.b); uNiebo.uTarcza.value = przek || blokWl ? 0 : p.moc;
@@ -1226,7 +1227,10 @@
       if (a.pora && PORY[a.pora]) sw.pora = a.pora;
       if (a.az != null) sw.az = +a.az;
       if (a.el != null) sw.el = +a.el;
-      var p = PORY[sw.pora], d = kierunekSlonca(sw.az, sw.el);
+      // dostroj (makieta): pola presetu nadpisane na to wywołanie i następne klatki; wywołanie bez dostroj = sam preset
+      sw.dostroj = a.dostroj || null;
+      sw.p = sw.dostroj ? Object.assign({}, PORY[sw.pora], sw.dostroj) : PORY[sw.pora];
+      var p = sw.p, d = kierunekSlonca(sw.az, sw.el);
       kier.set(d[0], d[1], d[2]);
       klucz.position.set(d[0] * 300, d[1] * 300, d[2] * 300); klucz.target.position.set(0, 0, 0);
       klucz.target.updateMatrixWorld();
@@ -1237,6 +1241,12 @@
       // te same jednostki co w MeshStandardMaterial bez fizycznych świateł: blask = barwa · moc (π się skraca)
       uWoda.uKolorSlonca.value.set(kl.r * p.k, kl.g * p.k, kl.b * p.k);
       uWoda.uAmb.value.set(kw.r * p.f, kw.g * p.f, kw.b * p.f);
+      // morze chmur makiety: UniformsUtils.merge sklonował uniformy (amb 0,5, słońce 1, kierunek w zenicie) i przy nich
+      // warstwę strojono — skala względem światła domyślnego (dzień, el 30°): przy nim wartości bez zmian, nocą chmury gasną
+      var D0 = PORY.dzien, kd0 = new T.Color(D0.klucz), wd0 = new T.Color(D0.wyp);
+      uChmury.uAmb.value.set(0.5 * kw.r * p.f / (wd0.r * D0.f), 0.5 * kw.g * p.f / (wd0.g * D0.f), 0.5 * kw.b * p.f / (wd0.b * D0.f));
+      uChmury.uKolorSlonca.value.set(kl.r * p.k / (kd0.r * D0.k), kl.g * p.k / (kd0.g * D0.k), kl.b * p.k / (kd0.b * D0.k));
+      uChmury.uSlonce.value.set(0, Math.min(1, d[1] / 0.5), 0);      // wyżej niż 30° warstwa przycinałaby się do bieli
       U.uKolorWody.value.copy(new T.Color('#123a52').convertSRGBToLinear()).multiplyScalar(p.f * 1.4 + p.k * Math.max(d[1], 0) * 0.3);
       niebo();
       renderer.shadowMap.needsUpdate = true;
@@ -1335,7 +1345,7 @@
     }
 
     // --- klatka ---
-    var czas = 0, Rdysku = 400;
+    var czas = 0, Rdysku = 400, osKam = new T.Vector3();
     function animuj(t) {
       czas = t || 0;
       uWoda.uCzas.value = czas; uChmury.uCzas.value = czas;
@@ -1345,8 +1355,15 @@
       Rdysku = Math.max(400, 25 * Math.max(cp.y, 0));
       ocean.position.set(cp.x, 0, cp.z); ocean.scale.set(Rdysku * 1.02, Rdysku * 1.02, 1);
       scena.fog.near = Rdysku * 0.6; scena.fog.far = Rdysku;
-      var mg = PORY[sw.pora] && PORY[sw.pora].mgla;
+      var mg = sw.p && sw.p.mgla, mw = sw.p && sw.p.mglaWzgl;
       if (mg) { scena.fog.near = Math.min(scena.fog.near, mg[0]); scena.fog.far = Math.min(scena.fog.far, mg[1]); }
+      else if (mw) {
+        // mgła względna (makieta, Task 8e): odległości × droga promienia osi kamery do poziomu morza — ta sama gęstość
+        // w każdym kadrze, od zbliżenia po całą wyspę
+        kamera.getWorldDirection(osKam);
+        var dO = osKam.y < -0.05 ? Math.max(cp.y, 0.05) / -osKam.y : Rdysku * 0.25;
+        scena.fog.near = Math.min(scena.fog.near, mw[0] * dO); scena.fog.far = Math.min(scena.fog.far, mw[1] * dO);
+      }
       kopula.position.copy(cp); kopula.scale.setScalar(Rdysku * 1.2);
       var near = Math.max(0.01, Math.min(5, Math.max(nad, 0.04) * 0.25)), far = Rdysku * 1.3;
       if (Math.abs(kamera.near - near) > 1e-4 || Math.abs(kamera.far - far) > 1e-3) { kamera.near = near; kamera.far = far; kamera.updateProjectionMatrix(); }
@@ -1731,7 +1748,7 @@
       dekoracje: { sciana: function () { return sciana; }, chmury: chmuryMesh, kopula: kopula, lawa: lawa, klucz: klucz, wypelnienie: wypelnienie },
       stan: function () {
         return { przewyzszenie: e, kolorowanie: ['teren', 'geologia', 'krajobraz', 'kalibracja'][U.uTryb.value], szklo: U.uSzklo.value, chmury: chmuryMesh.visible,
-          swiatlo: { pora: sw.pora, az: sw.az, el: sw.el }, przekroj: przek ? { kat_st: przek.kat_st, przesuniecie_km: przek.przesuniecie_km, maks_m: przek.profil ? przek.profil.maks_m : null } : null,
+          swiatlo: { pora: sw.pora, az: sw.az, el: sw.el, dostroj: sw.dostroj }, przekroj: przek ? { kat_st: przek.kat_st, przesuniecie_km: przek.przesuniecie_km, maks_m: przek.profil ? przek.profil.maks_m : null } : null,
           podswietlona: podswietlona, najechana: najechana, etykiety: piny.filter(function (g) { return g.userData.pin.widoczna; }).length,
           wierzcholki: wierzcholki, dysk_km: Rdysku, lod: krok === 1 ? 'pelny' : 'lekki', czasMa: ewo.Ma, przygaszenie: przygaszenie };
       }
