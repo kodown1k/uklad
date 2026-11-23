@@ -2,7 +2,7 @@
 /* Zakładka Geologia — widok nakładki (plik przeglądarkowy; ładuje go leniwie geologia/ladowanie.js).
    window.Geologia = { otworz(stan), zamknij(), stan(), diagnostyka(), (haki sondy) scena(), renderer(), rzutKotwicy(id),
      ustawKamere(poz, cel), przewyzszenie(x) }.
-   stan() → { miejsce, tryb, rozdzial, ujecie, t, fps, jakosc: 'pelna'|'lekka', lektor: 'gra'|'cisza'|'brak', gotowa, rzezba,
+   stan() → { miejsce, tryb, rozdzial, ujecie, t, fps, jakosc: 'pelna'|'lekka', jakoscAuto (false przy &jakosc=pelna i w smoke), lektor: 'gra'|'cisza'|'brak', gotowa, rzezba,
      kolorowanie, przekroj, chmury, przewyzszenie, czesc, mity, pelnyEkran } (ujecie = id bieżącego ujęcia albo null — Task 8);
    diagnostyka() → { geometrie, tekstury, programy, audio, audioMakiety, zrodlaMakiety } (audio = liczba żywych AudioContext
    pokazu: 0 albo 1; audioMakiety = to samo dla lektora pinów makiety, zrodlaMakiety = grające źródła lektora makiety).
@@ -200,6 +200,16 @@
     // nakładki makiety nad canvasem
     ui.makieta = el('div', 'ge-makieta', null, korzen); ui.makieta.hidden = true;
     ui.podpisPrzew = el('p', 'ge-podpis-przew', null, ui.makieta);
+    // atrybucja danych przy mapie (ODbL 4.3: widoczna przy danych OSM; #credit strony leży pod nakładką): rzeźba zawsze,
+    // OSM — gdy widać warstwę Turystyka albo Wulkany (piny, szlaki)
+    ui.atryb = el('p', 'ge-atrybucja', null, ui.makieta);
+    ui.atrybOsm = el('span', 'ge-atrybucja-osm', null, ui.atryb);
+    el('span', null, '© współtwórcy ', ui.atrybOsm);
+    var aOsm = el('a', null, 'OpenStreetMap', ui.atrybOsm);
+    aOsm.href = 'https://www.openstreetmap.org/copyright'; aOsm.target = '_blank'; aOsm.rel = 'noopener';
+    el('span', null, ' (ODbL) · ', ui.atrybOsm);
+    el('span', null, 'rzeźba: Terrain Tiles (SRTM, GMTED, ETOPO1)', ui.atryb);
+    ui.atrybOsm.hidden = true;
     // czas geologiczny: suwak 12 mln lat → dziś, kreski zdarzeń z osCzasu
     ui.czas = el('div', 'ge-panel ge-czas', null, ui.makieta);
     ui.czas.setAttribute('role', 'group'); ui.czas.setAttribute('aria-label', 'Czas geologiczny');
@@ -657,6 +667,8 @@
   }
   function krokMakiety(dt, t) {
     var sc = mk.sc;
+    var osm = turystykaWidoczna() || wulkanyWidoczna();
+    if (ui.atrybOsm.hidden === osm) ui.atrybOsm.hidden = !osm;
     // przewyższenie: zmiana animowana i podpisana (0,8 s), w smoke i przy ograniczonym ruchu — od razu
     if (mks.przew !== mks.przewCel) {
       var d = mks.przewCel - mks.przew, krokP = (smoke || ograniczonyRuch()) ? Math.abs(d) : Math.abs(d) * Math.min(1, dt * 4) + dt * 0.4;
@@ -1050,7 +1062,7 @@
       if (x.odnogi) el('p', 'ge-tur-uwaga', 'Odcinek „tam i z powrotem” — nitki rozsunięte na mapie, żeby było widać obie.', t);
       el('p', 'ge-akapit', x.karta, t);
       if (x.uwagi) el('p', 'ge-akapit ge-tur-uwagi', x.uwagi, t);
-      zrodlo(t, 'linia: ' + x.liniaZrodlo + '; opis: ' + D.zrodlo);
+      zrodlo(t, 'linia: ' + x.liniaZrodlo + (/^OSM /.test(x.liniaZrodlo) ? ' — © współtwórcy OpenStreetMap (ODbL)' : '') + '; opis: ' + D.zrodlo);
     } else {
       x = D.punkty.filter(function (q) { return q.id === id; })[0];
       if (!x) return;
@@ -1684,7 +1696,7 @@
     stan: function () {
       var rz = mk && mk.rz, ps = st.tryb === 'pokaz' && pokaz ? pokaz.stan() : null;
       return { miejsce: st.miejsce, tryb: st.tryb, rozdzial: st.rozdzial, ujecie: ps ? ps.ujecie : st.ujecie, t: ps ? ps.t : st.t, fps: Math.round(fps),
-        jakosc: jakosc, lektor: smoke ? 'cisza' : ps ? ps.lektorStan : 'brak', gotowa: st.tryb === 'pokaz' ? !!(pokaz && pokaz.gotowy()) : !!mk, pokaz: ps,
+        jakosc: jakosc, jakoscAuto: !wymusPelna, lektor: smoke ? 'cisza' : ps ? ps.lektorStan : 'brak', gotowa: st.tryb === 'pokaz' ? !!(pokaz && pokaz.gotowy()) : !!mk, pokaz: ps,
         rzezba: rz ? { hMax: rz.hMax, hMin: rz.hMin, hMaxJson: rz.meta.hMax, hMinJson: rz.meta.hMin } : null,
         kolorowanie: mks.kolorowanie, przekroj: mks.przekroj ? { kat_st: mks.przekroj.kat_st, przesuniecie_km: mks.przekroj.przesuniecie_km,
           maks_m: mks.przekroj.profil ? mks.przekroj.profil.maks_m : null } : null,

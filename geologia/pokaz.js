@@ -25,6 +25,9 @@
    ctx.suspend(), powrót z pauzy i karty w tle gra od miejsca zatrzymania; przewinięcie = nowa kotwica 150 ms naprzód;
    przejście do następnego rozdziału bez przerwy (przesun). Nagrania rozdziału (i następnego) dekodowane z wyprzedzeniem;
    po skoku zegar czeka na zdekodowanie (≤ 3 s). M wycisza lektora i podkład razem (kontekst gra dalej — zegar też).
+   stan(): wers = id wersu, którego napis jest w kadrze (null w oddechu i czerni; plan napisów, nie pomiar dźwięku),
+   audio.poziomy = cele poziomów podkładu z ostatniej klatki, audio.sygnal = zmierzony sygnał podkładu i lektora [dBFS]
+   (analizatory Web Audio; sonda: cisza w czerni celowej Cc, MON-2).
    Smoke (?smoke): zegar stoi na t z haka, bez karty „Odtwórz”, bez AudioContext, interfejs od razu schowany;
    Geologia.pomiar() i skok(). Plan w smoke liczy się z czasy.json tylko z hakiem `&lektor=lokalny`. */
 (function (root) {
@@ -373,14 +376,22 @@
       var A = P.audio;
       if (!A) { P.t += Math.min(dt, 0.1); return 'klatki'; }
       if (A.ctx.state === 'running') {
-        if (!A.zakotwiczony) { A.lek.kotwicz(P.t); A.zakotwiczony = true; }
+        if (!A.zakotwiczony) { if (A.dz) A.dz.anulujWyciszenie(); P.ccPlan = null; A.lek.kotwicz(P.t); A.zakotwiczony = true; }
         var z = A.lek.zegar();
         if (z !== null) P.t = z;
         return 'audio';
       }
       var teraz = performance.now();
-      if (A.wznawia && teraz - A.wznawia < 3000) return 'czeka';
+      if (A.wznawia && teraz - A.wznawia < 3000) {
+        // wznowienie po pauzie: kontekst gra (czas kontekstu idzie) zanim stan zmieni się na 'running' — obraz idzie za nim
+        // od razu, inaczej przez tę klatkę stałby, a potem przeskoczył o dźwięk, który już zabrzmiał (LEK-3)
+        if (A.zakotwiczony) { var zw = A.lek.zegar(true); if (zw !== null && zw > P.t) P.t = zw; }
+        return 'czeka';
+      }
       if (teraz - A.wznowiono > 1000) { A.wznowiono = teraz; A.ctx.resume().then(null, function () { /* blokada */ }); }
+      // kontekst wypadł z 'running': nowa kotwica da nowy czas kontekstu, więc plan ciszy Cc na starym czasie jest nieważny —
+      // odwołaj go, a wybór/planowanie ruszy od nowa po ponownym zakotwiczeniu
+      if (A.zakotwiczony) { if (A.dz) A.dz.anulujWyciszenie(); P.ccPlan = null; }
       A.zakotwiczony = false;
       P.t += Math.min(dt, 0.1);
       return 'klatki';
@@ -402,7 +413,7 @@
         if (ciagle && P.audio.zakotwiczony) P.audio.lek.przesun(poprz.czas);
         // skok (←/→, pasek, znacznik — także z pauzy): wersy starego miejsca milkną od razu, nie po zdekodowaniu nowych
         // (recenzja 9a I-4); nowa kotwica przychodzi po czekaniu na nagrania
-        else { P.audio.lek.zatrzymaj(); P.audio.zakotwiczony = false; }
+        else { P.audio.lek.zatrzymaj(); P.audio.zakotwiczony = false; if (P.audio.dz) P.audio.dz.anulujWyciszenie(); P.ccPlan = null; }
         przygotujLektora(P.ri, !ciagle);
       }
       zapewnijGlob(P.ri);
@@ -780,6 +791,7 @@
           for (var j = 0; j < cz.length; j++) if (dt >= cz[j].od && dt <= cz[j].do + 1e-6) { tekst = cz[j].tekst; break; }
         }
       }
+      P.wers = wers ? wers.id : null;
       if (P.napis !== tekst) { P.napis = tekst; napisy.pokaz(tekst); korzen.classList.toggle('ge-kino-mowi', !!tekst); }
       etykiety(r, u, t, zaslonieta);
       // pasek postępu
@@ -899,6 +911,18 @@
           v.x = m2[0]; v.y = m2[1];
         }
         E.el.style.transform = 'translate(' + ((v.x + 1) / 2 * k.w).toFixed(1) + 'px,' + ((1 - v.y) / 2 * k.h).toFixed(1) + 'px)';
+        // napis etykiety (wyśrodkowany nad punktem) nie wychodzi za kadr: punkt do 5% od krawędzi, a napis szerszy niż 10%
+        // kadru telefonu („Dolina Icod” przy prawej krawędzi 390 px, KAD-4) — przesunięty w bok, kropka i kreska zostają na punkcie
+        var dxE = 0;
+        if (!strzalka) {
+          var kl = E.tekst.textContent + '|' + k.w + '|' + k.h;
+          if (E.szerKlucz !== kl) { E.szer = E.tekst.offsetWidth; E.szerKlucz = kl; }
+          var pxE = (v.x + 1) / 2 * k.w, mE = Math.max(4, 0.02 * k.w);
+          if (pxE - E.szer / 2 < mE) dxE = mE - (pxE - E.szer / 2);
+          else if (pxE + E.szer / 2 > k.w - mE) dxE = k.w - mE - (pxE + E.szer / 2);
+        }
+        var mlE = dxE ? dxE.toFixed(1) + 'px' : '';
+        if (E.tekst.style.marginLeft !== mlE) E.tekst.style.marginLeft = mlE;
         krycie(E.el, a);
       });
       for (var i = uzyte; i < MAKS_ETYKIET; i++) { if (!ui.etykiety[i].el.hidden) ui.etykiety[i].el.hidden = true; ui.etykiety[i].id = null; }
@@ -918,6 +942,12 @@
           else { P.t = r.czas - 1e-3; pokazKoniec(); }
         }
         if (P.audio && P.gra) P.audio.lek.planuj(r.wersy, 2.5);
+      } else if (P.pauza && !smoke && P.audio && P.audio.zakotwiczony) {
+        // pauza: ctx.suspend() zatrzymuje dźwięk z opóźnieniem (przy zajętym procesorze — setki ms), a obraz stanąłby na
+        // ostatniej klatce przed klawiszem; po wznowieniu zegar dźwięku przeskoczyłby o tę różnicę. Obraz idzie za zegarem
+        // dźwięku do chwili, w której kontekst stanie (czas kontekstu wstrzymanego stoi) — wznowienie bez skoku (LEK-3)
+        var zp = P.audio.lek.zegar(true);
+        if (zp !== null && zp > P.t) P.t = Math.min(zp, r.czas - 1e-3);
       }
       var o = zastosuj(r, P.t);
       if (P.audio && P.audio.dz) podklad(r, o);
@@ -930,11 +960,27 @@
     }
     // podkład (geologia/dzwiek.js): poziomy warstw z ujęcia i wysokości kamery, akcenty w oddechach (odpalane w klatce,
     // w której zegar je mija — opóźnienie ≤ 1 klatka)
+    // MON-2: początek najbliższej czerni celowej Cc w czasie bieżącego rozdziału — następne ujęcie albo pierwsze ujęcie
+    // następnego rozdziału (przekrój zaczyna się od Cc); null, gdy następne nie jest Cc
+    function granicaCc(r, u) {
+      var U = r.ujecia, i = U.map(function (x) { return x.id; }).indexOf(u.id);
+      if (i >= 0 && i + 1 < U.length) return U[i + 1].wejscie === 'Cc' ? U[i + 1].od : null;
+      var n = P.plan[P.ri + 1];
+      return n && n.ujecia[0] && n.ujecia[0].wejscie === 'Cc' ? r.czas : null;
+    }
+    var CC_PRZED = 0.1;                    // podkład gaśnie 0,1 s przed czernią celową (w czerni C końca rozdziału), τ 0,03 s
     function podklad(r, o) {
       var u = o.u, f = (P.t - u.od) / Math.max(1e-6, u.do - u.od), A = P.audio;
       var lv = root.GeologiaDzwiek.poziomy(u, f, { wys_km: P.poza ? P.poza.pozR[1] : undefined });
-      if (!P.gra || P.pauza || P.koniec) lv = { wiatr: 0, morze: 0, pomruk: 0, ton: 0 };
-      A.dz.ustaw(lv);
+      var gr = granicaCc(r, u), cc = u.wejscie === 'Cc' || (gr !== null && P.t >= gr - CC_PRZED);
+      if (!P.gra || P.pauza || P.koniec || cc) lv = { wiatr: 0, morze: 0, pomruk: 0, ton: 0 };
+      A.dz.ustaw(lv, cc);                            // czerń celowa: cisza od razu (MON-2), nie wygaszanie przez 1–2 s
+      // cisza zaplanowana na zegarze dźwięku dokładnie przed granicą, nie dopiero w pierwszej klatce za nią (przy wolnych
+      // klatkach ta różnica sięga klatki); skok w filmie odwołuje plan (ustawRozdzial → anulujWyciszenie)
+      if (!cc && gr !== null && P.gra && !P.pauza && A.zakotwiczony && gr - P.t < 1) {
+        var klucz = P.ri + '|' + gr;
+        if (P.ccPlan !== klucz) { var kiedy = A.lek.ctxChwili(gr - CC_PRZED); if (kiedy !== null) { A.dz.wycisz(kiedy); P.ccPlan = klucz; } }
+      }
       var t0 = P.tAkcentu == null ? P.t : P.tAkcentu;
       if (P.gra && !P.pauza && P.t > t0 && P.t - t0 < 0.5) {
         P.akcenty.forEach(function (a) { if (a.t > t0 && a.t <= P.t) A.dz.akcent(a.co, A.ctx.currentTime); });
@@ -1053,9 +1099,9 @@
         gra: P.gra && !P.pauza, pauza: P.pauza, koniec: P.koniec, karta: P.karta ? 'odtworz' : P.koniec ? 'koniec' : null, dzwiek: P.dzwiek, lektor: maLektora(),
         lektorStan: stanLektora(), bezLektora: maLektora() ? null : dopisekLektora(), zegar: P.audio && P.audio.ctx.state === 'running' && P.audio.zakotwiczony ? 'audio' : 'klatki',
         audio: P.audio ? { ctx: P.audio.ctx.state, czas: P.audio.ctx.currentTime, zrodla: P.audio.lek.zrodla(), zdekodowane: P.audio.lek.zdekodowane(),
-          podklad: !!P.audio.dz } : null,
+          podklad: !!P.audio.dz, poziomy: P.audio.dz ? P.audio.dz.poziomy() : null, sygnal: P.audio.dz ? P.audio.dz.sygnal() : null } : null,
         kadr: P.kadr ? { x: P.kadr.x, y: P.kadr.y, w: P.kadr.w, h: P.kadr.h, tryb: P.kadr.tryb } : null,
-        glob: P.ostatnie ? P.ostatnie.glob : 0, zaslona: P.ostatnie && P.ostatnie.zaslona ? P.ostatnie.zaslona[3] : 0, napis: P.napis || '' };
+        glob: P.ostatnie ? P.ostatnie.glob : 0, zaslona: P.ostatnie && P.ostatnie.zaslona ? P.ostatnie.zaslona[3] : 0, napis: P.napis || '', wers: P.wers || null };
     }
 
     return {

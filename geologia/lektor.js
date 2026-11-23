@@ -12,7 +12,7 @@
        (rozdzial.lektor = jedyne źródło „czy jest lektor”, ruling 8c-1).
    Przeglądarka:
      GeologiaLektor.utworz(katalog, czasy, ctx?, opcje?) → { przygotuj(ids) → Promise, graj(id, offset_s, kiedy?, poKoncu?), zatrzymaj(), pauza(),
-       wznow(), cisza(bool), zegar() → s|null, kotwicz(t), przesun(d), planuj(wersy, horyzont_s), stan() → 'gra'|'cisza'|'brak',
+       wznow(), cisza(bool), zegar(zawsze?) → s|null, kotwicz(t), przesun(d), ctxChwili(t) → s|null, planuj(wersy, horyzont_s), stan() → 'gra'|'cisza'|'brak',
        zwolnij(), blad(id) → { status } | null (status HTTP ostatniej nieudanej próby, 0 = sieć/dekodowanie) }
      GeologiaLektor.trybOdtwarzania(navigator) — sesja audio 'playback' (iOS: dźwięk mimo przełącznika wyciszenia), na gest.
      katalog = prefiks adresu (np. 'geologia/teneryfa/lektor/') albo funkcja plik → adres (token zaproszenia, ruling 9-2);
@@ -161,8 +161,11 @@
       kotwica = ctx ? { film: t, ctx: ctx.currentTime + WYPRZEDZENIE } : null;
     }
     function przesun(d) { if (kotwica) { kotwica.film -= d; zaplanowane = {}; } }
-    function zegar() {
-      if (!ctx || !kotwica || ctx.state !== 'running') return null;
+    // czas kontekstu chwili filmu t (wg kotwicy) — planowanie zdarzeń dźwięku na zegarze kontekstu (cisza przed Cc); null bez kotwicy
+    function ctxChwili(t) { return kotwica ? kotwica.ctx + (t - kotwica.film) : null; }
+    // zawsze = chwila filmu także przy wstrzymanym kontekście (czas kontekstu stoi tam, gdzie dźwięk stanął) — pauza pokazu
+    function zegar(zawsze) {
+      if (!ctx || !kotwica || ctx.state === 'closed' || (!zawsze && ctx.state !== 'running')) return null;
       return kotwica.film + Math.max(0, ctx.currentTime - kotwica.ctx);
     }
     // wersy rozdziału w czasie filmu ({ id, start, koniec }): planuje start tych, które zaczną się w horyzoncie;
@@ -178,7 +181,9 @@
         graj(w.id, 0, kiedy);
       });
     }
-    function pauza() { if (ctx && ctx.state === 'running') return ctx.suspend(); return Promise.resolve(); }
+    // suspend() zawsze, gdy kontekst żyje: pauza tuż po wznowieniu (resume() w toku, stan jeszcze 'suspended') inaczej
+    // zostałaby pominięta, a kontekst ruszyłby po rozstrzygnięciu resume() przy wyświetlonej pauzie
+    function pauza() { if (ctx && ctx.state !== 'closed') return ctx.suspend(); return Promise.resolve(); }
     function wznow() { if (ctx && ctx.state !== 'closed') return ctx.resume(); return Promise.resolve(); }
     function cisza(wl) {
       wyciszony = !!wl;
@@ -198,7 +203,7 @@
       if (wzm) { try { wzm.disconnect(); } catch (_) { /* nic */ } }
       bufory = {}; ladowane = {}; kotwica = null;
     }
-    return { przygotuj: przygotuj, graj: graj, zatrzymaj: zatrzymaj, pauza: pauza, wznow: wznow, cisza: cisza, zegar: zegar, kotwicz: kotwicz, przesun: przesun,
+    return { przygotuj: przygotuj, graj: graj, zatrzymaj: zatrzymaj, pauza: pauza, wznow: wznow, cisza: cisza, zegar: zegar, kotwicz: kotwicz, przesun: przesun, ctxChwili: ctxChwili,
       planuj: planuj, stan: stan, zwolnij: zwolnij, zrodla: function () { return zrodla.length; },
       // ostatni błąd wczytania nagrania: { status } (status HTTP, 0 = sieć/dekodowanie) albo null, gdy nagranie jest
       blad: function (id) { return zle[id] && !bufory[id] ? { status: statusy[id] || 0 } : null; },

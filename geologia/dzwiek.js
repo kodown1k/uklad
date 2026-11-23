@@ -11,7 +11,7 @@
        wersu przesuwa się na koniec wersu + 0,15 s, a gdy i tam wypada w wersie — odpada. Kulminacja A2 (lawa-na-klifie):
        { t, co: 'cisza', d: 1 } — 1 s ciszy podkładu po syku (R6).
    Przeglądarka:
-     GeologiaDzwiek.utworz(ctx) → { wejscie, ustaw(poziomy), akcent(co, kiedy), cisza(bool), zwolnij() } — cztery warstwy:
+     GeologiaDzwiek.utworz(ctx) → { wejscie, ustaw(poziomy, szybko?), akcent(co, kiedy), cisza(bool), wycisz(kiedy), anulujWyciszenie(), zwolnij(), poziomy(), sygnal() → { podklad, lektor } [dBFS] } — cztery warstwy:
        wiatr (szum przez pasmowy, otwiera się z wysokością), morze (szum przez dolnoprzepustowy z wolną obwiednią), pomruk
        (szum brązowy przez dolnoprzepustowy 300–1000 Hz + syk 1,8 kHz + trzaski Poissona 4–18/s), ton (pad 55/82 Hz
        z warstwą 330/494 Hz — sam dron na głośniku telefonu to cisza). Bufory szumu 6,1 s i 7,7 s (względnie pierwsze)
@@ -155,16 +155,32 @@
     lpT.connect(tremT); tremT.connect(gT); gT.connect(podklad);
     lfo(0.07, 0.2, tremT.gain);
 
+    // pomiar sygnału (sonda: cisza w czerni celowej Cc) — analizatory na wyjściu podkładu i na wejściu lektora do miksera
+    var anP = w(ctx.createAnalyser()), anL = w(ctx.createAnalyser()), probki = null;
+    anP.fftSize = anL.fftSize = 2048;
+    cisza1s.connect(anP); wejscie.connect(anL);
+    function dbfs(an) {
+      if (!an.getFloatTimeDomainData) return null;
+      probki = probki || new Float32Array(an.fftSize);
+      an.getFloatTimeDomainData(probki);
+      var s = 0;
+      for (var i = 0; i < probki.length; i++) s += probki[i] * probki[i];
+      var r = Math.sqrt(s / probki.length);
+      return r > 1e-10 ? 20 * Math.log10(r) : -200;
+    }
+
     var poz = { wiatr: 0, morze: 0, pomruk: 0, ton: 0 }, nastTrzask = 0;
-    function ustaw(p) {
-      var t = ctx.currentTime;
+    // szybko = wejście w czerń celową Cc: cisza w ułamku sekundy (τ 0,03 s → −40 dB po 0,14 s), nie w 1–2 s jak przy zmianie ujęcia
+    function ustaw(p, szybko) {
+      var t = ctx.currentTime, k = szybko ? 0 : 1, f = function (tau) { return k ? tau : 0.03; };
       poz = p || poz;
-      gW.gain.setTargetAtTime(poz.wiatr, t, 0.4);
-      gM.gain.setTargetAtTime(poz.morze, t, 0.4);
-      gP.gain.setTargetAtTime(poz.pomruk * 1.6, t, 0.3);
-      lpP.frequency.setTargetAtTime(300 + 700 * poz.pomruk, t, 0.3);
-      gSyk.gain.setTargetAtTime(poz.pomruk * 0.25, t, 0.3);
-      gT.gain.setTargetAtTime(poz.ton * 0.9, t, 0.6);
+      gW.gain.setTargetAtTime(poz.wiatr, t, f(0.4));
+      gM.gain.setTargetAtTime(poz.morze, t, f(0.4));
+      gP.gain.setTargetAtTime(poz.pomruk * 1.6, t, f(0.3));
+      lpP.frequency.setTargetAtTime(300 + 700 * poz.pomruk, t, f(0.3));
+      gSyk.gain.setTargetAtTime(poz.pomruk * 0.25, t, f(0.3));
+      gT.gain.setTargetAtTime(poz.ton * 0.9, t, f(0.6));
+      gTrz.gain.setTargetAtTime(szybko ? 0 : 1, t, f(0.1));   // trzaski zaplanowane z wyprzedzeniem też milkną w Cc
       // trzaski Poissona 4–18/s, planowane 0,15 s naprzód (proces bez pamięci — odstępy wykładnicze)
       if (poz.pomruk > 0.05 && ctx.state === 'running') {
         var lam = 4 + 14 * poz.pomruk;
@@ -201,12 +217,18 @@
       s.start(t, Math.random() * 2); s.stop(t + 4);
     }
     function cisza(wl) { mute.gain.setTargetAtTime(wl ? 0 : 1, ctx.currentTime, 0.02); }
+    // cisza zaplanowana na chwilę kiedy (czas kontekstu) — przed czernią celową Cc; anulujWyciszenie() przy skoku w filmie
+    var GLOSNOSCI = [gW.gain, gM.gain, gP.gain, gSyk.gain, gT.gain, gTrz.gain];
+    function wycisz(kiedy) { GLOSNOSCI.forEach(function (g) { g.setTargetAtTime(0, Math.max(ctx.currentTime, kiedy), 0.03); }); }
+    function anulujWyciszenie() { var t = ctx.currentTime; GLOSNOSCI.forEach(function (g) { g.cancelScheduledValues(t); }); }
     function zwolnij() {
       zrodla.forEach(function (s) { try { s.stop(); s.disconnect(); } catch (_) { /* nic */ } });
       wezly.forEach(function (n) { try { n.disconnect(); } catch (_) { /* nic */ } });
       zrodla = []; wezly = [];
     }
-    return { wejscie: wejscie, ustaw: ustaw, akcent: akcent, cisza: cisza, zwolnij: zwolnij, poziomy: function () { return poz; } };
+    return { wejscie: wejscie, ustaw: ustaw, akcent: akcent, cisza: cisza, wycisz: wycisz, anulujWyciszenie: anulujWyciszenie, zwolnij: zwolnij, poziomy: function () { return poz; },
+      // poziom sygnału [dBFS] w tej chwili: podkład (za ciszą akcentu) i lektor (wejście miksera); -200 = cisza cyfrowa
+      sygnal: function () { return { podklad: dbfs(anP), lektor: dbfs(anL) }; } };
   }
   root.GeologiaDzwiek = { utworz: utworz, poziomy: poziomy, akcenty: akcenty };
 })(typeof window !== 'undefined' ? window : globalThis);
