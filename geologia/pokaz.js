@@ -125,6 +125,12 @@
       var rz = korzen.querySelector('.ge-rozdzialy');
       ui.dol = el('div', 'ge-pokaz-dol', null, null);
       if (rz) rz.insertBefore(ui.dol, rz.firstChild); else korzen.appendChild(ui.dol);
+      // wysokość rzędu (1–4 wiersze zależnie od okna) → --ge-ui-dol: przy widocznym interfejsie napis staje nad nim (geologia.css)
+      if (rz) {
+        var mierzRzad = function () { korzen.style.setProperty('--ge-ui-dol', rz.offsetHeight + 'px'); };
+        if (root.ResizeObserver) new root.ResizeObserver(mierzRzad).observe(rz);
+        mierzRzad();
+      }
       ui.bPauza = c.guzik(ui.dol, '❚❚', 'Pauza (spacja)', 'ge-pokaz-guzik'); ui.bPauza.removeAttribute('aria-pressed');
       ui.bWstecz = c.guzik(ui.dol, '◀', 'Poprzedni rozdział (←)', 'ge-pokaz-guzik'); ui.bWstecz.removeAttribute('aria-pressed');
       ui.postep = el('div', 'ge-postep', null, ui.dol);

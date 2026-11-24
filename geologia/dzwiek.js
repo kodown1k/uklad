@@ -13,10 +13,10 @@
    Przeglądarka:
      GeologiaDzwiek.utworz(ctx) → { wejscie, ustaw(poziomy, szybko?), akcent(co, kiedy), cisza(bool), wycisz(kiedy), anulujWyciszenie(), zwolnij(), poziomy(), sygnal() → { podklad, lektor } [dBFS] } — cztery warstwy:
        wiatr (szum przez pasmowy, otwiera się z wysokością), morze (szum przez dolnoprzepustowy z wolną obwiednią), pomruk
-       (szum brązowy przez dolnoprzepustowy 300–1000 Hz + syk 1,8 kHz + trzaski Poissona 4–18/s), ton (pad 55/82 Hz
-       z warstwą 330/494 Hz — sam dron na głośniku telefonu to cisza). Bufory szumu 6,1 s i 7,7 s (względnie pierwsze)
+       (szum brązowy przez dolnoprzepustowy 300–1000 Hz + syk 1,8 kHz + trzaski Poissona 4–18/s), ton (warstwa
+       330/494 Hz; dronu 55/82 Hz nie ma — buczał na słuchawkach, a na głośniku laptopa i telefonu był ciszą). Bufory szumu 6,1 s i 7,7 s (względnie pierwsze)
        z losowym startem. Podkład stale 18 dB pod lektorem (bez ściszania przy wersach); `wejscie` = wejście lektora do
-       wspólnego miksera; całość za kompresorem (−8 dB, 20:1) i masterem 0,5. cisza(true) wycisza lektora i podkład razem (M).
+       wspólnego miksera; wzmocnienia warstw G_WIATR/G_MORZE/G_POMRUK/G_TON z pomiaru; całość za kompresorem (−8 dB, 20:1) i masterem 0,5. cisza(true) wycisza lektora i podkład razem (M).
      Błąd budowy → utworz rzuca; pokaz gra wtedy bez podkładu z jednym console.warn „Geologia/uwaga: …”. */
 (function (root) {
   function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
@@ -94,6 +94,10 @@
   /* ---------- przeglądarka ---------- */
   var POD_LEKTOREM = Math.pow(10, -18 / 20);      // podkład −18 dB względem lektora (oba na −20 dBFS RMS)
   var MASTER = 0.5;
+  // wzmocnienie warstw (pomiar OfflineAudioContext 24.11, każda warstwa sama na poziomie 1): bez nich wiatr −57, morze −58,
+  // pomruk −35, ton −42 dBFS — po usunięciu dronu wiatr i morze były niesłyszalne. Cel: warstwa na pełnym poziomie ≈ −36 dBFS
+  // (średni podkład filmu ≈ −38 dBFS = 18 dB pod lektorem, szczyt pomruku ≥ 13 dB pod lektorem), ton jako stała podłoga.
+  var G_WIATR = 11, G_MORZE = 13, G_POMRUK = 1, G_TON = 1.8;
 
   function utworz(ctx) {
     if (!ctx) throw new Error('brak AudioContext');
@@ -148,9 +152,10 @@
       for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (0.003 * sr)) * 0.6;
       return b;
     })();
-    // ton przestrzeni: dron 55/82 Hz + warstwa 330/494 Hz (słyszalna na telefonie)
+    // ton przestrzeni: warstwa 330/494 Hz (bez dronu 55/82 Hz: na słuchawkach buczał, na głośniku laptopa i telefonu
+    // był ciszą — 94% energii podkładu poniżej 120 Hz, zgłoszenie 24.11)
     var gT = gain(0), lpT = filtr('lowpass', 1400, 0.5), tremT = gain(0.8);
-    [[55, 'sine', 0.5], [82.4, 'sine', 0.35], [329.6, 'triangle', 0.12], [493.9, 'sine', 0.08]].forEach(function (x) {
+    [[329.6, 'triangle', 0.12], [493.9, 'sine', 0.08]].forEach(function (x) {
       var o = ctx.createOscillator(), g = gain(x[2]); o.type = x[1]; o.frequency.value = x[0]; o.detune.value = (Math.random() - 0.5) * 8;
       o.connect(g); g.connect(lpT); o.start(); zrodla.push(o);
     });
@@ -180,12 +185,12 @@
     function ustaw(p, szybko) {
       var t = ctx.currentTime, k = szybko ? 0 : 1, f = function (tau) { return k ? tau : 0.03; };
       poz = p || poz;
-      gW.gain.setTargetAtTime(poz.wiatr, t, f(0.4));
-      gM.gain.setTargetAtTime(poz.morze, t, f(0.4));
-      gP.gain.setTargetAtTime(poz.pomruk * 1.6, t, f(0.3));
+      gW.gain.setTargetAtTime(poz.wiatr * G_WIATR, t, f(0.4));
+      gM.gain.setTargetAtTime(poz.morze * G_MORZE, t, f(0.4));
+      gP.gain.setTargetAtTime(poz.pomruk * 1.6 * G_POMRUK, t, f(0.3));
       lpP.frequency.setTargetAtTime(300 + 700 * poz.pomruk, t, f(0.3));
-      gSyk.gain.setTargetAtTime(poz.pomruk * 0.25, t, f(0.3));
-      gT.gain.setTargetAtTime(poz.ton * 0.9, t, f(0.6));
+      gSyk.gain.setTargetAtTime(poz.pomruk * 0.25 * G_POMRUK, t, f(0.3));
+      gT.gain.setTargetAtTime(poz.ton * 0.9 * G_TON, t, f(0.6));
       gF.gain.setTargetAtTime((poz.fumarole || 0) * 0.12, t, f(0.5));
       gTrz.gain.setTargetAtTime(szybko ? 0 : 1, t, f(0.1));   // trzaski zaplanowane z wyprzedzeniem też milkną w Cc
       // trzaski Poissona 4–18/s, planowane 0,15 s naprzód (proces bez pamięci — odstępy wykładnicze)

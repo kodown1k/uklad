@@ -257,12 +257,19 @@
 #geologia.ge-kino-mowi .ge-kino::before { opacity: 1; }
 .ge-kino-wers { position: absolute; left: 50%; transform: translateX(-50%); width: max-content;
   max-width: min(calc(var(--ge-kino-maks-znakow, 72) * .5 * var(--ge-kino-rozmiar, 20px)), 92%);
-  bottom: calc(var(--ge-kino-dol, 24px) + var(--ge-kino-safe, 0) * env(safe-area-inset-bottom, 0px)); text-align: center; }
+  bottom: calc(var(--ge-kino-dol, 24px) + var(--ge-kino-safe, 0) * env(safe-area-inset-bottom, 0px)); text-align: center;
+  transition: bottom .35s; }
+/* widoczny interfejs (ruch myszy, pauza): napis nad rzędem sterowania i rozdziałów (--ge-ui-dol = zmierzona wysokość rzędu, pokaz.js) */
+#geologia:not(.ge-cisza) .ge-kino-wers { bottom: max(calc(var(--ge-kino-dol, 24px) + var(--ge-kino-safe, 0) * env(safe-area-inset-bottom, 0px)),
+  calc(var(--ge-ui-dol, 0px) + 8px)); }
 .ge-kino-wers-tekst { margin: 0; font: 500 var(--ge-kino-rozmiar, 20px)/1.45 var(--ge-kroj); color: #f6f3ec; letter-spacing: .01em; text-wrap: balance;
   text-shadow: 0 1px 3px rgba(0, 0, 0, .95), 0 0 14px rgba(0, 0, 0, .6); }
 .ge-kino-tytul { display: none !important; }
 /* pasek postępu seansu z 9 znacznikami + sterowanie (w rzędzie rozdziałów) */
-.ge-pokaz-dol { flex: 1 1 100%; display: flex; align-items: center; gap: 8px; max-width: 1100px; margin: 0 auto; }
+/* sterowanie zawsze we własnym wierszu, rozdziały pod nim: max-width przycinał szerokość, wg której flex łamie wiersze, i obok
+   sterowania mieściła się część rozdziałów (zgłoszenie 24.11, okno 1916×1070); 1100 px pośrodku z paddingu */
+.ge-pokaz-dol { flex: 0 0 100%; box-sizing: border-box; display: flex; align-items: center; gap: 8px;
+  padding-left: max(0px, calc((100% - 1100px) / 2)); padding-right: max(0px, calc((100% - 1100px) / 2)); }
 .ge-pokaz-guzik { padding: 6px 10px; font-size: 12px; letter-spacing: .04em; }
 .ge-postep { position: relative; flex: 1; height: 6px; background: rgba(255, 255, 255, .16); cursor: pointer; }
 .ge-postep-pas { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--ge-akcent); }

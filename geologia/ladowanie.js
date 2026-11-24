@@ -6,7 +6,7 @@
 
    Adresy:  #geologia | #geologia=<miejsce>[&rozdzial=<id>][&tryb=pokaz|makieta[&warstwa=<lista>]] → {miejsce, tryb, rozdzial[, warstwa]}
             (+ `&zaproszenie=<expires>.<md5>` i `&lektor=<baza>|lokalny` w każdym trybie → pola `zaproszenie`, `lektor` — Task 9,
-            ruling 9-2: link-zaproszenie do lektora; strona zapamiętuje je w sessionStorage i wycina z paska adresu)
+            ruling 9-2: link-zaproszenie do lektora; strona zapamiętuje je w localStorage do wygaśnięcia i wycina z paska adresu)
             (domyślnie pokaz, rozdział `polozenie`; makieta = bez rozdziału; `warstwa` tylko w makiecie: lista po przecinku
             z WARSTWY — `turystyka`, `wulkany`, `turystyka,wulkany`; nieznane pozycje odrzucane, kolejność jak WARSTWY, bez powtórzeń;
             pusta po odrzuceniu → bez pola; Task 8e: `&pora=teraz|HH:MM` (00:00–23:59, czas wyspy) i `&pogoda=pogodnie|chmury|kalima`
@@ -169,7 +169,8 @@
   var doc = root.document, korzen = doc.getElementById('geologia'), przycisk = doc.getElementById('zakGeologia');
   var zap = parsujZapytanieGeologii(root.location.search);
   var ladowanie = null, miejscaZaladowane = {};
-  // Zaproszenie do lektora (ruling 9-2): token z linku → sessionStorage (tylko na czas karty), wycięty z paska adresu
+  // Zaproszenie do lektora (ruling 9-2): token z linku → localStorage (do `expires` z tokenu — nowa karta i zakładka mają
+  // lektora; zgłoszenie 24.11: sessionStorage gubił zaproszenie poza kartą z linku), wycięty z paska adresu
   // od razu po odczycie (zrzut ekranu ani skopiowany adres go nie niosą); widok i tak przepisuje hash po otwarciu.
   var KLUCZ_ZAPROSZENIA = 'geologia-lektor';
   var pamiec = null;
@@ -183,14 +184,15 @@
       lektor: s.lektor && (s.lektor !== 'lokalny' || lokalny(host)) ? s.lektor : stare.lektor || null };
     if (nowy.zaproszenie !== (stare.zaproszenie || null) || nowy.lektor !== (stare.lektor || null)) {
       pamiec = nowy;
-      try { root.sessionStorage.setItem(KLUCZ_ZAPROSZENIA, JSON.stringify(pamiec)); } catch (_) { /* tryb prywatny */ }
+      try { root.localStorage.setItem(KLUCZ_ZAPROSZENIA, JSON.stringify(pamiec)); } catch (_) { /* tryb prywatny */ }
     }
     var h = root.location.hash, czysty = h.replace(/&(zaproszenie|lektor)=[^&]*/g, '');
     if (czysty !== h) { try { root.history.replaceState(null, '', root.location.pathname + root.location.search + czysty); } catch (_) { /* file:// */ } }
   }
   function zapamietane() {
     var z = pamiec;
-    if (!z) { try { z = JSON.parse(root.sessionStorage.getItem(KLUCZ_ZAPROSZENIA) || 'null'); } catch (_) { z = null; } }
+    // wygasły token zostaje w magazynie: zrodloLektora zwraca wtedy powod 'wygaslo' (nowy link go nadpisuje)
+    if (!z) { try { z = JSON.parse(root.localStorage.getItem(KLUCZ_ZAPROSZENIA) || 'null'); } catch (_) { z = null; } }
     return z || {};
   }
   function zrodloLektoraStrony(miejsce) {
