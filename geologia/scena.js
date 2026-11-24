@@ -671,7 +671,9 @@
     // miękki styk z terenem (spec R4): krycie smoothstep(0; 150 m; strop − teren)
     '  float styk = smoothstep(0.0, 0.15, uStrop - hT);',
     '  vec2 e = min(xz - uProstCh.xy, uProstCh.zw - xz);',
-    '  float a = pokrycie * styk * smoothstep(0.0, 14.0, min(e.x, e.y)) * 0.94;',
+    // brzeg pokładu postrzępiony szumem (M3 recenzji kinowej r1: wygaszanie liniowe po prostokącie siatki dawało prostą krawędź)
+    '  float brzeg = min(e.x, e.y) - 22.0 * geFbm(xz * 0.04 + vec2(3.7, 1.3));',
+    '  float a = pokrycie * styk * smoothstep(0.0, 10.0, brzeg) * 0.94;',
     '  if (a < 0.004) discard;',
     '  vec3 c = vec3(0.92) * (uAmb * 1.15 + uKolorSlonca * max(uSlonce.y, 0.05) * 0.7) * (0.82 + 0.18 * d);',
     '  gl_FragColor = vec4(c, a);',

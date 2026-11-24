@@ -1574,8 +1574,15 @@
     if (tag === 'INPUT' && /^(Arrow|Page|Home$|End$)/.test(k)) return;
     if (k === 'Escape') { e.preventDefault(); esc(); }
     else if (k === 'f' || k === 'F') { e.preventDefault(); pelnyEkran(); }
-    else if (st.tryb === 'pokaz' && pokaz && !natywny && pokaz.klawisz(k)) e.preventDefault();
+    // strzałki i M sterują filmem także przy fokusie na przycisku (M-2 recenzji końcowej); spacja i Enter na przycisku — natywnie (wyżej)
+    else if (st.tryb === 'pokaz' && pokaz && tag !== 'INPUT' && pokaz.klawisz(k)) e.preventDefault();
   }, true);
+  // klik myszą nie zostawia fokusu na przycisku (e.detail > 0; aktywacja z klawiatury ma 0): inaczej spacja po kliknięciu „Dźwięk”
+  // przełączała dźwięk drugi raz zamiast pauzować (M-2); użytkownik klawiatury (Tab) zachowuje fokus i natywną spację
+  korzen.addEventListener('click', function (e) {
+    var b = e.detail > 0 && e.target && e.target.closest ? e.target.closest('button, summary') : null;
+    if (b && b.blur) b.blur();
+  });
   window.addEventListener('keyup', function (e) { if (aktywny) e.stopPropagation(); }, true);
 
   /* ---------- wskazywanie: klik w znacznik → karta; przeciąganie ściany przekroju ---------- */
