@@ -254,7 +254,7 @@
       }
       P.siatka = siatka; P.rz = rz;
       P.sc = GS.zbuduj(T, c.renderer, { siatka: rz.wyspa, poziomy: { archipelag: rz.archipelag, wstawki: rz.wstawki }, dane: D, lod: lod,
-        przewyzszenie: 1.5, ostrze: true });
+        przewyzszenie: 1.5, ostrze: true, fale: false });                // kadry filmów strojone bez fal A1 (Review Focus 2)
       kamera = P.sc.kamera;
       var cz = P.sc.scena.getObjectByName('czesci'); if (cz) cz.visible = false;      // etykiety pokazu: DOM w polu S
       if (P.sc.podpisyWarstwNaScianie) P.sc.podpisyWarstwNaScianie(false);            // podpisy warstw: DOM (C4)

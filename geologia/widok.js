@@ -216,6 +216,8 @@
     aOsm.href = 'https://www.openstreetmap.org/copyright'; aOsm.target = '_blank'; aOsm.rel = 'noopener';
     el('span', null, ' (ODbL) · ', ui.atrybOsm);
     el('span', null, 'rzeźba: Terrain Tiles (SRTM, GMTED, ETOPO1)', ui.atryb);
+    // efekty schematyczne podpisane wprost (spec „Makieta żyje”, anty-cel „efekt podany jako pomiar”)
+    el('span', 'ge-atrybucja-schemat', ' · fale i wiatr: schemat typowych warunków', ui.atryb);
     ui.atrybOsm.hidden = true;
     // czas geologiczny: suwak 12 mln lat → dziś, kreski zdarzeń z osCzasu
     ui.czas = el('div', 'ge-panel ge-czas', null, ui.makieta);

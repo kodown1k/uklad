@@ -45,7 +45,7 @@
   ];
   // Kolejność leniwego ładowania: tylko pliki, które istnieją. Kolejne zadania dopisują swoje PRZED widok.js —
   // widok.js jest ostatni, bo korzysta z reszty. Pliki konkretnego miejsca: GeologiaMiejsca.MIEJSCA[].pliki.
-  var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/ewolucja.js', 'geologia/scena.js', 'geologia/slonce.js', 'geologia/gwiazdy.js', 'geologia/animacje.js',
+  var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/ewolucja.js', 'geologia/fale.js', 'geologia/scena.js', 'geologia/slonce.js', 'geologia/gwiazdy.js', 'geologia/animacje.js',
     'geologia/rozdzialy.js', 'geologia/turystyka-scena.js', 'geologia/wulkany-scena.js', 'geologia/lektor.js', 'geologia/dzwiek.js',
     'geologia/pokaz.js', 'geologia/widok.js'];
   var KONTROLE = ['biel', 'czern'];

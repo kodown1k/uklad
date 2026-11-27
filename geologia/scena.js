@@ -1,6 +1,7 @@
 'use strict';
 /* Zakładka Geologia — scena makiety (plik przeglądarkowy, THREE r128; czysta część w node: dual-export).
-   GeologiaScena.zbuduj(T, renderer, { siatka, poziomy: { archipelag, wstawki }, dane, lod: 'pelny'|'lekki', przewyzszenie = 1.5 })
+   GeologiaScena.zbuduj(T, renderer, { siatka, poziomy: { archipelag, wstawki }, dane, lod: 'pelny'|'lekki', przewyzszenie = 1.5,
+     fale = true })
      → { scena, kamera, teren, ocean, kolorowanie(tryb), przekroj(null | { kat_st, przesuniecie_km }) → profil, chmury(wl),
          woda(stan, f), swiatlo({ pora, az, el }), przewyzszenie(x), czesci: { [id]: Object3D }, pick(ndcX, ndcY) → id|null,
          podswietl(id|null), kotwica(id) → [x, y, z], animuj(t), czas(Ma), zwolnij(),
@@ -32,10 +33,18 @@
    w uniformach), także w materiale głębi cienia (customDepthMaterial) i w shaderze wody (głębokość, piana przy brzegu
    chwili). Animacja A1 zmienia tylko uniform uEwoMa — żadnego przeliczania 1 mln komórek na CPU w klatce. CPU liczy
    ten sam rachunek punktowo (wysokosc(x, z): znaczniki, kotwice, kamera — G-D). Przynależność i tekstury powstają
-   leniwie przy pierwszym czas(Ma > 0); program cieniowania jest ten sam od budowy (gałąź za uniformem). */
+   leniwie przy pierwszym czas(Ma > 0); program cieniowania jest ten sam od budowy (gałąź za uniformem).
+   Fale znające brzeg (Task A1, schemat typowych warunków — geologia/fale.js): pole RGBA8 poziomów wyspy i archipelagu
+   (P.poleFal na CPU, P.tFale na GPU; wstawki czytają pole wyspy) — kierunek grzbietu przy brzegu, ekspozycja na martwą
+   falę z NNE z cieniem falowym, stromość brzegu. W wodzie: martwa fala daleko i grzbiety równoległe do brzegu blisko
+   (mieszanka amplitud, nie faz), piana z rozbryzgiem na klifach i pasem wybiegu na plażach. o.fale === false (pokaz:
+   kadry filmów strojone bez fal) — pola się nie liczy, uFaleWl = 0 i woda jest bit w bit jak przed A1. Czas geologiczny
+   (uEwoMa > 0): pole opisuje dzisiejszy brzeg, więc gaśnie na całym morzu (geDzis) — zostaje martwa fala bez cienia
+   i dotychczasowy pas piany z brzegu chwili. */
 (function (root) {
   var Teren = root.Teren || (typeof require === 'function' ? require('./teren.js') : null);
   var Ew = root.Ewolucja || (typeof require === 'function' ? require('./ewolucja.js') : null);
+  var Fale = root.GeologiaFale || (typeof require === 'function' ? require('./fale.js') : null);
   var RAD = Math.PI / 180;
   var MORZE_POD_KM = 0.012;            // dno o wysokości 0 (półka szwu SRTM/ETOPO) leży 12 m pod taflą — bez z-fightingu
   var WTOP_WYSPA_KM = 8, WTOP_WSTAWKA_KM = 0.3;
@@ -516,6 +525,9 @@
     'uniform vec3 uSlonce; uniform vec3 uKolorSlonca; uniform vec3 uAmb; uniform vec3 uZenitL; uniform vec3 uHoryzontL;',
     'uniform sampler2D uPrzynW; uniform float uEwoWoda;',
     'uniform sampler2D uZiemia; uniform float uDaleko; uniform vec2 uSrodekLL; uniform vec2 uKmStopien; uniform float uWodaJasn;',
+    // fale znające brzeg (A1): pole RGBA8 (kierunek grzbietu, ekspozycja, stromość), kierunek martwej fali, włącznik
+    // (makieta 1, pokaz 0) i grzbiety przy brzegu (1, gdy odległość od brzegu ma filtr liniowy — inaczej schodki 105 m)
+    'uniform sampler2D uPoleW; uniform sampler2D uPoleA; uniform vec2 uKierFali; uniform float uFaleWl; uniform float uFaleGrzbiety;',
     'varying vec3 vSwiat;',
     GLSL_WSPOLNE,
     GLSL_MGIELKA,
@@ -526,9 +538,15 @@
     '  #include <clipping_planes_fragment>',
     '  vec2 xz = vSwiat.xz;',
     '  if (uTylkoKafel > 0.5 && !geW(xz, uProstW)) discard;',
-    '  float h = -4000.0, dist = 60.0;',
+    '  float h = -4000.0, dist = 60.0, gePoz = 0.0;',
+    // pole fal opisuje DZISIEJSZY brzeg (i cień falowy dzisiejszej wyspy, sięgający poza kafel) — w chwili geologicznej
+    // gaśnie na całym morzu: zostaje martwa fala bez cienia i dotychczasowy pas piany z brzegu chwili
+    '  float geDzis = 1.0 - step(0.5, uEwoWoda) * smoothstep(0.0, 0.02, uEwoMa);',
+    '  vec4 pf = vec4(uKierFali * 0.5 + 0.5, 1.0, 0.0);',                 // poza danymi: otwarte morze, pełna ekspozycja
     '  if (geW(xz, uProstW)) {',
-    '    vec2 t = texture2D(uWysW, geUv(xz, uProstW, uRozmW)).rg; h = t.r; dist = t.g;',
+    '    vec2 uvW = geUv(xz, uProstW, uRozmW);',
+    '    vec2 t = texture2D(uWysW, uvW).rg; h = t.r; dist = t.g;',
+    '    pf = texture2D(uPoleW, uvW); gePoz = 1.0;',
     // dno chwili geologicznej: głębokość i brzeg (piana) z rzeźby chwili, nie z dzisiejszej
     '    if (uEwoWoda > 0.5 && uEwoMa > 0.0) {',
     '      vec4 lab = geEwoLab(texture2D(uPrzynW, geUv(xz, uProstW, uRozmW)));',
@@ -538,14 +556,27 @@
     '      if (abs(hE - h) > 0.5) { h = hE; dist = max(dist, max(-h, 0.0) / 120.0); }',
     '    }',
     '  }',
-    '  else if (geW(xz, uProstA)) { vec2 t = texture2D(uWysA, geUv(xz, uProstA, uRozmA)).rg; h = t.r; dist = t.g; }',
+    '  else if (geW(xz, uProstA)) { vec2 uvA = geUv(xz, uProstA, uRozmA); vec2 t = texture2D(uWysA, uvA).rg; h = t.r; dist = t.g; pf = texture2D(uPoleA, uvA); gePoz = 2.0; }',
     // półka 0 m ze szwu SRTM/ETOPO zasłonięta: głębokość efektywna rośnie co najmniej 120 m na km od brzegu
     '  float dEff = max(-h, 120.0 * dist);',
     '  vec3 woda = mix(geHex(38.0, 128.0, 128.0), geHex(18.0, 62.0, 96.0), smoothstep(4.0, 60.0, dEff));',
     '  woda = mix(woda, geHex(10.0, 30.0, 58.0), smoothstep(60.0, 1500.0, dEff)) * uWodaJasn;',
     '  vec3 n1 = texture2D(uFale, xz / 0.42 + uCzas * vec2(0.010, 0.006)).rgb * 2.0 - 1.0;',
     '  vec3 n2 = texture2D(uFale, xz / 1.30 - uCzas * vec2(0.004, -0.007)).rgb * 2.0 - 1.0;',
-    '  vec3 n = normalize(vec3(n1.x + n2.x, 2.6, n1.y + n2.y));',
+    // martwa fala (A1, schemat): daleko grzbiety prostopadłe do uKierFali (0,6 km), przy brzegu (odl < 3 km) grzbiety
+    // równoległe do linii brzegu (faza −odl, 0,25 km), 0,02 km/s; dwa ciągi mieszane amplitudą — mieszanka faz dawałaby
+    // fałszywą falę (φ_brzeg − φ_morze)·∇waga w pasie przejścia. Nachylenie × ekspozycja: po zawietrznej morze gładsze.
+    '  float wB = (1.0 - smoothstep(0.5, 3.0, dist)) * geDzis * uFaleGrzbiety;',
+    '  float eks = mix(1.0, pf.b, geDzis);',
+    '  float fF = 6.2832 * (dot(xz, uKierFali) - 0.02 * uCzas) / 0.6;',
+    '  float fN = 6.2832 * (-dist - 0.02 * uCzas) / 0.25;',
+    '  vec2 kN = pf.rg * 2.0 - 1.0; kN /= max(length(kN), 1e-3);',
+    // z daleka grzbiety gasną, zanim zejdą poniżej piksela (mora pod horyzontem): od ok. 25 do 70 długości fali
+    '  float geOdlKam = length(cameraPosition - vSwiat);',
+    '  float aF = 0.06 * (1.0 - wB) * (1.0 - smoothstep(15.0, 42.0, geOdlKam));',
+    '  float aN = 0.14 * wB * (1.0 - smoothstep(6.0, 18.0, geOdlKam));',
+    '  vec2 gFal = (uKierFali * (cos(fF) * aF) + kN * (cos(fN) * aN)) * (mix(0.15, 1.0, eks) * 2.6 * uFaleWl);',
+    '  vec3 n = normalize(vec3(n1.x + n2.x - gFal.x, 2.6, n1.y + n2.y - gFal.y));',
     '  vec3 V = normalize(cameraPosition - vSwiat);',
     '  float fres = 0.02 + 0.98 * pow(1.0 - max(dot(n, V), 0.0), 5.0);',
     '  vec3 R = reflect(-V, n);',
@@ -555,7 +586,29 @@
     '  vec3 kol = woda * (uAmb + uKolorSlonca * max(uSlonce.y, 0.0) * 0.45);',
     '  kol = mix(kol, niebo, fres) + uKolorSlonca * blysk;',
     '  float piana = (1.0 - smoothstep(0.015, 0.11, dist)) * step(h, 2.0) * (0.55 + 0.45 * geSzum(xz * 22.0 + uCzas * 0.3));',
-    '  kol = mix(kol, vec3(0.78, 0.80, 0.80) * (uAmb + uKolorSlonca * max(uSlonce.y, 0.0)), piana * 0.65);',
+    // piana A1 liczona od LINII WODY, nie od środka komórki lądu (dist): linia wody leży w komórce brzegowej (105 m wyspy,
+    // 540 m archipelagu) tam, gdzie dno przechodzi przez 0 — szacunek z dna tu i o komórkę ku lądowi (kN), ograniczony
+    // do [dist − komórka, dist]. Pasy 0,02 / 0,08 km od dist byłyby węższe niż komórka i znikały (dist przy wodzie ≈ 0,01–0,07).
+    '  float dW = dist;',
+    '  if (uFaleWl * geDzis > 0.0 && gePoz > 0.5 && dist < 0.6) {',
+    '    vec4 rr = gePoz < 1.5 ? uProstW : uProstA; vec2 nn = gePoz < 1.5 ? uRozmW : uRozmA;',
+    '    float kom = (rr.z - rr.x) / (nn.x - 1.0);',
+    '    vec2 uv1 = geUv(xz + kN * kom, rr, nn);',
+    '    float h1 = gePoz < 1.5 ? texture2D(uWysW, uv1).r : texture2D(uWysA, uv1).r;',
+    // dno 0 m (półka szwu) leży w siatce 12 m pod taflą (MORZE_POD_KM) — tak samo tutaj
+    '    float h0 = h > 0.0 ? h : h - 12.0; h1 = h1 > 0.0 ? h1 : h1 - 12.0;',
+    '    float est = h0 >= 0.0 ? 0.0 : h1 > h0 ? kom * -h0 / (h1 - h0) : dist;',
+    '    dW = clamp(est, max(dist - kom, 0.0), dist);',
+    '  }',
+    // klif (A) — rozbryzg, pas węższy (0,02 km) i jaśniejszy; plaża — pas wybiegu 0,08 km z pulsem fazy grzbietu (bez filtra
+    // liniowego float puls stały — faza z `dist` w schodkach 105 m dałaby bloki). Ekspozycja: wybieg × mix(0,3; 1), rozbryzg
+    // × mix(0,65; 1) — spec A1 (R10): piana na KAŻDYM stromym brzegu (Los Gigantes leży w cieniu fali z NNE), pod falę mocniejsza;
+    // plaże i grzbiety po zawietrznej zostają spokojniejsze
+    '  float wybieg = (1.0 - smoothstep(0.0, 0.08, dW)) * mix(0.55, 0.55 + 0.45 * sin(fN), uFaleGrzbiety) * mix(0.3, 1.0, eks);',
+    '  float rozbryzg = (1.0 - smoothstep(0.0, 0.02, dW)) * 1.5 * mix(0.65, 1.0, eks);',
+    '  float pianaFal = step(h, 2.0) * (0.55 + 0.45 * geSzum(xz * 22.0 + uCzas * 0.3)) * mix(wybieg, rozbryzg, pf.a);',
+    '  piana = mix(piana, pianaFal, uFaleWl * geDzis);',
+    '  kol = mix(kol, vec3(0.78, 0.80, 0.80) * (uAmb + uKolorSlonca * max(uSlonce.y, 0.0)), min(piana * 0.65, 1.0));',
     '  float daleko = smoothstep(25.0, 110.0, length(cameraPosition - vSwiat));',
     '  float geAlfa = mix(1.0, mix(0.25, 0.35, daleko), uSzklo);',               // szklana: krycie ≤ 0,35 także z daleka (P7)
     // pokaz: ląd spoza danych (Afryka, Madera) z tekstury globu — ta sama barwa co na poziomie `glob` (przenikanie P)
@@ -867,6 +920,10 @@
       var io = yo * siatka.w + xo;
       if (da < wyspa.odl[io]) wyspa.odl[io] = da;
     }
+    // pole fal (A1) z tej samej odległości od brzegu, którą czyta woda; tablica zostaje w poziomie (odczyty na CPU, B3)
+    var faleWl = o.fale !== false;
+    if (faleWl && !Fale) throw new Error('brak GeologiaFale (geologia/fale.js)');
+    if (faleWl) [arch, wyspa].forEach(function (P) { if (P) P.poleFal = Fale.poleFal(P.s.wys, P.w, P.h, P.dx, P.dz, P.odl, Fale.KIERUNEK_FALI); });
     wyspa.indeksy = indeksyJednostek(siatka.wys, siatka.w, siatka.h, siatka.bbox, jednostki, pip);
     var wyspaPrzed = przed(wyspa);
     (poz.wstawki || []).forEach(function (sw) {
@@ -895,6 +952,14 @@
       t.generateMipmaps = false; t.needsUpdate = true;
       return t;
     }
+    // Pole fal RGBA8 (A1): ten sam układ co teksturaWysokosci (wiersz 0 = północ, bez flipY, uv z geUv w shaderze wody).
+    function teksturaPolaFal(P) {
+      var t = new T.DataTexture(P.poleFal, P.w, P.h, T.RGBAFormat, T.UnsignedByteType);
+      t.wrapS = t.wrapT = T.ClampToEdgeWrapping;
+      t.magFilter = t.minFilter = T.LinearFilter;
+      t.generateMipmaps = false; t.unpackAlignment = 1; t.needsUpdate = true;
+      return t;
+    }
     // Szew między poziomami: grubszy poziom wycina prostokąt drobniejszego pomniejszony o zakładkę, w której oba się
     // pokrywają (brzeg drobniejszego jest tam już wtopiony w grubszy, a grubszy leży wewnątrz prostokąta 6 m / 20 m niżej,
     // więc zakładkę rozstrzyga test głębi) — bez zakładki na krawędzi wycięcia prześwitywały szpary (rasteryzacja krawędzi
@@ -915,11 +980,13 @@
     }
     if (arch) {
       siatkaPoziomu(arch, [zakladka(wyspa.prost, 1.5)], false); arch.tWys = teksturaWysokosci(arch); arch.mesh.name = 'archipelag';
+      if (arch.poleFal) arch.tFale = z(teksturaPolaFal(arch));
     }
     siatkaPoziomu(wyspa, wstawki.map(function (P) { return zakladka(P.prost, 0.12); }), true);
     wyspa.mesh.name = 'teren';
     wyspa.mat.userData.u.uEwoBrzeg.value.set(wyspa.x0, wyspa.z0, wyspa.x1, wyspa.z1);
     wyspa.tWys = teksturaWysokosci(wyspa);
+    if (wyspa.poleFal) wyspa.tFale = z(teksturaPolaFal(wyspa));
     wstawki.forEach(function (P) {
       siatkaPoziomu(P, [], false); P.mesh.name = 'wstawka-' + P.id;
     });
@@ -993,9 +1060,13 @@
       uSlonce: { value: new T.Vector3(0, 1, 0) }, uKolorSlonca: { value: new T.Vector3(1, 1, 1) }, uAmb: { value: new T.Vector3(0.5, 0.5, 0.5) },
       uZenitL: { value: new T.Vector3() }, uHoryzontL: { value: new T.Vector3() }, uPrzynW: { value: null }, uEwoWoda: { value: 0 },
       uZiemia: { value: null }, uDaleko: { value: 0 }, uWodaJasn: { value: 1 }, uSrodekLL: { value: new T.Vector2(Teren.SRODEK.lon, Teren.SRODEK.lat) },
-      uKmStopien: { value: new T.Vector2(KM_STOPIEN * Math.cos(Teren.SRODEK.lat * RAD), KM_STOPIEN) } }]);
+      uKmStopien: { value: new T.Vector2(KM_STOPIEN * Math.cos(Teren.SRODEK.lat * RAD), KM_STOPIEN) },
+      uPoleW: { value: null }, uPoleA: { value: null }, uKierFali: { value: new T.Vector2(0, 1) }, uFaleWl: { value: 0 }, uFaleGrzbiety: { value: 0 } }]);
     // UniformsUtils.merge klonuje tekstury — podmieniamy z powrotem na te same obiekty (jedno wgranie na GPU)
     uWoda.uWysW.value = wyspa.tWys; uWoda.uWysA.value = arch ? arch.tWys : wyspa.tWys; uWoda.uFale.value = tFale; uWoda.uPrzynW.value = tPaleta; uWoda.uZiemia.value = tPaleta;
+    // fale A1: bez pola (pokaz) sampler dostaje paletę, a uFaleWl = 0 zeruje każdy wkład; archipelag bez pola — pole wyspy
+    uWoda.uPoleW.value = wyspa.tFale || tPaleta; uWoda.uPoleA.value = (arch && arch.tFale) || wyspa.tFale || tPaleta;
+    if (faleWl) { uWoda.uKierFali.value.set(Fale.KIERUNEK_FALI[0], Fale.KIERUNEK_FALI[1]); uWoda.uFaleWl.value = 1; uWoda.uFaleGrzbiety.value = flt ? 1 : 0; }
     Object.keys(UE).forEach(function (k) { uWoda[k] = UE[k]; });          // czas geologiczny: te same obiekty co w terenie
     Object.keys(UM).forEach(function (k) { uWoda[k] = UM[k]; });
     var matWody = z(new T.ShaderMaterial({ uniforms: uWoda, vertexShader: WODA_VERT, fragmentShader: WODA_FRAG, transparent: true,
