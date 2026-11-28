@@ -45,7 +45,7 @@
   ];
   // Kolejność leniwego ładowania: tylko pliki, które istnieją. Kolejne zadania dopisują swoje PRZED widok.js —
   // widok.js jest ostatni, bo korzysta z reszty. Pliki konkretnego miejsca: GeologiaMiejsca.MIEJSCA[].pliki.
-  var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/ewolucja.js', 'geologia/fale.js', 'geologia/scena.js', 'geologia/slonce.js', 'geologia/gwiazdy.js', 'geologia/animacje.js',
+  var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/ewolucja.js', 'geologia/fale.js', 'geologia/sklejka.js', 'geologia/scena.js', 'geologia/slonce.js', 'geologia/gwiazdy.js', 'geologia/animacje.js',
     'geologia/rozdzialy.js', 'geologia/turystyka-scena.js', 'geologia/wulkany-scena.js', 'geologia/lektor.js', 'geologia/dzwiek.js',
     'geologia/pokaz.js', 'geologia/widok.js'];
   var KONTROLE = ['biel', 'czern'];
@@ -53,6 +53,10 @@
   var WARSTWY = ['turystyka', 'wulkany'];
   var WIDOKI = ['poludnie', 'polnoc', 'gora'];    // ta sama lista co Kompas.WIDOKI (geologia/turystyka-scena.js)
   var POGODY = ['pogodnie', 'chmury', 'kalima'];  // ta sama lista co GeologiaSlonce.POGODY (geologia/slonce.js)
+  // Materiał makiety (Task B1): 'zwykly' (domyślny, w adresie go nie ma) | 'sklejka'. Przewyższenia paska (widok.js) —
+  // te same co klucze GeologiaSklejka.KROKI (test/geologia-sklejka.test.js)
+  var MATERIALY = ['zwykly', 'sklejka'];
+  var PRZEWYZSZENIA = [1, 1.5, 3];
   // Lektor na zaproszenie (Task 9): token nginx secure_link = <expires: unix s>.<md5: base64url 22 zn.>
   var ZAPROSZENIE = /^(\d{9,11})\.([A-Za-z0-9_-]{22})$/;
   var BAZA_LEKTORA = 'lektor/';
@@ -104,6 +108,8 @@
     return (m[1].length < 2 ? '0' : '') + m[1] + ':' + m[2];
   }
   function pogoda(v) { var s = typeof v === 'string' ? dekoduj(v).trim().toLowerCase() : null; return POGODY.indexOf(s) >= 0 ? s : null; }
+  // tylko materiał inny niż domyślny ma pole w adresie; nieznana wartość (np. odrzucony „gips”) = brak pola
+  function material(v) { var s = typeof v === 'string' ? dekoduj(v).trim().toLowerCase() : null; return s === 'sklejka' ? s : undefined; }
 
   function parsujHashGeologii(hash) {
     if (typeof hash !== 'string') return null;
@@ -125,6 +131,8 @@
       var po = /&pora=([^&]*)/.exec(reszta), pg = /&pogoda=([^&]*)/.exec(reszta);
       if (po && pora(po[1])) wynik.pora = pora(po[1]);
       if (pg && pogoda(pg[1])) wynik.pogoda = pogoda(pg[1]);
+      var ma = /&material=([^&]*)/.exec(reszta);
+      if (ma && material(ma[1])) wynik.material = material(ma[1]);
     } else if (r && czyRozdzial(r[1])) wynik.rozdzial = r[1];
     if (nieznane) wynik.nieznane = nieznane;
     var zp = /&zaproszenie=([^&]*)/.exec(reszta), lk = /&lektor=([^&]*)/.exec(reszta);
@@ -140,6 +148,7 @@
     var liczba = function (n) { var v = wart(n); if (v === null || v === '') return null; var x = Number(v); return isFinite(x) ? x : null; };
     var mi = wart('geologia'), miejsce = MIEJSCA_ID.indexOf(mi) >= 0 ? mi : null;
     var ro = wart('rozdzial'), t = liczba('t'), ko = wart('kontrola'), an = wart('anim'), f = liczba('f'), wa = wart('warstwa'), wi = wart('widok');
+    var pw = liczba('przew');
     return {
       smoke: flaga('smoke'), widoczna: flaga('geologia'), miejsce: miejsce,
       tryb: miejsce ? (wart('tryb') === 'makieta' || flaga('makieta') ? 'makieta' : 'pokaz') : null,
@@ -153,12 +162,15 @@
       warstwa: warstwy(wa),
       widok: WIDOKI.indexOf(wi) >= 0 ? wi : null,
       pora: pora(wart('pora')), pogoda: pogoda(wart('pogoda')),
-      lektor: wart('lektor') === 'lokalny' ? 'lokalny' : null
+      lektor: wart('lektor') === 'lokalny' ? 'lokalny' : null,
+      // Task B1: materiał (hak smoke i pomiar wydajności — oba niosą stan w zapytaniu) i hak przewyższenia (tylko wartości paska)
+      material: material(wart('material')),
+      przew: PRZEWYZSZENIA.indexOf(pw) >= 0 ? pw : null
     };
   }
 
   var api = { MIEJSCA_ID: MIEJSCA_ID, TRYBY: TRYBY, ROZDZIALY: ROZDZIALY, PLIKI: PLIKI, ANIMACJE: ANIMACJE, WARSTWY: WARSTWY, WIDOKI: WIDOKI,
-    POGODY: POGODY, pora: pora, pogoda: pogoda,
+    POGODY: POGODY, pora: pora, pogoda: pogoda, MATERIALY: MATERIALY, PRZEWYZSZENIA: PRZEWYZSZENIA, material: material,
     BAZA_LEKTORA: BAZA_LEKTORA, HOST_LEKTORA: HOST_LEKTORA, parsujHashGeologii: parsujHashGeologii, parsujZapytanieGeologii: parsujZapytanieGeologii, warstwy: warstwy,
     zrodloLektora: zrodloLektora, krzywe: null };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
@@ -292,6 +304,7 @@
       if (makieta && zap.warstwa) s.warstwa = zap.warstwa;
       if (makieta && zap.pora) s.pora = zap.pora;
       if (makieta && zap.pogoda) s.pogoda = zap.pogoda;
+      if (makieta && zap.material) s.material = zap.material;
       root.Zakladki.przelacz('geologia', s);
     } else if (parsujHashGeologii(root.location.hash)) root.Zakladki.zAdresu(root.location.hash);
   }

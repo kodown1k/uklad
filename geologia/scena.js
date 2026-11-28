@@ -3,7 +3,7 @@
    GeologiaScena.zbuduj(T, renderer, { siatka, poziomy: { archipelag, wstawki }, dane, lod: 'pelny'|'lekki', przewyzszenie = 1.5,
      fale = true })
      → { scena, kamera, teren, ocean, kolorowanie(tryb), przekroj(null | { kat_st, przesuniecie_km }) → profil, chmury(wl),
-         woda(stan, f), swiatlo({ pora, az, el }), przewyzszenie(x), czesci: { [id]: Object3D }, pick(ndcX, ndcY) → id|null,
+         woda(stan, f), material(m), swiatlo({ pora, az, el }), przewyzszenie(x), czesci: { [id]: Object3D }, pick(ndcX, ndcY) → id|null,
          podswietl(id|null), kotwica(id) → [x, y, z], animuj(t), czas(Ma), zwolnij(),
          efekty: { luna, zar, cienChmur, wypelnienie } (haki animacji A1–A4, geologia/animacje.js),
          (dodatki dla widoku i sondy) wysokosc(x, z), probkaSwiatla(x, z), lad, granice, trafiaSciane(ndc), punktNaMorzu(ndc), stan(),
@@ -40,11 +40,16 @@
    (mieszanka amplitud, nie faz), piana z rozbryzgiem na klifach i pasem wybiegu na plażach. o.fale === false (pokaz:
    kadry filmów strojone bez fal) — pola się nie liczy, uFaleWl = 0 i woda jest bit w bit jak przed A1. Czas geologiczny
    (uEwoMa > 0): pole opisuje dzisiejszy brzeg, więc gaśnie na całym morzu (geDzis) — zostaje martwa fala bez cienia
-   i dotychczasowy pas piany z brzegu chwili. */
+   i dotychczasowy pas piany z brzegu chwili.
+   Materiał „Sklejka” (Task B1 — geologia/sklejka.js): material('zwykly'|'sklejka') — uMaterial 0/1 i uKrokSklejki
+   (GeologiaSklejka.krok(przewyższenie), odświeżany w przewyzszenie(x)), woda szklana z mgłą wodną żywicy #2e7f8c albo realna.
+   Warstwy liczone z wysokości rysowanej powierzchni (przy czasie geologicznym — rzeźba chwili), krawędzie i cień schodka
+   z pochodnych ekranowych; bez tekstur i bez nowych programów. Domyślnie uMaterial = 0: gałąź pominięta (pokaz). */
 (function (root) {
   var Teren = root.Teren || (typeof require === 'function' ? require('./teren.js') : null);
   var Ew = root.Ewolucja || (typeof require === 'function' ? require('./ewolucja.js') : null);
   var Fale = root.GeologiaFale || (typeof require === 'function' ? require('./fale.js') : null);
+  var Sklejka = root.GeologiaSklejka || (typeof require === 'function' ? require('./sklejka.js') : null);
   var RAD = Math.PI / 180;
   var MORZE_POD_KM = 0.012;            // dno o wysokości 0 (półka szwu SRTM/ETOPO) leży 12 m pod taflą — bez z-fightingu
   var WTOP_WYSPA_KM = 8, WTOP_WSTAWKA_KM = 0.3;
@@ -189,6 +194,9 @@
 
   /* ---------- przeglądarka: pomocnicze ---------- */
   function hexLin(T, hex) { return new T.Color(hex).convertSRGBToLinear(); }
+  // materiał „Sklejka” (Task B1): barwa mgły wodnej (ocean-żywica) i grubość arkusza z przewyższenia
+  var KOLOR_WODY = { zwykly: '#123a52', sklejka: '#2e7f8c' };
+  function krokSklejki(e) { return Sklejka ? Sklejka.krok(e) : 75; }
   function plotno(w, h) { var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 
   // Siatka o układzie PlaneGeometry(W, H, segX, segY) w tablicach typowanych: wierzchołek (ix, iy) = iy·(segX+1) + ix,
@@ -373,6 +381,8 @@
     // efekty animacji: łuna lawy (odległość od toru), żar rosnących komórek (A1), cień chmur A4 na świetle klucza
     'uniform vec2 uLunaP[24]; uniform float uLunaN; uniform vec3 uLunaKolor; uniform float uLunaZasieg; uniform float uZar;',
     'uniform float uCienChmur; uniform float uStropA4; uniform float uCzasA4; uniform vec3 uSlonceKier;',
+    // materiał makiety (Task B1): 0 zwykły (pokaz zawsze), 1 sklejka; grubość arkusza [m n.p.m.] z GeologiaSklejka.krok(przew)
+    'uniform float uMaterial; uniform float uKrokSklejki;',
     'float geCien = 1.0;',
     GLSL_WSPOLNE,
     GLSL_CHMURY_A4,
@@ -417,6 +427,25 @@
     '}'
   ].join('\n');
 
+  // Sklejka (Task B1): wszystkie pochodne ekranowe na samym początku main(), pod warunkiem jednolitym (uniform) — przed
+  // discard płaszczyzn cięcia (clipping_planes_fragment), discard wycięć wstawek i gałęzią lądu (geH > 0): w przepływie
+  // zależnym od danych pochodne GLSL są nieokreślone (piksele brzegu, krawędzie cięcia). GLSL_TEREN_KOLOR tylko ich używa.
+  // Słoje: faza wzdłuż vSwiat.xz, kierunek obrócony o 90° w co drugim arkuszu (jak forniry), zaburzona szumem.
+  var GLSL_SKLEJKA_POCHODNE = [
+    'float geSkWs = 0.0, geSkFw = 1.0, geSkFaza = 0.0, geSkFwF = 1e3, geSkHx = 0.0, geSkHy = 0.0, geSkNr = 0.0, geSkParz = 0.0;',
+    'vec2 geSkDx = vec2(0.0), geSkDy = vec2(0.0);',
+    'if (uMaterial > 0.5) {',
+    '  geSkWs = vWys * 1000.0 / uKrokSklejki;',
+    '  geSkNr = floor(geSkWs); geSkParz = mod(geSkNr, 2.0);',
+    '  vec2 geKs = geSkParz < 0.5 ? vec2(0.94, 0.34) : vec2(-0.34, 0.94);',
+    '  geSkFaza = dot(vSwiat.xz, geKs) * 60.0 + geSzum(vec2(dot(vSwiat.xz, geKs) * 1.5, dot(vSwiat.xz, vec2(-geKs.y, geKs.x)) * 9.0) + geSkNr * 7.3) * 5.0;',
+    '  geSkFw = max(fwidth(geSkWs), 1e-5);',
+    '  geSkFwF = fwidth(geSkFaza);',
+    '  geSkDx = dFdx(vSwiat.xz); geSkDy = dFdy(vSwiat.xz);',
+    '  geSkHx = dFdx(geSkWs); geSkHy = dFdy(geSkWs);',
+    '}'
+  ].join('\n');
+
   var GLSL_TEREN_KOLOR = [
     'for (int i = 0; i < 3; i++) {',
     '  if (float(i) < uLWyc) { vec4 r = uWyc[i]; if (vSwiat.x > r.x && vSwiat.x < r.z && vSwiat.z > r.y && vSwiat.z < r.w) discard; }',
@@ -447,6 +476,29 @@
     '  else geKol = geHex(146.0, 142.0, 132.0);',
     '} else if (uTryb < 2.5) geKol = geKrajobraz(geH, geN.a * 2.0 - 1.0, geNw, geJ);',
     'else geKol = vec3(0.2);',                                     // „kalibracja”: jednolite albedo 0,2 do pomiaru światła
+    // Sklejka (Task B1; geologia/sklejka.js): ląd wycięty z arkuszy o grubości uKrokSklejki m — nr = floor(geH / krok),
+    // geH = wysokość rysowanej powierzchni (vWys — przy czasie geologicznym rzeźba CHWILI z wierzchołka, nie dzisiejsza).
+    // Pochodne policzone na początku (geSk*); tu tylko ich użycie. Z daleka (arkusz węższy niż ok. 3 px) krawędzie,
+    // cień schodka, naprzemienne arkusze i słoje gasną do średniej — bez migotania i mory.
+    'if (uMaterial > 0.5 && geH > 0.0 && uTryb < 2.5) {',
+    '  float geFr = geSkWs - geSkNr;',
+    '  float geBlisko = 1.0 - smoothstep(0.2, 0.45, geSkFw);',
+    // arkusze naprzemiennie jasne i ciemne (#e2c496 / #cdaa78)
+    '  vec3 geDrewno = mix(geHex(226.0, 196.0, 150.0), geHex(205.0, 170.0, 120.0), mix(0.5, geSkParz, geBlisko));',
+    '  float geSloj = (0.5 + 0.5 * sin(geSkFaza)) * (1.0 - smoothstep(0.8, 2.0, geSkFwF)) * geBlisko;',
+    // barwy z grupy „Barwy”: jednostki — farba na sklejce (× 0,85, słoje prześwitują); hipsometria — bejca na drewnie
+    '  vec3 geB = uTryb > 0.5 && uTryb < 1.5 ? (geJ > 0.5 ? geKol * 0.85 : geDrewno) : mix(geDrewno, geKol, 0.35);',
+    '  geB *= 1.0 - 0.12 * geSloj;',
+    // przypalona krawędź (cięcie laserem): początek arkusza, frakcja < 1,5 px; ×0,55
+    '  float geKraw = (1.0 - smoothstep(0.0, geSkFw * 1.5, geFr)) * geBlisko;',
+    // cień schodka: arkusz wyżej leży w stronę Słońca bliżej niż 1,5 px — gradient wysokości rysowanej powierzchni
+    // z pochodnych ekranowych (rozwiązanie 2 × 2: dh = g · dxz), cos kąta między stokiem w górę a azymutem Słońca; ×0,8
+    '  float geDet = geSkDx.x * geSkDy.y - geSkDx.y * geSkDy.x;',
+    '  vec2 geG = vec2(geSkHx * geSkDy.y - geSkHy * geSkDx.y, geSkDx.x * geSkHy - geSkDy.x * geSkHx) * sign(geDet);',
+    '  float geCos = dot(geG, uSlonceKier.xz) / max(length(geG) * length(uSlonceKier.xz), 1e-6);',
+    '  float geSch = (1.0 - smoothstep(0.0, max(geSkFw * 1.5 * geCos, 1e-5), 1.0 - geFr)) * step(0.05, geCos) * geBlisko * smoothstep(-0.02, 0.08, uSlonceKier.y);',
+    '  geKol = geB * mix(1.0, 0.55, geKraw) * mix(1.0, 0.8, geSch);',
+    '}',
     'diffuseColor.rgb *= geKol;'
   ].join('\n');
 
@@ -809,7 +861,11 @@
     });
     var tPaleta = z(new T.DataTexture(paleta, 256, 1, T.RGBAFormat, T.UnsignedByteType));
     tPaleta.magFilter = tPaleta.minFilter = T.NearestFilter; tPaleta.generateMipmaps = false; tPaleta.needsUpdate = true;
-    var U = { uTryb: { value: 0 }, uNasycMaks: { value: 1 }, uPrzew: { value: e }, uSzklo: { value: 0 }, uPaleta: { value: tPaleta }, uKolorWody: { value: hexLin(T, '#123a52') } };
+    var U = { uTryb: { value: 0 }, uNasycMaks: { value: 1 }, uPrzew: { value: e }, uSzklo: { value: 0 }, uPaleta: { value: tPaleta }, uKolorWody: { value: hexLin(T, '#123a52') },
+      // materiał (Task B1): domyślnie zwykły — gałąź sklejki w shaderze pominięta (pokaz nigdy jej nie włącza)
+      uMaterial: { value: 0 }, uKrokSklejki: { value: krokSklejki(e) } };
+    // barwa wody pod taflą (mgła wodna stanu „szklana”): zwykła albo żywica sklejki; × jasność światła z swiatlo()
+    var kolorWody = KOLOR_WODY.zwykly, jasnWody = 1;
     // czas geologiczny (wspólne dla terenu, głębi cienia i wody) i efekty animacji (łuna, żar, cień chmur)
     var tab = function (n, f) { var a = []; for (var i = 0; i < n; i++) a.push(f()); return a; };
     var UE = { uEwoMa: { value: 0 }, uEwoDno: { value: Ew.DNO },
@@ -859,6 +915,7 @@
     function materialTerenu(P, tNorm, tInd, wyciecia) {
       var m = z(new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.94, metalness: 0, normalMap: tNorm,
         normalMapType: T.ObjectSpaceNormalMap, clippingPlanes: plaszczyzny, clipShadows: true, clipIntersection: !!ostrze }));
+      m.extensions = { derivatives: true };          // sklejka (B1): fwidth/dFdx — w WebGL1 GL_OES_standard_derivatives
       var wyc = [0, 1, 2].map(function (k) { var r = wyciecia[k]; return r ? new T.Vector4(r.x0, r.z0, r.x1, r.z1) : new T.Vector4(); });
       var u = { uIndeksy: { value: tInd || tPaleta }, uMaIndeksy: { value: tInd ? 1 : 0 }, uMloda: { value: tInd ? iMloda : 0 },
         uWyc: { value: wyc }, uLWyc: { value: wyciecia.length },
@@ -874,6 +931,7 @@
         sh.fragmentShader = sh.fragmentShader
           .replace('#include <common>', '#include <common>\n' + GLSL_TEREN_PARS + '\n' + GLSL_MGIELKA)
           .replace('#include <fog_fragment>', MGIELKA_KONIEC)
+          .replace('#include <clipping_planes_fragment>', GLSL_SKLEJKA_POCHODNE + '\n#include <clipping_planes_fragment>')
           .replace('#include <color_fragment>', '#include <color_fragment>\n' + GLSL_TEREN_KOLOR)
           .replace('#include <normal_fragment_maps>', NORMALNA_EWO)
           .replace('#include <lights_fragment_begin>', LUZ_SWIATLA)
@@ -1360,7 +1418,8 @@
       uChmury.uAmb.value.set(0.5 * kw.r * p.f / (wd0.r * D0.f), 0.5 * kw.g * p.f / (wd0.g * D0.f), 0.5 * kw.b * p.f / (wd0.b * D0.f));
       uChmury.uKolorSlonca.value.set(kl.r * p.k / (kd0.r * D0.k), kl.g * p.k / (kd0.g * D0.k), kl.b * p.k / (kd0.b * D0.k));
       uChmury.uSlonce.value.set(0, Math.min(1, d[1] / 0.5), 0);      // wyżej niż 30° warstwa przycinałaby się do bieli
-      U.uKolorWody.value.copy(new T.Color('#123a52').convertSRGBToLinear()).multiplyScalar(p.f * 1.4 + p.k * Math.max(d[1], 0) * 0.3);
+      jasnWody = p.f * 1.4 + p.k * Math.max(d[1], 0) * 0.3;
+      U.uKolorWody.value.copy(new T.Color(kolorWody).convertSRGBToLinear()).multiplyScalar(jasnWody);
       niebo();
       renderer.shadowMap.needsUpdate = true;
       return { pora: sw.pora, az: sw.az, el: sw.el };
@@ -1373,6 +1432,7 @@
       if (x == null) return e;
       e = Math.max(0.5, Math.min(5, +x || 1));
       U.uPrzew.value = e; UM.uMgPrzew.value = e;
+      U.uKrokSklejki.value = krokSklejki(e);         // warstwy sklejki zgodne ze skalą Y przy każdej zmianie (także w animacji)
       [arch, wyspa].concat(wstawki).forEach(function (P) { if (P) P.mesh.scale.y = e; });
       chmuryMesh.position.y = STROP_CHMUR_KM * e;
       UF.uStropA4.value = stropA4 * e;
@@ -1835,6 +1895,8 @@
       komp = null; rtPomiaru = null; dalekiLadP = null;
     }
 
+    function woda(stan, f) { f = f == null ? 1 : Math.max(0, Math.min(1, +f)); U.uSzklo.value = uWoda.uSzklo.value = stan === 'szklana' ? f : 1 - f; return U.uSzklo.value; }
+
     przewyzszenie(e);
     renderer.shadowMap.needsUpdate = true;
 
@@ -1852,7 +1914,18 @@
       },
       kotwicePrzekroju: function () { return sciana ? kotwiceSciany : []; },
       chmury: function (wl) { chmuryMesh.visible = !!wl; return chmuryMesh.visible; },
-      woda: function (stan, f) { f = f == null ? 1 : Math.max(0, Math.min(1, +f)); U.uSzklo.value = uWoda.uSzklo.value = stan === 'szklana' ? f : 1 - f; return U.uSzklo.value; },
+      woda: woda,
+      // materiał makiety (Task B1): 'sklejka' — warstwy w shaderze terenu i ocean-żywica (woda szklana, mgła wodna #2e7f8c);
+      // 'zwykly' (i każda inna wartość) — jak przed B1: woda realna, dotychczasowa barwa
+      material: function (m) {
+        var sk = m === 'sklejka';
+        U.uMaterial.value = sk ? 1 : 0;
+        U.uKrokSklejki.value = krokSklejki(e);
+        kolorWody = sk ? KOLOR_WODY.sklejka : KOLOR_WODY.zwykly;
+        U.uKolorWody.value.copy(new T.Color(kolorWody).convertSRGBToLinear()).multiplyScalar(jasnWody);
+        woda(sk ? 'szklana' : 'realna', 1);
+        return sk ? 'sklejka' : 'zwykly';
+      },
       swiatlo: swiatlo, przewyzszenie: przewyzszenie, pick: pick, podswietl: podswietl, najedz: najedz, kotwica: kotwica, animuj: animuj, zwolnij: zwolnij,
       czas: czasGeo, efekty: efekty, renderer: renderer,
       // dane czasu geologicznego wyspy (A1: szczyty jednostek) — przygotowuje je przy pierwszym wołaniu
@@ -1874,6 +1947,7 @@
       dekoracje: { sciana: function () { return sciana; }, chmury: chmuryMesh, kopula: kopula, lawa: lawa, klucz: klucz, wypelnienie: wypelnienie },
       stan: function () {
         return { przewyzszenie: e, kolorowanie: ['teren', 'geologia', 'krajobraz', 'kalibracja'][U.uTryb.value], szklo: U.uSzklo.value, chmury: chmuryMesh.visible,
+          material: U.uMaterial.value > 0.5 ? 'sklejka' : 'zwykly', krokSklejki_m: U.uKrokSklejki.value,
           swiatlo: { pora: sw.pora, az: sw.az, el: sw.el, dostroj: sw.dostroj }, przekroj: przek ? { kat_st: przek.kat_st, przesuniecie_km: przek.przesuniecie_km, maks_m: przek.profil ? przek.profil.maks_m : null } : null,
           podswietlona: podswietlona, najechana: najechana, etykiety: piny.filter(function (g) { return g.userData.pin.widoczna; }).length,
           wierzcholki: wierzcholki, dysk_km: Rdysku, lod: krok === 1 ? 'pelny' : 'lekki', czasMa: ewo.Ma, przygaszenie: przygaszenie };
