@@ -1,9 +1,9 @@
 'use strict';
 /* Zakładka Geologia — scena makiety (plik przeglądarkowy, THREE r128; czysta część w node: dual-export).
    GeologiaScena.zbuduj(T, renderer, { siatka, poziomy: { archipelag, wstawki }, dane, lod: 'pelny'|'lekki', przewyzszenie = 1.5,
-     fale = true, cienieHor = true })
+     fale = true, cienieHor = true, wiatr = true, wiatrLinie = GeologiaWiatr.LICZBA.pelna })
      → { scena, kamera, teren, ocean, kolorowanie(tryb), przekroj(null | { kat_st, przesuniecie_km }) → profil, chmury(wl),
-         woda(stan, f), material(m), swiatlo({ pora, az, el }), horyzont(mapa), cienieHor(wl), przewyzszenie(x), czesci: { [id]: Object3D }, pick(ndcX, ndcY) → id|null,
+         woda(stan, f), material(m), swiatlo({ pora, az, el }), horyzont(mapa), cienieHor(wl), wiatr(wl, n), przewyzszenie(x), czesci: { [id]: Object3D }, pick(ndcX, ndcY) → id|null,
          podswietl(id|null), kotwica(id) → [x, y, z], animuj(t), czas(Ma), zwolnij(),
          efekty: { luna, zar, cienChmur, wypelnienie } (haki animacji A1–A4, geologia/animacje.js),
          (dodatki dla widoku i sondy) wysokosc(x, z), probkaSwiatla(x, z), lad, granice, trafiaSciane(ndc), punktNaMorzu(ndc), stan(),
@@ -51,13 +51,20 @@
    Teide z modelu stożka (R13, GeologiaHoryzont.cienStozka — klin trójkątny), gasi światło słoneczne, połysk i pianę,
    a przy niskim Słońcu także poświatę (barwa × 1 − POSWIATA·cień). uCienieHor = 1 tylko z wczytaną mapą, bez czasu geologicznego (uEwoMa > 0 — mapa opisuje dzisiejszą rzeźbę)
    i z zezwoleniem widoku cienieHor(wl) (animacje A1–A5: false); stan().cienieHor. o.cienieHor === false (pokaz) — mapy
-   się nie wgrywa nigdy: gałąź pominięta, kadry filmów bit w bit jak przed A3. */
+   się nie wgrywa nigdy: gałąź pominięta, kadry filmów bit w bit jak przed A3.
+   Smugi pasatu i piasek (Task A2, schemat typowych warunków — geologia/wiatr.js): pole opływu z rzeźby wyspy (raz, na CPU)
+   i linie prądu od brzegu nawietrznego w jednej geometrii LineSegments (atrybuty position, s, piasek, zanik) — kreska biegnąca
+   liczona w shaderze z uCzas (bufor bez aktualizacji w klatce). Grupa w układzie siatki wyspy, scale.y = przewyższenie.
+   wiatr(wl, n): zezwolenie widoku (animacje A1–A5: false) i liczba linii (zmiana → jedna przebudowa geometrii, pole
+   zostaje); widoczne tylko bez czasu geologicznego (uEwoMa > 0 — linie opisują dzisiejszą rzeźbę). o.wiatr === false
+   (pokaz) — warstwy nie ma wcale: kadry filmów bez smug. stan().wiatr (widoczna), stan().wiatrLinie, stan().wiatrMs (budowa). */
 (function (root) {
   var Teren = root.Teren || (typeof require === 'function' ? require('./teren.js') : null);
   var Ew = root.Ewolucja || (typeof require === 'function' ? require('./ewolucja.js') : null);
   var Fale = root.GeologiaFale || (typeof require === 'function' ? require('./fale.js') : null);
   var Sklejka = root.GeologiaSklejka || (typeof require === 'function' ? require('./sklejka.js') : null);
   var Hor = root.GeologiaHoryzont || (typeof require === 'function' ? require('./horyzont.js') : null);
+  var Wt = root.GeologiaWiatr || (typeof require === 'function' ? require('./wiatr.js') : null);
   var RAD = Math.PI / 180;
   var MORZE_POD_KM = 0.012;            // dno o wysokości 0 (półka szwu SRTM/ETOPO) leży 12 m pod taflą — bez z-fightingu
   var WTOP_WYSPA_KM = 8, WTOP_WSTAWKA_KM = 0.3;
@@ -1184,6 +1191,62 @@
     chmuryMesh.renderOrder = 2; chmuryMesh.visible = false; chmuryMesh.name = 'chmury';
     scena.add(chmuryMesh);
 
+    // --- smugi pasatu i piasek (Task A2) ---
+    // Pole i linie w układzie siatki wyspy (km od narożnika NW) — grupa przesunięta o (x0, z0) prostokąta, scale.y = przewyższenie.
+    // Przed morzem chmur (renderOrder 1,5): strop chmur przykrywa smugi z góry. Pokaz (o.wiatr === false): bez warstwy.
+    var wiatrSt = { dozwolone: o.wiatr !== false, zezwolenie: true, n: 0, pole: null, zPd: Infinity, ms: 0 };
+    if (wiatrSt.dozwolone && !Wt) throw new Error('brak GeologiaWiatr (geologia/wiatr.js)');
+    var grupaWiatru = null, linieWiatru = null, uWiatr = null;
+    function zbudujSmugi(n) {
+      n = Math.max(0, Math.floor(+n || 0));
+      if (!wiatrSt.dozwolone || n === wiatrSt.n) return false;
+      var t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if (!wiatrSt.pole) {
+        wiatrSt.pole = Wt.pole(siatka.wys, siatka.w, siatka.h, dxw, dzw);
+        wiatrSt.zPd = Teren.doLokalnych(siatka, Teren.SRODEK.lon, Wt.LAT_PIASKU)[1] - rw.z0;
+      }
+      var L = Wt.linie(wiatrSt.pole, siatka.w, siatka.h, dxw, dzw, { n: n, ziarno: 1, wys: siatka.wys, zPoludnia: wiatrSt.zPd });
+      var P = n ? L.s.length / n : 0, pv = new Float32Array(n * P), idx = new Uint32Array(n * Math.max(0, P - 1) * 2), l, k, q = 0;
+      for (l = 0; l < n; l++) {
+        if (L.piasek[l]) pv.fill(1, l * P + L.piasekOd[l], (l + 1) * P);      // piasek od pierwszej plaży (R16)
+        for (k = 0; k < P - 1; k++) { idx[q++] = l * P + k; idx[q++] = l * P + k + 1; }
+      }
+      var g = new T.BufferGeometry();
+      g.setAttribute('position', new T.BufferAttribute(L.pozycje, 3));
+      g.setAttribute('s', new T.BufferAttribute(L.s, 1));
+      g.setAttribute('piasek', new T.BufferAttribute(pv, 1));
+      g.setAttribute('zanik', new T.BufferAttribute(L.zanik, 1));
+      g.setIndex(new T.BufferAttribute(idx, 1));
+      g.computeBoundingSphere();
+      if (!grupaWiatru) {
+        uWiatr = T.UniformsUtils.merge([T.UniformsLib.fog, { uCzas: { value: 0 }, uJasn: { value: 1 },
+          uKolor: { value: new T.Color(0xeef4fa) }, uKolorPiasku: { value: new T.Color(0xe8c58a) } }]);
+        var mat = z(new T.ShaderMaterial({ uniforms: uWiatr, vertexShader: Wt.GLSL_VERT, fragmentShader: Wt.GLSL_FRAG, transparent: true,
+          depthWrite: false, fog: true, clipping: true, clippingPlanes: plaszczyzny, clipIntersection: !!ostrze }));
+        linieWiatru = new T.LineSegments(z(g), mat);
+        linieWiatru.renderOrder = 1.5; linieWiatru.name = 'smugi';
+        grupaWiatru = new T.Group(); grupaWiatru.name = 'wiatr';
+        grupaWiatru.position.set(rw.x0, 0, rw.z0); grupaWiatru.scale.y = e;
+        grupaWiatru.add(linieWiatru);
+        scena.add(grupaWiatru);
+      } else {
+        // zmiana liczby linii (jakość „lekka”): stara geometria zwolniona i zdjęta z listy zasobów
+        var stara = linieWiatru.geometry, iz = zasoby.indexOf(stara);
+        stara.dispose(); if (iz >= 0) zasoby.splice(iz, 1);
+        linieWiatru.geometry = z(g);
+      }
+      wiatrSt.n = n;
+      wiatrSt.ms = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+      wiatrAkt();
+      return true;
+    }
+    function wiatrAkt() {
+      var wl = !!grupaWiatru && wiatrSt.n > 0 && wiatrSt.zezwolenie && !(ewo.Ma > 0);
+      if (grupaWiatru) grupaWiatru.visible = wl;
+      return wl;
+    }
+    zbudujSmugi(o.wiatrLinie != null ? o.wiatrLinie : Wt ? Wt.LICZBA.pelna : 0);
+
     // --- znaczniki części: pinezka (kropka + szpilka) i etykieta sprite ---
     var grupaCzesci = new T.Group(); grupaCzesci.name = 'czesci';
     scena.add(grupaCzesci);
@@ -1454,6 +1517,8 @@
       uChmury.uKolorSlonca.value.set(kl.r * p.k / (kd0.r * D0.k), kl.g * p.k / (kd0.g * D0.k), kl.b * p.k / (kd0.b * D0.k));
       uChmury.uSlonce.value.set(0, Math.min(1, d[1] / 0.5), 0);      // wyżej niż 30° warstwa przycinałaby się do bieli
       jasnWody = p.f * 1.4 + p.k * Math.max(d[1], 0) * 0.3;
+      // smugi (A2): jasność światła względem stałego dnia makiety (el 30°) — w dzień 1, nocą gasną razem z rzeźbą
+      if (uWiatr) uWiatr.uJasn.value = Math.min(1, (p.f + p.k * Math.max(d[1], 0)) / (PORY.dzien.f + PORY.dzien.k * 0.5));
       U.uKolorWody.value.copy(new T.Color(kolorWody).convertSRGBToLinear()).multiplyScalar(jasnWody);
       niebo();
       renderer.shadowMap.needsUpdate = true;
@@ -1470,6 +1535,7 @@
       U.uKrokSklejki.value = krokSklejki(e);         // warstwy sklejki zgodne ze skalą Y przy każdej zmianie (także w animacji)
       [arch, wyspa].concat(wstawki).forEach(function (P) { if (P) P.mesh.scale.y = e; });
       chmuryMesh.position.y = STROP_CHMUR_KM * e;
+      if (grupaWiatru) grupaWiatru.scale.y = e;      // smugi nad rzeźbą przy każdej skali Y (także w animowanej zmianie)
       UF.uStropA4.value = stropA4 * e;
       ustawPiny();
       if (sciana && przek) { if (wTrakcie) sciana.scale.y = e; else zbudujSciane(przek.linia); }
@@ -1557,6 +1623,7 @@
     function animuj(t) {
       czas = t || 0;
       uWoda.uCzas.value = czas; uChmury.uCzas.value = czas;
+      if (uWiatr) uWiatr.uCzas.value = czas;
       kamera.updateMatrixWorld();
       var cp = kamera.position, hTer = wysokosc(cp.x, cp.z), nad = cp.y - Math.max(0, hTer == null ? 0 : hTer);
       // dysk oceanu i mgła rosną z wysokością kamery: 400 km do 16 km wysokości, wyżej 25 × wysokość
@@ -1651,7 +1718,7 @@
       if (Ma === ewo.Ma) return Ma;
       if (Ma > 0) przygotujEwolucje();
       ewo.Ma = Ma; UE.uEwoMa.value = Ma;
-      cienieHorAkt();
+      cienieHorAkt(); wiatrAkt();
       ustawPiny();
       if (sciana && przek) zbudujSciane(przek.linia);
       renderer.shadowMap.needsUpdate = true;
@@ -1957,6 +2024,7 @@
 
     function zwolnij() {
       warstwy.length = 0;
+      grupaWiatru = linieWiatru = uWiatr = null; wiatrSt.pole = null; wiatrSt.n = 0;
       zwolnijSciane();
       scena.traverse(function (ob) { if (ob.isLight && ob.shadow && ob.shadow.map) { ob.shadow.map.dispose(); ob.shadow.map = null; } });
       zasoby.forEach(function (x) { if (x && x.dispose) x.dispose(); });
@@ -2000,6 +2068,8 @@
       swiatlo: swiatlo, przewyzszenie: przewyzszenie, pick: pick,
       // cienie z mapy horyzontu (A3): wgranie mapy i zezwolenie widoku (animacje: false) → czy cienie są czynne
       horyzont: horyzont, cienieHor: function (wl) { if (wl != null) hor.zezwolenie = !!wl; return cienieHorAkt(); },
+      // smugi pasatu (A2): zezwolenie widoku (przycisk „Wiatr”, animacje: false) i liczba linii (jakość) → czy widoczne
+      wiatr: function (wl, n) { if (wl != null) wiatrSt.zezwolenie = !!wl; if (n != null) zbudujSmugi(n); return wiatrAkt(); },
       stozekTeide: function () { return stozek; }, podswietl: podswietl, najedz: najedz, kotwica: kotwica, animuj: animuj, zwolnij: zwolnij,
       czas: czasGeo, efekty: efekty, renderer: renderer,
       // dane czasu geologicznego wyspy (A1: szczyty jednostek) — przygotowuje je przy pierwszym wołaniu
@@ -2025,7 +2095,7 @@
           swiatlo: { pora: sw.pora, az: sw.az, el: sw.el, dostroj: sw.dostroj }, przekroj: przek ? { kat_st: przek.kat_st, przesuniecie_km: przek.przesuniecie_km, maks_m: przek.profil ? przek.profil.maks_m : null } : null,
           podswietlona: podswietlona, najechana: najechana, etykiety: piny.filter(function (g) { return g.userData.pin.widoczna; }).length,
           wierzcholki: wierzcholki, dysk_km: Rdysku, lod: krok === 1 ? 'pelny' : 'lekki', czasMa: ewo.Ma, przygaszenie: przygaszenie,
-          cienieHor: UH.uCienieHor.value > 0.5 };
+          cienieHor: UH.uCienieHor.value > 0.5, wiatr: !!(grupaWiatru && grupaWiatru.visible), wiatrLinie: wiatrSt.n, wiatrMs: wiatrSt.ms };
       }
     };
   }

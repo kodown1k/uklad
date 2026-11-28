@@ -61,7 +61,7 @@
    makiety; zapytanie — hak smoke i pomiar wydajności), stan().material. Animacje A1–A5 (hak &anim) wymuszają wodę ujęcia
    także przy zmianie materiału w ich trakcie; nowa budowa makiety najpierw kładzie wodę materiału.
    Hak smoke `&przew=1|1.5|3`: przewyższenie przed markerem (warstwy sklejki zgodne ze skalą Y). W smoke makiety tuż przed
-   markerem linia `GEOLOGIA_STAN_MAKIETY {json}` (materiał, przewyższenie, krok sklejki, cienie z horyzontu) — sprawdza ją
+   markerem linia `GEOLOGIA_STAN_MAKIETY {json}` (materiał, przewyższenie, krok sklejki, cienie z horyzontu, smugi) — sprawdza ją
    smoke-geologia.mjs.
    Cienie z mapy horyzontu (Task A3): horyzont.json + horyzont-*.png miejsca wczytywane po wejściu w makietę (bez blokowania
    budowy; smoke czeka na nie przed markerem), rozpakowane bajt w bajt (DecompressionStream, bez kanwy i zarządzania
@@ -70,6 +70,10 @@
    wieczorem HH:MM (Słońce 2° nad horyzontem)” z GeologiaHoryzont.chwileCienia — R13: najdłuższy WIDOCZNY cień) — klik
    ustawia porę wieczorną po 12:00 czasu wyspy, inaczej poranną. Na morzu i stropie chmur cień Teide z modelu stożka
    (sc.stozekTeide()). Hak smoke `&data=RRRR-MM-DD`: dzień, w którym liczy się pora z adresu i przycisk.
+   Smugi pasatu (Task A2): przycisk „Wiatr” w grupie „Warstwy” (domyślnie włączony po każdym wejściu; adres `&wiatr=0`
+   w hashu makiety i w zapytaniu — hak smoke, pomiar) → sc.wiatr(wl, n); liczba linii z jakości (GeologiaWiatr.LICZBA,
+   przejście na „lekka” przebudowuje warstwę raz). Animacje A1–A5 chowają smugi, czas geologiczny chowa je w scenie;
+   przy widocznych smugach w stopce plakietka SCHEMAT. stan().wiatr = przycisk, stan().scena.wiatr = warstwa widoczna.
    Tekst z danych trafia do DOM wyłącznie przez textContent. Błędy własne: prefiks „Geologia: ”,
    ostrzeżenia nie będące błędem: „Geologia/uwaga: ”. */
 (function () {
@@ -141,7 +145,9 @@
     // Task 8e: pora = null (stałe) | 'teraz' | minuta dnia wyspy 0…1439 (suwak 0…1430 co 10 min); pogoda = 'pogodnie' | 'chmury' | 'kalima' (chmury z niej)
     pora: null, pogoda: 'pogodnie', slonce: null,
     // Task B1: materiał makiety 'zwykly' | 'sklejka'
-    material: 'zwykly' };
+    material: 'zwykly',
+    // Task A2: smugi pasatu — domyślnie włączone po każdym wejściu w zakładkę (przycisk „Wiatr”, adres &wiatr=0 wyłącza)
+    wiatr: true };
   var zegarPory = 0;
   var nacisk = null, ciag = null, wskaznik = null;
   var pokaz = null;                     // geologia/pokaz.js — tworzony przy pierwszym wejściu w pokaz
@@ -199,6 +205,7 @@
     var gWarstwy = grupa('Warstwy');
     ui.bTurystyka = guzik(gWarstwy, 'Turystyka', 'Warstwa turystyczna: szlaki z planu wyjazdu, Hard Rock Hotel, plan dni', 'ge-guzik-tur');
     ui.bWulkany = guzik(gWarstwy, 'Wulkany', 'Warstwa wulkanów: stożki z OpenStreetMap w trzech grupach, licznik i opisy', 'ge-guzik-wulk');
+    ui.bWiatr = guzik(gWarstwy, 'Wiatr', 'Smugi pasatu z północnego wschodu opływające wyspę i piasek z plaż południa — schemat typowych warunków, nie pomiar');
     var gw = grupa('Przewyższenie');
     ui.bPrzew = PRZEWYZSZENIA.map(function (x) { var b = guzik(gw, '×' + liczba(x, 1), 'Przewyższenie pionowe ×' + liczba(x, 1)); b.dataset.przew = String(x); return b; });
     var gk = grupa('Karty');
@@ -242,6 +249,10 @@
     el('span', null, 'rzeźba: Terrain Tiles (SRTM, GMTED, ETOPO1)', ui.atryb);
     // efekty schematyczne podpisane wprost (spec „Makieta żyje”, anty-cel „efekt podany jako pomiar”)
     el('span', 'ge-atrybucja-schemat', ' · fale i wiatr: schemat typowych warunków', ui.atryb);
+    // Task A2: plakietka SCHEMAT, gdy widać smugi pasatu (konwencja R7: plakietka przy obrazie, który nie jest pomiarem)
+    ui.plakWiatr = el('span', 'ge-plakietka ge-plakietka-wiatr', 'SCHEMAT', ui.atryb);
+    ui.plakWiatr.title = 'Smugi pasatu: typowy pasat z północnego wschodu opływający rzeźbę — schemat, nie pomiar ani prognoza';
+    ui.plakWiatr.hidden = true;
     ui.atrybOsm.hidden = true;
     // czas geologiczny: suwak 12 mln lat → dziś, kreski zdarzeń z osCzasu
     ui.czas = el('div', 'ge-panel ge-czas', null, ui.makieta);
@@ -338,6 +349,7 @@
     ui.kTurX.addEventListener('click', zamknijTur);
     ui.bTurystyka.addEventListener('click', function () { ustawTurystyke(!mks.turystyka); });
     ui.bWulkany.addEventListener('click', function () { ustawWulkany(!mks.wulkany); });
+    ui.bWiatr.addEventListener('click', function () { ustawWiatr(!mks.wiatr); });
     ui.kWulkX.addEventListener('click', zamknijWulkan);
     zbudujLegende();
     zbudujOsCzasu();
@@ -385,6 +397,7 @@
     if (tur) zbudujTurystykeUI();
     if (ui.ostrzezenie) ui.ostrzezenie.hidden = !tur;
     ui.bWulkany.setAttribute('aria-pressed', String(mks.wulkany));
+    ui.bWiatr.setAttribute('aria-pressed', String(mks.wiatr));
     var wulk = mks.wulkany && st.tryb === 'makieta';
     if (wulk) zbudujLegendeWulkanow();
     // warstwy liczone z dzisiejszej rzeźby — w trybie turystycznym i wulkanów bez suwaka czasu
@@ -438,7 +451,7 @@
   function adres() {
     if (smoke) return;
     var h = '#geologia=' + st.miejsce + (st.tryb === 'makieta' ? '&tryb=makieta' + (aktywneWarstwy() ? '&warstwa=' + aktywneWarstwy() : '') + adresPory()
-      + (mks.material === 'sklejka' ? '&material=sklejka' : '') : '&rozdzial=' + st.rozdzial);
+      + (mks.material === 'sklejka' ? '&material=sklejka' : '') + (mks.wiatr ? '' : '&wiatr=0') : '&rozdzial=' + st.rozdzial);
     try { history.replaceState(null, '', location.pathname + location.search + h); } catch (_) { /* file:// */ }
   }
   var zegarKom = null;
@@ -510,7 +523,8 @@
       if (st.tryb === 'makieta') {
         var sm = window.Geologia.stan(), ss = sm.scena || {};
         console.log('GEOLOGIA_STAN_MAKIETY ' + JSON.stringify({ material: sm.material, przewyzszenie: sm.przewyzszenie,
-          scena: { material: ss.material, przewyzszenie: ss.przewyzszenie, krokSklejki_m: ss.krokSklejki_m, cienieHor: ss.cienieHor } }));
+          scena: { material: ss.material, przewyzszenie: ss.przewyzszenie, krokSklejki_m: ss.krokSklejki_m, cienieHor: ss.cienieHor,
+            wiatr: ss.wiatr, wiatrLinie: ss.wiatrLinie, wiatrMs: ss.wiatrMs } }));
       }
       console.log('GEOLOGIA_READY ' + gotowosc); gotowosc = null;
     }
@@ -526,6 +540,7 @@
     if (slabe >= 2 && jakosc === 'pelna' && !wymusPelna) {
       jakosc = 'lekka';
       gl.renderer.setPixelRatio(1); gl.w = 0; dopasuj();
+      if (mk) mk.sc.wiatr(null, liczbaSmug());     // Task A2 (R4): mniej smug w jakości „lekka” — jedna przebudowa geometrii
     }
   }
 
@@ -638,11 +653,12 @@
   }
   function zbudujMakiete(rz) {
     var sc = S.zbuduj(T, gl.renderer, { siatka: rz.wyspa, poziomy: { archipelag: rz.archipelag, wstawki: rz.wstawki },
-      dane: window.GeologiaTeneryfa || {}, lod: lod(), przewyzszenie: mks.przew });
+      dane: window.GeologiaTeneryfa || {}, lod: lod(), przewyzszenie: mks.przew, wiatrLinie: liczbaSmug() });
     mk = { sc: sc, ster: null, rz: rz, maxDyst: 500, lot: null };
     sc.kamera.aspect = (gl.w || 16) / (gl.h || 9); sc.kamera.updateProjectionMatrix();
     sc.kolorowanie(mks.kolorowanie);
     sc.material(mks.material);          // Task B1: warstwy i woda materiału (animacja z haka niżej nadpisze wodę swoją)
+    sc.wiatr(mks.wiatr && !mks.anim);   // Task A2: smugi pasatu (animacja z haka niżej je chowa)
     zastosujNiebo();                    // pora i pogoda (Task 8e); bez parametrów — to samo światło co budowa sceny
     if (T.OrbitControls) utworzSterowanie(); else console.warn('Geologia/uwaga: brak OrbitControls — makieta bez obracania kamerą');
     zwinPasek((mks.turystyka || mks.wulkany) && waskiEkran());     // stan paska ze stanu warstw przy każdym wejściu, zanim policzymy kadr
@@ -673,6 +689,8 @@
       if (smoke) gotowosc = miejsce + ' makieta';
     });
   }
+  // Task A2 (R4): liczba smug pasatu z jakości (pełna 4000, lekka 2000 — telefon 2–4 tys.)
+  function liczbaSmug() { var Wt = window.GeologiaWiatr; return Wt ? Wt.LICZBA[jakosc] || Wt.LICZBA.pelna : 0; }
   function zwolnijMakiete() {
     budowa++;
     zwolnijLektorMakiety();
@@ -772,6 +790,8 @@
     var sc = mk.sc;
     var osm = turystykaWidoczna() || wulkanyWidoczna();
     if (ui.atrybOsm.hidden === osm) ui.atrybOsm.hidden = !osm;
+    var wv = sc.wiatr();                // smugi widoczne (przycisk, animacja, czas geologiczny) → plakietka SCHEMAT
+    if (ui.plakWiatr.hidden === wv) ui.plakWiatr.hidden = !wv;
     // przewyższenie: zmiana animowana i podpisana (0,8 s), w smoke i przy ograniczonym ruchu — od razu
     if (mks.przew !== mks.przewCel) {
       var d = mks.przewCel - mks.przew, krokP = (smoke || ograniczonyRuch()) ? Math.abs(d) : Math.abs(d) * Math.min(1, dt * 4) + dt * 0.4;
@@ -827,6 +847,13 @@
     odswiezNarzedzia(); adres();
     return mks.material;
   }
+  // Task A2: smugi pasatu — przycisk „Wiatr”; w trakcie animacji A1–A5 zostają schowane (kadr ujęcia filmu)
+  function ustawWiatr(wl) {
+    mks.wiatr = wl !== false;
+    if (mk) mk.sc.wiatr(mks.wiatr && !mks.anim);
+    odswiezNarzedzia(); adres();
+    return mks.wiatr;
+  }
   /* ---------- czas geologiczny ---------- */
   function tekstCzasu(Ma) {
     if (!(Ma > 0)) return 'dziś';
@@ -880,6 +907,7 @@
     var c = (D.czesci || []).filter(function (x) { return x.id === K.cel; })[0], p = c ? Teren.doLokalnych(null, c.lonLat[0], c.lonLat[1]) : [0, 0];
     sc.swiatlo(K.swiatlo); sc.woda(K.woda, 1); sc.kolorowanie('krajobraz');      // ujęcia filmu: barwy modelu krajobrazu (R4)
     sc.cienieHor(false);                // światło ujęcia filmu — bez cieni z mapy horyzontu (Task A3, Review Focus 1)
+    sc.wiatr(false);                    // i bez smug pasatu (Task A2, Review Focus 1)
     sc.kamera.fov = K.fov; sc.kamera.updateProjectionMatrix();
     var czesci = sc.scena.getObjectByName('czesci'); if (czesci) czesci.visible = false;
     // kadr ujęcia może patrzeć w górę (A5: niebo nad Teide z podnóża) — limit makiety „nie spod poziomu celu” nie obowiązuje
@@ -1811,6 +1839,8 @@
     if (tryb === 'makieta' && s.pogoda) mks.pogoda = s.pogoda;
     // materiał z hasha; zapytanie (`?…&material=sklejka`) niesie go też bez smoke — pomiar wydajności (scripts/pomiar-makiety.mjs)
     if (tryb === 'makieta' && (s.material === 'sklejka' || zap.material === 'sklejka')) { mks.material = 'sklejka'; if (mk) ustawMaterial('sklejka'); }
+    // Task A2: smugi wyłączone z hasha (&wiatr=0) albo z zapytania (hak smoke, pomiar wydajności)
+    if (tryb === 'makieta' && (s.wiatr === false || zap.wiatr === false)) { mks.wiatr = false; if (mk) ustawWiatr(false); }
     korzen.hidden = false;
     try {
       zapewnijGL();
@@ -1847,7 +1877,7 @@
     mks.przekroj = null; mks.chmury = false; mks.kolorowanie = 'teren'; mks.przew = mks.przewCel = 1.5; mks.czas = 0; mks.anim = null;
     mks.turystyka = false; mks.tur = null; mks.widok = null; mks.azymut = null; mks.wulkany = false; mks.wulk = null;
     mks.pora = null; mks.pogoda = 'pogodnie'; mks.slonce = null;
-    mks.material = 'zwykly';
+    mks.material = 'zwykly'; mks.wiatr = true;
     pilnujZegaraPory();                 // aktywny = false → zegar „Teraz” zatrzymany
     if (ui) { ui.czasSuwak.value = '1000'; pokazCzas(0, false); ui.poraSuwak.dataset.ustawiony = ''; pokazPore(); }
   }
@@ -1876,7 +1906,7 @@
       return { miejsce: st.miejsce, tryb: st.tryb, rozdzial: st.rozdzial, ujecie: ps ? ps.ujecie : st.ujecie, t: ps ? ps.t : st.t, fps: Math.round(fps),
         jakosc: jakosc, jakoscAuto: !wymusPelna, lektor: smoke ? 'cisza' : ps ? ps.lektorStan : 'brak', gotowa: st.tryb === 'pokaz' ? !!(pokaz && pokaz.gotowy()) : !!(mk && mk.horGotowy), pokaz: ps,
         rzezba: rz ? { hMax: rz.hMax, hMin: rz.hMin, hMaxJson: rz.meta.hMax, hMinJson: rz.meta.hMin } : null,
-        kolorowanie: mks.kolorowanie, material: mks.material, przekroj: mks.przekroj ? { kat_st: mks.przekroj.kat_st, przesuniecie_km: mks.przekroj.przesuniecie_km,
+        kolorowanie: mks.kolorowanie, material: mks.material, wiatr: mks.wiatr, przekroj: mks.przekroj ? { kat_st: mks.przekroj.kat_st, przesuniecie_km: mks.przekroj.przesuniecie_km,
           maks_m: mks.przekroj.profil ? mks.przekroj.profil.maks_m : null } : null,
         chmury: mks.chmury, pogoda: mks.pogoda, pora: mks.pora == null ? null : mks.pora === 'teraz' ? 'teraz' : window.GeologiaSlonce.godzinaTekst(mks.pora),
         slonce: mks.slonce ? { az: mks.slonce.az, el: mks.slonce.el, pora: mks.slonce.pora, min: mks.slonce.min, ms: mks.slonce.ms } : null,
@@ -1921,6 +1951,8 @@
     przewyzszenie: function (x) { ustawPrzewyzszenie(x); return mks.przewCel; },
     // hak sondy (Task B1): materiał jak z przycisków grupy „Materiał”
     material: function (m) { return ustawMaterial(m); },
+    // hak sondy (Task A2): smugi pasatu jak z przycisku „Wiatr”
+    wiatr: function (wl) { return ustawWiatr(wl); },
     // hak sondy: przekrój jak z suwaka i przeciągania (karta przekroju odświeżona), bez przelotu kamery
     przekroj: function (p) { ustawPrzekroj(p, false); return mks.przekroj ? { kat_st: mks.przekroj.kat_st, przesuniecie_km: mks.przekroj.przesuniecie_km } : null; },
     // hak sondy: czas geologiczny jak z suwaka (G-D: znaczniki i kotwice z rzeźby chwili)
