@@ -1,9 +1,9 @@
 'use strict';
 /* Zakładka Geologia — scena makiety (plik przeglądarkowy, THREE r128; czysta część w node: dual-export).
    GeologiaScena.zbuduj(T, renderer, { siatka, poziomy: { archipelag, wstawki }, dane, lod: 'pelny'|'lekki', przewyzszenie = 1.5,
-     fale = true, cienieHor = true, wiatr = true, wiatrLinie = GeologiaWiatr.LICZBA.pelna })
+     fale = true, cienieHor = true, wiatr = true, wiatrLinie = GeologiaWiatr.LICZBA.pelna, kurz = true })
      → { scena, kamera, teren, ocean, kolorowanie(tryb), przekroj(null | { kat_st, przesuniecie_km }) → profil, chmury(wl),
-         woda(stan, f), material(m), swiatlo({ pora, az, el }), horyzont(mapa), cienieHor(wl), wiatr(wl, n), przewyzszenie(x), czesci: { [id]: Object3D }, pick(ndcX, ndcY) → id|null,
+         woda(stan, f), material(m), swiatlo({ pora, az, el }), horyzont(mapa), cienieHor(wl), wiatr(wl, n), kurz({ widoczny, gruboscGlob, maska }), przewyzszenie(x), czesci: { [id]: Object3D }, pick(ndcX, ndcY) → id|null,
          podswietl(id|null), kotwica(id) → [x, y, z], animuj(t), czas(Ma), zwolnij(),
          efekty: { luna, zar, cienChmur, wypelnienie } (haki animacji A1–A4, geologia/animacje.js),
          (dodatki dla widoku i sondy) wysokosc(x, z), probkaSwiatla(x, z), lad, granice, trafiaSciane(ndc), punktNaMorzu(ndc), stan(),
@@ -63,7 +63,11 @@
    wstawki / wyspy (przy czasie geologicznym null — mapa jest dzisiejsza), probkaPejzazu(x, z) → { naMorzu, odlBrzeguKm, wysM,
    ekspozycja } (ekspozycja z P.poleFal, odległość od brzegu lądu liczona raz przy pierwszej próbce), stuk(x, z, tSek) —
    pierścień w shaderze terenu (uStuk = x, z, t0, aktywny; promień 0 → 3 km w 1,2 s na zegarze animuj(t), potem w = 0 i gałąź
-   pominięta). Pokaz nie woła stuk() nigdy: kadry filmów bez zmian. stan().stuk = pierścień aktywny. */
+   pominięta). Pokaz nie woła stuk() nigdy: kadry filmów bez zmian. stan().stuk = pierścień aktywny.
+   Kurz kalimy do starcia (Task C1 — geologia/kurz.js, schemat): kurz({ widoczny, gruboscGlob, maska }) — rdzawy pył #b0733e
+   na lądzie z grubością uKurzGrubosc × maska (tekstura uKurz w UV prostokąta wyspy przez z(), dane odświeżane needsUpdate),
+   kurzUV(x, z) → [u, v] | null. Ukryty przy czasie geologicznym (uEwoMa > 0). o.kurz === false (pokaz) — kurz() nic nie
+   robi: uKurzGrubosc = 0, gałąź pominięta. stan().kurz (rysowany), stan().kurzGrubosc. */
 (function (root) {
   var Teren = root.Teren || (typeof require === 'function' ? require('./teren.js') : null);
   var Ew = root.Ewolucja || (typeof require === 'function' ? require('./ewolucja.js') : null);
@@ -407,6 +411,9 @@
     'uniform float uMaterial; uniform float uKrokSklejki;',
     // stuknięcie w skałę (Task B3): uStuk = (x, z [km sceny], t0 [s], aktywny), uCzasStuk = czas animuj(t)
     'uniform vec4 uStuk; uniform float uCzasStuk;',
+    // kurz kalimy (Task C1): uKurzGrubosc = grubość globalna (0 = gałąź pominięta), uKurz = maska grubości w UV wyspy (R),
+    // uProstKurz = prostokąt wyspy (x0, z0, x1, z1) [km sceny]
+    'uniform float uKurzGrubosc; uniform sampler2D uKurz; uniform vec4 uProstKurz;',
     // cienie z mapy horyzontu (Task A3): geSlHor = 1 − zasłonięcie Słońca, mnoży światło klucza (LUZ_SWIATLA)
     Hor.GLSL_SLONCE, Hor.GLSL_MAPA,
     'float geCien = 1.0; float geSlHor = 1.0;',
@@ -525,6 +532,17 @@
     '  float geCos = dot(geG, uSlonceKier.xz) / max(length(geG) * length(uSlonceKier.xz), 1e-6);',
     '  float geSch = (1.0 - smoothstep(0.0, max(geSkFw * 1.5 * geCos, 1e-5), 1.0 - geFr)) * step(0.05, geCos) * geBlisko * smoothstep(-0.02, 0.08, uSlonceKier.y);',
     '  geKol = geB * mix(1.0, 0.55, geKraw) * mix(1.0, 0.8, geSch);',
+    '}',
+    // Kurz kalimy (Task C1, schemat): rdzawy pył #b0733e na lądzie, mieszany uKurzGrubosc × maska (tekstura uKurz w UV
+    // prostokąta wyspy — starte miejsca mają grubość < 1 i odsłaniają barwy), lekko nierówny (szum 0,9–1,1). Bez mipmap:
+    // odczyt w gałęzi zależnej od danych (geH > 0) nie potrzebuje pochodnych. uKurzGrubosc = 0 (pokaz zawsze, makieta bez
+    // kalimy, czas geologiczny, animacje): gałąź pominięta, obraz bit w bit jak przed C1.
+    'if (uKurzGrubosc > 0.0 && geH > 0.0) {',
+    '  vec2 geKuv = (vSwiat.xz - uProstKurz.xy) / (uProstKurz.zw - uProstKurz.xy);',
+    '  if (geKuv.x > 0.0 && geKuv.x < 1.0 && geKuv.y > 0.0 && geKuv.y < 1.0) {',
+    '    float geKm = texture2D(uKurz, geKuv).r;',
+    '    geKol = mix(geKol, geHex(176.0, 115.0, 62.0) * (0.9 + 0.2 * geSzum(vSwiat.xz * 3.1)), clamp(uKurzGrubosc * geKm, 0.0, 1.0));',
+    '  }',
     '}',
     // Stuknięcie w skałę (Task B3): jasny pierścień w płaszczyźnie xz rośnie od punktu kliknięcia 0 → 3 km w 1,2 s i gaśnie
     // (szerokość 40 → 160 m). Leży na powierzchni, która jest rysowana — przy czasie geologicznym na rzeźbie chwili.
@@ -912,7 +930,9 @@
       // materiał (Task B1): domyślnie zwykły — gałąź sklejki w shaderze pominięta (pokaz nigdy jej nie włącza)
       uMaterial: { value: 0 }, uKrokSklejki: { value: krokSklejki(e) },
       // stuknięcie (Task B3): w = 0 — pierścień wyłączony (pokaz nigdy go nie włącza)
-      uStuk: { value: new T.Vector4(0, 0, 0, 0) }, uCzasStuk: { value: 0 } };
+      uStuk: { value: new T.Vector4(0, 0, 0, 0) }, uCzasStuk: { value: 0 },
+      // kurz kalimy (Task C1): grubość 0 — gałąź pominięta (pokaz nigdy jej nie włącza); maska do pierwszego kurz({ maska }) = paleta
+      uKurzGrubosc: { value: 0 }, uKurz: { value: tPaleta }, uProstKurz: { value: new T.Vector4(0, 0, 1, 1) } };
     // barwa wody pod taflą (mgła wodna stanu „szklana”): zwykła albo żywica sklejki; × jasność światła z swiatlo()
     var kolorWody = KOLOR_WODY.zwykly, jasnWody = 1;
     // czas geologiczny (wspólne dla terenu, głębi cienia i wody) i efekty animacji (łuna, żar, cień chmur)
@@ -1794,7 +1814,7 @@
       if (Ma === ewo.Ma) return Ma;
       if (Ma > 0) przygotujEwolucje();
       ewo.Ma = Ma; UE.uEwoMa.value = Ma;
-      cienieHorAkt(); wiatrAkt();
+      cienieHorAkt(); wiatrAkt(); kurzAkt();
       ustawPiny();
       if (sciana && przek) zbudujSciane(przek.linia);
       renderer.shadowMap.needsUpdate = true;
@@ -2098,8 +2118,45 @@
       return true;
     }
 
+    // --- kurz kalimy (Task C1 — geologia/kurz.js) ---
+    // kurz({ widoczny, gruboscGlob, maska: Uint8Array(ROZMIAR²) grubości }) → czy kurz jest rysowany. Tekstura maski (R8,
+    // liniowa, bez mipmap) powstaje przez z() przy pierwszej masce i potem tylko dostaje nowe dane (needsUpdate) — bez nowych
+    // programów (gałąź i próbnik są od budowy). Rysowany, gdy scena nie jest pokazem (o.kurz === false — nigdy), widok go
+    // włącza (pogoda „Kalima”), grubość globalna > 0, maska wgrana i nie ma czasu geologicznego (uEwoMa > 0 — kurz leży na
+    // dzisiejszej powierzchni; Review Focus 1). kurzUV(x, z) → [u, v] w prostokącie wyspy (ten sam co uProstKurz) | null.
+    var kurzSt = { dozwolony: o.kurz !== false, tekstura: null, widoczny: false, glob: 0 };
+    function kurzAkt() {
+      var wl = kurzSt.dozwolony && kurzSt.widoczny && kurzSt.glob > 0 && !!kurzSt.tekstura && !(ewo.Ma > 0);
+      U.uKurzGrubosc.value = wl ? kurzSt.glob : 0;
+      return wl;
+    }
+    function kurz(k) {
+      if (!kurzSt.dozwolony) return false;
+      if (k) {
+        if (k.maska) {
+          if (!kurzSt.tekstura) {
+            var r = wyspa.prost, d = new Uint8Array(k.maska.length), n = Math.round(Math.sqrt(k.maska.length));
+            d.set(k.maska);
+            // LuminanceFormat: R8 działa i w WebGL1 (RedFormat w r128 tylko w WebGL2)
+            var t = kurzSt.tekstura = z(new T.DataTexture(d, n, n, T.LuminanceFormat, T.UnsignedByteType));
+            t.wrapS = t.wrapT = T.ClampToEdgeWrapping; t.magFilter = t.minFilter = T.LinearFilter;
+            t.generateMipmaps = false; t.unpackAlignment = 1; t.needsUpdate = true;
+            U.uKurz.value = t; U.uProstKurz.value.set(r.x0, r.z0, r.x1, r.z1);
+          } else { kurzSt.tekstura.image.data.set(k.maska); kurzSt.tekstura.needsUpdate = true; }
+        }
+        if (k.widoczny != null) kurzSt.widoczny = !!k.widoczny;
+        if (k.gruboscGlob != null) { var g = +k.gruboscGlob; kurzSt.glob = g > 0 ? (g < 1 ? g : 1) : 0; }
+      }
+      return kurzAkt();
+    }
+    function kurzUV(x, zz) {
+      var r = wyspa.prost, u = (x - r.x0) / (r.x1 - r.x0), v = (zz - r.z0) / (r.z1 - r.z0);
+      return u >= 0 && u <= 1 && v >= 0 && v <= 1 ? [u, v] : null;
+    }
+
     function zwolnij() {
       warstwy.length = 0;
+      kurzSt.tekstura = null;
       grupaWiatru = linieWiatru = uWiatr = null; wiatrSt.pole = null; wiatrSt.n = 0;
       zwolnijSciane();
       scena.traverse(function (ob) { if (ob.isLight && ob.shadow && ob.shadow.map) { ob.shadow.map.dispose(); ob.shadow.map = null; } });
@@ -2155,6 +2212,8 @@
       szklo: function () { return U.uSzklo.value; },
       wysokosc: wysokosc, probkaSwiatla: probkaSwiatla, trafiaSciane: trafiaSciane, punktNaMorzu: punktNaMorzu,
       punktNaTerenie: punktNaTerenie, jednostkaPod: jednostkaPod, stuk: stuk, probkaPejzazu: probkaPejzazu,
+      // kurz kalimy (C1): stan rysowania i maska; UV prostokąta wyspy dla ścierania
+      kurz: kurz, kurzUV: kurzUV,
       dodajWarstwe: dodajWarstwe, przygasCzesci: przygasCzesci,
       // pokaz (Task 8)
       zbudujGlob: zbudujGlob, zwolnijGlob: zwolnijGlob, dalekiLad: dalekiLad, kadr: kadr,
@@ -2172,7 +2231,8 @@
           swiatlo: { pora: sw.pora, az: sw.az, el: sw.el, dostroj: sw.dostroj }, przekroj: przek ? { kat_st: przek.kat_st, przesuniecie_km: przek.przesuniecie_km, maks_m: przek.profil ? przek.profil.maks_m : null } : null,
           podswietlona: podswietlona, najechana: najechana, etykiety: piny.filter(function (g) { return g.userData.pin.widoczna; }).length,
           wierzcholki: wierzcholki, dysk_km: Rdysku, lod: krok === 1 ? 'pelny' : 'lekki', czasMa: ewo.Ma, przygaszenie: przygaszenie,
-          cienieHor: UH.uCienieHor.value > 0.5, stuk: U.uStuk.value.w > 0.5, wiatr: !!(grupaWiatru && grupaWiatru.visible), wiatrLinie: wiatrSt.n, wiatrMs: wiatrSt.ms };
+          cienieHor: UH.uCienieHor.value > 0.5, stuk: U.uStuk.value.w > 0.5, wiatr: !!(grupaWiatru && grupaWiatru.visible), wiatrLinie: wiatrSt.n, wiatrMs: wiatrSt.ms,
+          kurz: U.uKurzGrubosc.value > 0, kurzGrubosc: U.uKurzGrubosc.value };
       }
     };
   }

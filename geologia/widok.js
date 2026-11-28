@@ -79,6 +79,13 @@
    w hashu makiety i w zapytaniu — hak smoke, pomiar) → sc.wiatr(wl, n); liczba linii z jakości (GeologiaWiatr.LICZBA,
    przejście na „lekka” przebudowuje warstwę raz). Animacje A1–A5 chowają smugi, czas geologiczny chowa je w scenie;
    przy widocznych smugach w stopce plakietka SCHEMAT. stan().wiatr = przycisk, stan().scena.wiatr = warstwa widoczna.
+   Kurz kalimy do starcia (Task C1 — geologia/kurz.js, schemat): przy pogodzie „Kalima” rdzawy pył narasta w 20 s; przycisk
+   „Zetrzyj” (grupa „Pogoda”, tylko przy kalimie, aria-pressed) przestawia gesty sterowania — jeden palec / lewy przycisk
+   ściera, dwa palce / prawy przycisk obracają; po wyłączeniu (także przez wyjście z kalimy) wracają domyślne. Maska godzin
+   starcia w localStorage ('geologia-kurz', zapis co 2 s, przy wyjściu i pagehide; bez magazynu — tylko w sesji karty),
+   starte miejsca odrastają w 72 h. W smoke bez magazynu i od razu pełna grubość; GEOLOGIA_STAN_MAKIETY niesie kurz.widoczny
+   i scena.kurz. stan().kurz = { widoczny, tryb, starte, grubosc, magazyn }; haki sondy Geologia.kurz({ tryb, przesunH }),
+   Geologia.sterowanie().
    Tekst z danych trafia do DOM wyłącznie przez textContent. Błędy własne: prefiks „Geologia: ”,
    ostrzeżenia nie będące błędem: „Geologia/uwaga: ”. */
 (function () {
@@ -207,6 +214,9 @@
     ui.bPogodnie = guzik(gPogoda, 'Pogodnie', 'Bez chmur i pyłu');
     ui.bChmury = guzik(gPogoda, 'Morze chmur', opisMorzaChmur(window.GeologiaTeneryfa));
     ui.bKalima = guzik(gPogoda, 'Kalima', OPIS_POGODY.kalima);
+    // Task C1: ścieranie kurzu kalimy (widoczne tylko przy kalimie)
+    ui.bZetrzyj = guzik(gPogoda, 'Zetrzyj', 'Zetrzyj kurz kalimy: jeden palec albo lewy przycisk ściera, dwa palce albo prawy przycisk obracają makietę; starte miejsce zarasta pyłem przez 3 dni — schemat, nie pomiar');
+    ui.bZetrzyj.hidden = true;
     var gWarstwy = grupa('Warstwy');
     ui.bTurystyka = guzik(gWarstwy, 'Turystyka', 'Warstwa turystyczna: szlaki z planu wyjazdu, Hard Rock Hotel, plan dni', 'ge-guzik-tur');
     ui.bWulkany = guzik(gWarstwy, 'Wulkany', 'Warstwa wulkanów: stożki z OpenStreetMap w trzech grupach, licznik i opisy', 'ge-guzik-wulk');
@@ -258,7 +268,7 @@
     el('span', null, ' (ODbL) · ', ui.atrybOsm);
     el('span', null, 'rzeźba: Terrain Tiles (SRTM, GMTED, ETOPO1)', ui.atryb);
     // efekty schematyczne podpisane wprost (spec „Makieta żyje”, anty-cel „efekt podany jako pomiar”)
-    el('span', 'ge-atrybucja-schemat', ' · fale i wiatr: schemat typowych warunków', ui.atryb);
+    el('span', 'ge-atrybucja-schemat', ' · fale, wiatr i kurz kalimy: schemat typowych warunków', ui.atryb);
     // Task A2: plakietka SCHEMAT, gdy widać smugi pasatu (konwencja R7: plakietka przy obrazie, który nie jest pomiarem)
     ui.plakWiatr = el('span', 'ge-plakietka ge-plakietka-wiatr', 'SCHEMAT', ui.atryb);
     ui.plakWiatr.title = 'Smugi pasatu: typowy pasat z północnego wschodu opływający rzeźbę — schemat, nie pomiar ani prognoza';
@@ -343,6 +353,7 @@
     ui.katSuwak.addEventListener('input', function () { if (mks.przekroj) ustawPrzekroj({ kat_st: +ui.katSuwak.value, przesuniecie_km: mks.przekroj.przesuniecie_km }, false); });
     ui.bChmury.addEventListener('click', function () { ustawPogode(mks.pogoda === 'chmury' ? 'pogodnie' : 'chmury'); });
     ui.bKalima.addEventListener('click', function () { ustawPogode(mks.pogoda === 'kalima' ? 'pogodnie' : 'kalima'); });
+    ui.bZetrzyj.addEventListener('click', function () { ustawScieranie(!kz.tryb); });
     ui.bPogodnie.addEventListener('click', function () { ustawPogode('pogodnie'); });
     ui.bStale.addEventListener('click', function () { ustawPore(null); });
     ui.bTeraz.addEventListener('click', function () { ustawPore(mks.pora === 'teraz' ? null : 'teraz'); });
@@ -393,6 +404,8 @@
     ui.bChmury.setAttribute('aria-pressed', String(mks.pogoda === 'chmury'));
     ui.bKalima.setAttribute('aria-pressed', String(mks.pogoda === 'kalima'));
     ui.bPogodnie.setAttribute('aria-pressed', String(mks.pogoda === 'pogodnie'));
+    ui.bZetrzyj.hidden = mks.pogoda !== 'kalima' || st.tryb !== 'makieta';
+    ui.bZetrzyj.setAttribute('aria-pressed', String(kz.tryb));
     ui.bStale.setAttribute('aria-pressed', String(mks.pora === null));
     ui.bTeraz.setAttribute('aria-pressed', String(mks.pora === 'teraz'));
     ui.bPrzew.forEach(function (b) { b.setAttribute('aria-pressed', String(+b.dataset.przew === mks.przewCel)); });
@@ -536,7 +549,8 @@
         var sm = window.Geologia.stan(), ss = sm.scena || {};
         console.log('GEOLOGIA_STAN_MAKIETY ' + JSON.stringify({ material: sm.material, przewyzszenie: sm.przewyzszenie,
           scena: { material: ss.material, przewyzszenie: ss.przewyzszenie, krokSklejki_m: ss.krokSklejki_m, cienieHor: ss.cienieHor,
-            wiatr: ss.wiatr, wiatrLinie: ss.wiatrLinie, wiatrMs: ss.wiatrMs } }));
+            wiatr: ss.wiatr, wiatrLinie: ss.wiatrLinie, wiatrMs: ss.wiatrMs, kurz: ss.kurz },
+          kurz: { widoczny: sm.kurz.widoczny, tryb: sm.kurz.tryb } }));
       }
       console.log('GEOLOGIA_READY ' + gotowosc); gotowosc = null;
     }
@@ -708,6 +722,7 @@
     zwolnijLektorMakiety();
     zwolnijPejzaz();
     if (!mk) return;
+    ustawScieranie(false); zapiszKurz(); kz.kalima = false; kz.rysowany = false; kz.g = null;   // C1: maska zostaje w karcie
     if (mk.ster) mk.ster.dispose();
     if (mk.anim) mk.anim.zwolnij();
     mk.sc.zwolnij();                    // zwalnia też zasoby warstw turystycznej i wulkanów (z() sceny)
@@ -824,6 +839,7 @@
     sc.animuj(t);
     // pejzaż dźwiękowy (B3): tylko przy włączonym dźwięku, co 0,1 s (wyłączony — zero pracy w klatce)
     if (pj.wl) { var tn = performance.now(); if (tn - pj.tProby >= 100) { pj.tProby = tn; probkujPejzaz(); } }
+    klatkaKurzu();                      // kurz kalimy (C1): grubość, maska po zmianie, zapis co 2 s
     // animacja haka (G-F: wołana co klatkę po animuj; w smoke czas ruchu stały — kadr powtarzalny)
     if (mks.anim && mk.anim) {
       var wyn = mk.anim[FUNKCJE_ANIM[mks.anim.nazwa]](mks.anim.f, smoke ? 12 : undefined);
@@ -840,7 +856,7 @@
       var id = tu || wu ? null : trafienie(wskaznik.x, wskaznik.y);
       if (id !== mks.hover) { mks.hover = id; sc.najedz(id); }
       if (mk.wulk) mk.wulk.najedz(wu ? wu.id : null);
-      ui.canvas.style.cursor = id || tu || wu ? 'pointer' : (mks.przekroj && trafiaSciane(wskaznik.x, wskaznik.y) ? 'ns-resize' : '');
+      ui.canvas.style.cursor = kz.tryb ? '' : id || tu || wu ? 'pointer' : (mks.przekroj && trafiaSciane(wskaznik.x, wskaznik.y) ? 'ns-resize' : '');   // C1: ścieranie — krzyżyk z CSS
     }
   }
   function ograniczonyRuch() { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
@@ -937,6 +953,7 @@
   /* ---------- pora dnia i pogoda (Task 8e) ---------- */
   function ustawPogode(p) {
     mks.pogoda = (window.GeologiaSlonce ? window.GeologiaSlonce.POGODY : ['pogodnie', 'chmury', 'kalima']).indexOf(p) >= 0 ? p : 'pogodnie';
+    if (mks.pogoda !== 'kalima' && kz.tryb) ustawScieranie(false);      // Task C1: wyjście z kalimy kończy ścieranie
     zastosujNiebo(); odswiezNarzedzia(); adres();
   }
   function ustawPore(v, bezAdresu) {
@@ -1709,6 +1726,108 @@
     pj.niedostepny = false; pj.ostrzezono = false; pj.ostrzezonoStuk = false; pj.wTle = false;
     odswiezGlosnik();
   }
+  /* ---------- kurz kalimy do starcia (Task C1 — geologia/kurz.js; schemat, nie pomiar) ---------- */
+  // Przy pogodzie „Kalima” grubość kurzu narasta 0 → 1 w NARASTANIE_MS od włączenia kalimy (w smoke od razu 1). Maska godzin
+  // starcia (GeologiaKurz) jedna na kartę: wczytywana raz z localStorage (klucz 'geologia-kurz'; smoke — bez magazynu),
+  // zapisywana co ZAPIS_MS po zmianie, przy wyjściu z makiety i przy pagehide. Bez localStorage (wyjątek, tryb prywatny)
+  // kurz trwa tylko w sesji karty — każdy dostęp do magazynu jest w try/catch (Review Focus 5). Grubość z odrostu (72 h)
+  // przeliczana po starciu i co ODROST_MS. Przycisk „Zetrzyj” (tylko przy kalimie): jeden palec / lewy przycisk ściera
+  // (punktNaTerenie → UV wyspy → zetrzyj, promień PROMIEN_UV), dwa palce / prawy przycisk obracają, kółko i szczypanie
+  // przybliżają; po wyłączeniu trybu wracają domyślne touches / mouseButtons sterowania. Wyjście z kalimy wyłącza tryb.
+  // Kurz rysuje scena tylko bez czasu geologicznego i poza animacjami A1–A5 (sc.kurz — Review Focus 1).
+  var PROMIEN_UV = 0.012, ZAPIS_MS = 2000, NARASTANIE_MS = 20000, ODROST_MS = 60000;
+  var kz = { maska: null, g: null, kalima: false, t0: 0, glob: 0, rysowany: false, tryb: false, zmiana: false, brudny: false,
+    tZapisu: 0, tOdrostu: 0, starte: 0, przesunH: 0, gest: null, wsk: {}, ster0: null };
+  function magazynKurzu() {
+    if (smoke) return null;             // smoke: kadr powtarzalny, bez śladów poprzednich przebiegów
+    try { return window.localStorage || null; } catch (_) { return null; }
+  }
+  function terazKurzuH() { return window.GeologiaKurz.godzina(Date.now()) + kz.przesunH; }
+  function maskaKurzu() {
+    if (!kz.maska && window.GeologiaKurz) kz.maska = window.GeologiaKurz.wczytaj(magazynKurzu());
+    return kz.maska;
+  }
+  function zapiszKurz() {
+    kz.tZapisu = performance.now();
+    if (!kz.brudny || !kz.maska) return;
+    kz.brudny = false;
+    window.GeologiaKurz.zapisz(kz.maska, magazynKurzu());
+  }
+  window.addEventListener('pagehide', zapiszKurz);
+  // co klatkę makiety: grubość globalna, maska grubości po zmianie / co minutę, zapis co 2 s
+  function klatkaKurzu() {
+    var sc = mk.sc, Kz = window.GeologiaKurz;
+    if (!Kz) return;
+    var tn = performance.now(), kal = mks.pogoda === 'kalima';
+    if (kal !== kz.kalima) { kz.kalima = kal; kz.t0 = tn; }
+    var wl = kal && !mks.anim;
+    kz.glob = !wl ? 0 : smoke ? 1 : Math.min(1, (tn - kz.t0) / NARASTANIE_MS);
+    var o = { widoczny: wl, gruboscGlob: kz.glob };
+    if (wl && maskaKurzu() && (kz.zmiana || !kz.g || tn - kz.tOdrostu >= ODROST_MS)) {
+      var h = terazKurzuH();
+      kz.g = Kz.grubosc(kz.maska, h, kz.g); kz.starte = Kz.starte(kz.maska, h);
+      kz.zmiana = false; kz.tOdrostu = tn; o.maska = kz.g;
+    }
+    kz.rysowany = sc.kurz(o);
+    if (kz.brudny && tn - kz.tZapisu >= ZAPIS_MS) zapiszKurz();
+  }
+  // przycisk „Zetrzyj”: przestawia gesty sterowania (brief C1) i zapamiętuje domyślne, by je przywrócić
+  function ustawScieranie(wl) {
+    wl = !!wl && !!mk && mks.pogoda === 'kalima';
+    var s = mk && mk.ster;
+    if (s && wl && !kz.ster0) {
+      kz.ster0 = { ONE: s.touches.ONE, TWO: s.touches.TWO, LEFT: s.mouseButtons.LEFT, RIGHT: s.mouseButtons.RIGHT };
+      s.touches.ONE = null; s.touches.TWO = T.TOUCH.DOLLY_ROTATE;
+      s.mouseButtons.LEFT = null; s.mouseButtons.RIGHT = T.MOUSE.ROTATE;
+    } else if (s && !wl && kz.ster0) {
+      s.touches.ONE = kz.ster0.ONE; s.touches.TWO = kz.ster0.TWO;
+      s.mouseButtons.LEFT = kz.ster0.LEFT; s.mouseButtons.RIGHT = kz.ster0.RIGHT;
+    }
+    if (!wl) kz.ster0 = null;
+    kz.tryb = wl; kz.gest = null; kz.wsk = {};
+    if (ui) ui.canvas.classList.toggle('ge-scieranie', wl);
+    odswiezNarzedzia();
+    return kz.tryb;
+  }
+  // punkt ekranu → UV wyspy na lądzie (marsz promienia po rysowanej rzeźbie) | null (morze, niebo, poza wyspą)
+  function uvKurzu(x, y) {
+    var n = ndc(x, y), p = n && mk ? mk.sc.punktNaTerenie(n[0], n[1]) : null;
+    return p ? mk.sc.kurzUV(p[0], p[1]) : null;
+  }
+  // odcinek a → b w UV (kolejne położenia palca) wypełniony kołami co pół promienia — bez przerw przy szybkim ruchu
+  function zetrzyjOdcinek(a, b) {
+    if (!kz.rysowany || !maskaKurzu() || !b) return;
+    var Kz = window.GeologiaKurz, h = terazKurzuH(), n = 0;
+    var d = a ? Math.hypot(b[0] - a[0], b[1] - a[1]) : 0, kroki = Math.min(200, Math.max(1, Math.ceil(d / (PROMIEN_UV * 0.5))));
+    for (var i = a ? 1 : 0; i <= kroki; i++) {
+      var f = a ? i / kroki : 1;
+      n += Kz.zetrzyj(kz.maska, a ? a[0] + (b[0] - a[0]) * f : b[0], a ? a[1] + (b[1] - a[1]) * f : b[1], PROMIEN_UV, h);
+    }
+    if (n > 0) { kz.zmiana = true; kz.brudny = true; }
+  }
+  function liczbaDotykow() { return Object.keys(kz.wsk).length; }
+  function scieranieDown(e) {
+    var mysz = e.pointerType === 'mouse' || e.pointerType === 'pen';
+    if (mysz) { if (e.button === 0) kz.gest = { id: e.pointerId, multi: false, ruch: false, x: e.clientX, y: e.clientY, uv: null }; return; }
+    kz.wsk[e.pointerId] = true;
+    if (liczbaDotykow() === 1) kz.gest = { id: e.pointerId, multi: false, ruch: false, x: e.clientX, y: e.clientY, uv: null };
+    else if (kz.gest) kz.gest.multi = true;    // drugi palec: gest obrotu (OrbitControls), nie ścieranie
+  }
+  function scieranieMove(e) {
+    var g = kz.gest;
+    if (!g || g.multi || e.pointerId !== g.id) return;
+    if ((e.pointerType === 'mouse' || e.pointerType === 'pen') && !(e.buttons & 1)) return;
+    if (!g.ruch) { g.ruch = true; g.uv = uvKurzu(g.x, g.y); zetrzyjOdcinek(null, g.uv); }
+    var uv = uvKurzu(e.clientX, e.clientY);
+    zetrzyjOdcinek(g.uv, uv);
+    g.uv = uv;
+  }
+  function scieranieUp(e, anuluj) {
+    delete kz.wsk[e.pointerId];
+    var g = kz.gest;
+    if (g && e.pointerId === g.id && !g.multi && !g.ruch && !anuluj) zetrzyjOdcinek(null, uvKurzu(g.x, g.y));   // stuknięcie
+    if (g && (e.pointerId === g.id && !g.multi || liczbaDotykow() === 0)) kz.gest = null;
+  }
   function zwolnijLektorMakiety() {
     lm.nr++;                            // spóźniony czasy.json nie wróci do zamkniętej makiety
     zatrzymajLektorMakiety();
@@ -1900,6 +2019,7 @@
   function podpinanieWskaznika() {
     ui.canvas.addEventListener('pointermove', function (e) {
       if (e.pointerType === 'mouse') { if (!wskaznik) wskaznik = {}; wskaznik.x = e.clientX; wskaznik.y = e.clientY; wskaznik.nowy = true; }
+      if (kz.tryb && mk) { scieranieMove(e); return; }
       if (ciag && mk && mks.przekroj) {
         var n = ndc(e.clientX, e.clientY), p = n && mk.sc.punktNaMorzu(n[0], n[1]);
         if (!p) return;
@@ -1914,6 +2034,7 @@
     ui.canvas.addEventListener('pointerleave', function () { wskaznik = null; if (mk) { mks.hover = null; mk.sc.najedz(null); if (mk.wulk) mk.wulk.najedz(null); } ui.canvas.style.cursor = ''; });
     ui.canvas.addEventListener('pointerdown', function (e) {
       nacisk = { x: e.clientX, y: e.clientY, t: performance.now() };
+      if (kz.tryb && mk) { scieranieDown(e); return; }       // C1: tryb ścierania — bez przeciągania ściany i kliknięć
       if (mk && mks.przekroj && trafiaSciane(e.clientX, e.clientY)) {
         var n = ndc(e.clientX, e.clientY), p = mk.sc.punktNaMorzu(n[0], n[1]);
         if (p) {
@@ -1930,8 +2051,9 @@
       if (mk && mk.ster) mk.ster.enabled = true;
       if (zm && mks.przekroj) odswiezKartePrzekroju(mks.przekroj.profil);
     }
-    ui.canvas.addEventListener('pointercancel', function () { nacisk = null; koniecCiagu(); });
+    ui.canvas.addEventListener('pointercancel', function (e) { nacisk = null; koniecCiagu(); if (kz.tryb) scieranieUp(e, true); });
     ui.canvas.addEventListener('pointerup', function (e) {
+      if (kz.tryb && mk) { nacisk = null; koniecCiagu(); scieranieUp(e, false); return; }
       var bylCiag = ciag && ciag.zmiana;
       koniecCiagu();
       if (!nacisk) return;
@@ -2066,6 +2188,7 @@
         lektorMakiety: lm.stan, lektorMakietyPowod: lm.powod, lektorMakietyWers: lm.gra ? lm.gra.id : null, lektorMakietyZrodla: lm.lek ? lm.lek.zrodla() : 0,
         pejzaz: { gra: pj.wl, poziomy: pj.poziomy, ostatniStuk: pj.ostatniStuk, kontekst: pj.ctx ? pj.ctx.state : null,
           sygnal: pj.dz ? pj.dz.sygnal() : null, niedostepny: pj.niedostepny, trzaski: pj.dz ? pj.dz.trzaski() : null, wTle: !!pj.wTle },
+        kurz: { widoczny: !!(mk && kz.rysowany), tryb: kz.tryb, starte: kz.starte, grubosc: kz.glob, magazyn: !!magazynKurzu() },
         kamera: mk ? { poz: mk.sc.kamera.position.toArray(), cel: mk.ster ? mk.ster.target.toArray() : null,
           min: mk.ster ? mk.ster.minDistance : null, max: mk.ster ? mk.ster.maxDistance : null } : null };
     },
@@ -2100,6 +2223,14 @@
     material: function (m) { return ustawMaterial(m); },
     // hak sondy (Task A2): smugi pasatu jak z przycisku „Wiatr”
     wiatr: function (wl) { return ustawWiatr(wl); },
+    // haki sondy (Task C1): tryb ścierania jak z przycisku „Zetrzyj”, przesunięcie zegara kurzu o przesunH godzin (odrost)
+    // → stan().kurz; sterowanie() — OrbitControls makiety (mapowanie gestów)
+    kurz: function (o) {
+      if (o && o.przesunH != null) { kz.przesunH = +o.przesunH || 0; kz.zmiana = true; }
+      if (o && o.tryb != null) ustawScieranie(o.tryb);
+      return { widoczny: !!(mk && kz.rysowany), tryb: kz.tryb, starte: kz.starte, grubosc: kz.glob, magazyn: !!magazynKurzu() };
+    },
+    sterowanie: function () { return mk ? mk.ster : null; },
     // hak sondy: przekrój jak z suwaka i przeciągania (karta przekroju odświeżona), bez przelotu kamery
     przekroj: function (p) { ustawPrzekroj(p, false); return mks.przekroj ? { kat_st: mks.przekroj.kat_st, przesuniecie_km: mks.przekroj.przesuniecie_km } : null; },
     // hak sondy: czas geologiczny jak z suwaka (G-D: znaczniki i kotwice z rzeźby chwili)

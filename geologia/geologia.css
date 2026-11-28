@@ -13,6 +13,8 @@
   font: 400 14px/1.5 var(--ge-kroj); outline: none; overflow: hidden; }
 #geologia[hidden], #geologia [hidden] { display: none !important; }
 #geologia .ge-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* Task C1: tryb ścierania kurzu — palec nie przewija strony (gesty obsługuje sterowanie i ścieranie), krzyżyk myszy */
+#geologia .ge-canvas.ge-scieranie { touch-action: none; cursor: crosshair; }
 
 .ge-pasek { position: absolute; z-index: 5; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 16px;
   min-width: 0; padding: 7px 14px; background: linear-gradient(180deg, rgba(10, 14, 19, .9), rgba(8, 11, 15, .55));
