@@ -23,6 +23,11 @@
   background: rgba(255, 255, 255, .03); border: 1px solid var(--ge-linia); padding: 8px 12px; cursor: pointer; }
 .ge-guzik:hover, .ge-guzik:focus-visible { color: var(--ge-atrament); border-color: var(--ge-akcent); outline: none; }
 .ge-guzik[aria-pressed="true"] { color: #0b0e12; background: var(--ge-akcent); border-color: var(--ge-akcent); }
+/* głośnik makiety (Task B3): ikona zamiast napisu; fale przy włączonym, krzyżyk przy wyłączonym */
+.ge-glosnik svg { display: block; width: 1.25em; height: 1em; }      /* wysokość wiersza napisu — przycisk jak sąsiednie */
+.ge-glosnik .ge-glosnik-fale, .ge-glosnik[aria-pressed="true"] .ge-glosnik-cisza { display: none; }
+.ge-glosnik[aria-pressed="true"] .ge-glosnik-fale { display: inline; }
+.ge-glosnik:disabled { opacity: .4; cursor: default; }
 
 .ge-rozdzialy { position: absolute; z-index: 5; left: 0; right: 0; bottom: 0; display: flex; flex-wrap: wrap; justify-content: center;
   gap: 6px; padding: 10px 14px; background: linear-gradient(0deg, rgba(8, 11, 15, .85), rgba(8, 11, 15, 0)); }

@@ -11,13 +11,15 @@
        wersu przesuwa się na koniec wersu + 0,15 s, a gdy i tam wypada w wersie — odpada. Kulminacja A2 (lawa-na-klifie):
        { t, co: 'cisza', d: 1 } — 1 s ciszy podkładu po syku (R6).
    Przeglądarka:
-     GeologiaDzwiek.utworz(ctx) → { wejscie, ustaw(poziomy, szybko?), akcent(co, kiedy), cisza(bool), wycisz(kiedy), anulujWyciszenie(), zwolnij(), poziomy(), sygnal() → { podklad, lektor } [dBFS] } — cztery warstwy:
+     GeologiaDzwiek.utworz(ctx, opcje?) → { wejscie, ustaw(poziomy, szybko?), akcent(co, kiedy), cisza(bool), wycisz(kiedy), anulujWyciszenie(), zwolnij(), poziomy(), sygnal() → { podklad, lektor } [dBFS], trzaski() } — cztery warstwy:
        wiatr (szum przez pasmowy, otwiera się z wysokością), morze (szum przez dolnoprzepustowy z wolną obwiednią), pomruk
        (szum brązowy przez dolnoprzepustowy 300–1000 Hz + syk 1,8 kHz + trzaski Poissona 4–18/s), ton (warstwa
        330/494 Hz; dronu 55/82 Hz nie ma — buczał na słuchawkach, a na głośniku laptopa i telefonu był ciszą). Bufory szumu 6,1 s i 7,7 s (względnie pierwsze)
        z losowym startem. Podkład stale 18 dB pod lektorem (bez ściszania przy wersach); `wejscie` = wejście lektora do
        wspólnego miksera; wzmocnienia warstw G_WIATR/G_MORZE/G_POMRUK/G_TON z pomiaru; całość za kompresorem (−8 dB, 20:1) i masterem 0,5. cisza(true) wycisza lektora i podkład razem (M).
-     Błąd budowy → utworz rzuca; pokaz gra wtedy bez podkładu z jednym console.warn „Geologia/uwaga: …”. */
+     Błąd budowy → utworz rzuca; pokaz gra wtedy bez podkładu z jednym console.warn „Geologia/uwaga: …”.
+     opcje.trzaski === false (pejzaż makiety, Task B3 / R17): pomruk bez trzasków Poissona — przy kalimie trzask lawy byłby
+     fałszywym sygnałem; pokaz woła utworz(ctx) i ma trzaski jak dotąd. trzaski() = liczba zaplanowanych trzasków (sonda). */
 (function (root) {
   function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
   function gladko(x) { x = clamp01(x); return x * x * (3 - 2 * x); }
@@ -99,8 +101,9 @@
   // (średni podkład filmu ≈ −38 dBFS = 18 dB pod lektorem, szczyt pomruku ≥ 13 dB pod lektorem), ton jako stała podłoga.
   var G_WIATR = 11, G_MORZE = 13, G_POMRUK = 1, G_TON = 1.8;
 
-  function utworz(ctx) {
+  function utworz(ctx, opcje) {
     if (!ctx) throw new Error('brak AudioContext');
+    var trzaskiWl = !(opcje && opcje.trzaski === false), nTrzaskow = 0;
     var sr = ctx.sampleRate, wezly = [], zrodla = [];
     var w = function (n) { wezly.push(n); return n; };
     function szum(sek, brazowy) {
@@ -194,14 +197,14 @@
       gF.gain.setTargetAtTime((poz.fumarole || 0) * 0.12, t, f(0.5));
       gTrz.gain.setTargetAtTime(szybko ? 0 : 1, t, f(0.1));   // trzaski zaplanowane z wyprzedzeniem też milkną w Cc
       // trzaski Poissona 4–18/s, planowane 0,15 s naprzód (proces bez pamięci — odstępy wykładnicze)
-      if (poz.pomruk > 0.05 && ctx.state === 'running') {
+      if (trzaskiWl && poz.pomruk > 0.05 && ctx.state === 'running') {
         var lam = 4 + 14 * poz.pomruk;
         if (nastTrzask < t) nastTrzask = t + 0.02;
         while (nastTrzask < t + 0.15) {
           var s = ctx.createBufferSource(), g = ctx.createGain();
           s.buffer = trzask; g.gain.value = poz.pomruk * (0.3 + 0.7 * Math.random());
           s.playbackRate.value = 0.6 + Math.random() * 0.8;
-          s.connect(g); g.connect(gTrz); s.start(nastTrzask);
+          s.connect(g); g.connect(gTrz); s.start(nastTrzask); nTrzaskow++;
           s.onended = (function (a, b) { return function () { try { a.disconnect(); b.disconnect(); } catch (_) { /* nic */ } }; })(s, g);
           nastTrzask += -Math.log(1 - Math.random()) / lam;
         }
@@ -240,7 +243,8 @@
     }
     return { wejscie: wejscie, ustaw: ustaw, akcent: akcent, cisza: cisza, wycisz: wycisz, anulujWyciszenie: anulujWyciszenie, zwolnij: zwolnij, poziomy: function () { return poz; },
       // poziom sygnału [dBFS] w tej chwili: podkład (za ciszą akcentu) i lektor (wejście miksera); -200 = cisza cyfrowa
-      sygnal: function () { return { podklad: dbfs(anP), lektor: dbfs(anL) }; } };
+      sygnal: function () { return { podklad: dbfs(anP), lektor: dbfs(anL) }; },
+      trzaski: function () { return nTrzaskow; } };
   }
   root.GeologiaDzwiek = { utworz: utworz, poziomy: poziomy, akcenty: akcenty };
 })(typeof window !== 'undefined' ? window : globalThis);

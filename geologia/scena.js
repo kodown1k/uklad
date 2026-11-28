@@ -57,7 +57,13 @@
    liczona w shaderze z uCzas (bufor bez aktualizacji w klatce). Grupa w układzie siatki wyspy, scale.y = przewyższenie.
    wiatr(wl, n): zezwolenie widoku (animacje A1–A5: false) i liczba linii (zmiana → jedna przebudowa geometrii, pole
    zostaje); widoczne tylko bez czasu geologicznego (uEwoMa > 0 — linie opisują dzisiejszą rzeźbę). o.wiatr === false
-   (pokaz) — warstwy nie ma wcale: kadry filmów bez smug. stan().wiatr (widoczna), stan().wiatrLinie, stan().wiatrMs (budowa). */
+   (pokaz) — warstwy nie ma wcale: kadry filmów bez smug. stan().wiatr (widoczna), stan().wiatrLinie, stan().wiatrMs (budowa).
+   Pejzaż dźwiękowy i stuknięcie w skałę (Task B3 — geologia/pejzaz.js; dźwięk gra widok): punktNaTerenie(nx, ny) → [x, z] | null
+   (ląd pod punktem ekranu, marsz promienia po wysokosc(); morze i niebo → null), jednostkaPod(x, z) → id jednostki z indeksów
+   wstawki / wyspy (przy czasie geologicznym null — mapa jest dzisiejsza), probkaPejzazu(x, z) → { naMorzu, odlBrzeguKm, wysM,
+   ekspozycja } (ekspozycja z P.poleFal, odległość od brzegu lądu liczona raz przy pierwszej próbce), stuk(x, z, tSek) —
+   pierścień w shaderze terenu (uStuk = x, z, t0, aktywny; promień 0 → 3 km w 1,2 s na zegarze animuj(t), potem w = 0 i gałąź
+   pominięta). Pokaz nie woła stuk() nigdy: kadry filmów bez zmian. stan().stuk = pierścień aktywny. */
 (function (root) {
   var Teren = root.Teren || (typeof require === 'function' ? require('./teren.js') : null);
   var Ew = root.Ewolucja || (typeof require === 'function' ? require('./ewolucja.js') : null);
@@ -65,6 +71,7 @@
   var Sklejka = root.GeologiaSklejka || (typeof require === 'function' ? require('./sklejka.js') : null);
   var Hor = root.GeologiaHoryzont || (typeof require === 'function' ? require('./horyzont.js') : null);
   var Wt = root.GeologiaWiatr || (typeof require === 'function' ? require('./wiatr.js') : null);
+  var Pejzaz = root.GeologiaPejzaz || (typeof require === 'function' ? require('./pejzaz.js') : null);
   var RAD = Math.PI / 180;
   var MORZE_POD_KM = 0.012;            // dno o wysokości 0 (półka szwu SRTM/ETOPO) leży 12 m pod taflą — bez z-fightingu
   var WTOP_WYSPA_KM = 8, WTOP_WSTAWKA_KM = 0.3;
@@ -398,6 +405,8 @@
     'uniform float uCienChmur; uniform float uStropA4; uniform float uCzasA4; uniform vec3 uSlonceKier;',
     // materiał makiety (Task B1): 0 zwykły (pokaz zawsze), 1 sklejka; grubość arkusza [m n.p.m.] z GeologiaSklejka.krok(przew)
     'uniform float uMaterial; uniform float uKrokSklejki;',
+    // stuknięcie w skałę (Task B3): uStuk = (x, z [km sceny], t0 [s], aktywny), uCzasStuk = czas animuj(t)
+    'uniform vec4 uStuk; uniform float uCzasStuk;',
     // cienie z mapy horyzontu (Task A3): geSlHor = 1 − zasłonięcie Słońca, mnoży światło klucza (LUZ_SWIATLA)
     Hor.GLSL_SLONCE, Hor.GLSL_MAPA,
     'float geCien = 1.0; float geSlHor = 1.0;',
@@ -516,6 +525,15 @@
     '  float geCos = dot(geG, uSlonceKier.xz) / max(length(geG) * length(uSlonceKier.xz), 1e-6);',
     '  float geSch = (1.0 - smoothstep(0.0, max(geSkFw * 1.5 * geCos, 1e-5), 1.0 - geFr)) * step(0.05, geCos) * geBlisko * smoothstep(-0.02, 0.08, uSlonceKier.y);',
     '  geKol = geB * mix(1.0, 0.55, geKraw) * mix(1.0, 0.8, geSch);',
+    '}',
+    // Stuknięcie w skałę (Task B3): jasny pierścień w płaszczyźnie xz rośnie od punktu kliknięcia 0 → 3 km w 1,2 s i gaśnie
+    // (szerokość 40 → 160 m). Leży na powierzchni, która jest rysowana — przy czasie geologicznym na rzeźbie chwili.
+    // uStuk.w = 0 (pokaz zawsze, makieta poza 1,2 s po kliknięciu): gałąź pominięta, obraz bit w bit jak przed B3.
+    'if (uStuk.w > 0.5) {',
+    '  float geSf = clamp((uCzasStuk - uStuk.z) / 1.2, 0.0, 1.0);',
+    '  float geSd = abs(length(vSwiat.xz - uStuk.xy) - 3.0 * geSf);',
+    '  float geSa = (1.0 - smoothstep(0.0, 0.04 + 0.12 * geSf, geSd)) * (1.0 - geSf) * smoothstep(0.0, 0.03, geSf);',
+    '  geKol = mix(geKol, vec3(1.0, 0.92, 0.78), 0.7 * geSa);',
     '}',
     'diffuseColor.rgb *= geKol;'
   ].join('\n');
@@ -892,7 +910,9 @@
     tPaleta.magFilter = tPaleta.minFilter = T.NearestFilter; tPaleta.generateMipmaps = false; tPaleta.needsUpdate = true;
     var U = { uTryb: { value: 0 }, uNasycMaks: { value: 1 }, uPrzew: { value: e }, uSzklo: { value: 0 }, uPaleta: { value: tPaleta }, uKolorWody: { value: hexLin(T, '#123a52') },
       // materiał (Task B1): domyślnie zwykły — gałąź sklejki w shaderze pominięta (pokaz nigdy jej nie włącza)
-      uMaterial: { value: 0 }, uKrokSklejki: { value: krokSklejki(e) } };
+      uMaterial: { value: 0 }, uKrokSklejki: { value: krokSklejki(e) },
+      // stuknięcie (Task B3): w = 0 — pierścień wyłączony (pokaz nigdy go nie włącza)
+      uStuk: { value: new T.Vector4(0, 0, 0, 0) }, uCzasStuk: { value: 0 } };
     // barwa wody pod taflą (mgła wodna stanu „szklana”): zwykła albo żywica sklejki; × jasność światła z swiatlo()
     var kolorWody = KOLOR_WODY.zwykly, jasnWody = 1;
     // czas geologiczny (wspólne dla terenu, głębi cienia i wody) i efekty animacji (łuna, żar, cień chmur)
@@ -1601,6 +1621,58 @@
       var pt = new T.Vector3();
       return rc.ray.intersectPlane(new T.Plane(new T.Vector3(0, 1, 0), 0), pt) ? [pt.x, pt.z] : null;
     }
+    // Pejzaż dźwiękowy i stuknięcie (Task B3). punktNaTerenie: ląd pod punktem ekranu (marsz promienia po wysokosc() —
+    // przy czasie geologicznym po rzeźbie chwili; GeologiaPejzaz.punktNaTerenie, ≤ 64 odczyty) albo null (morze, niebo).
+    // yMax 5 km × przewyższenie: nad dzisiejszy szczyt i nad gmach Las Cañadas sprzed zapadnięcia.
+    function punktNaTerenie(nx, ny) {
+      ndc.set(nx, ny); kamera.updateMatrixWorld(); rc.setFromCamera(ndc, kamera);
+      var o = rc.ray.origin, d = rc.ray.direction;
+      var p = Pejzaz.punktNaTerenie([o.x, o.y, o.z], [d.x, d.y, d.z], wysokosc, { yMax: 5 * e, maxKm: kamera.far });
+      return p ? [p[0], p[2]] : null;
+    }
+    function komorka(P, x, zz) {
+      var ix = Math.max(0, Math.min(P.w - 1, Math.round((x - P.x0) / P.dx))), iy = Math.max(0, Math.min(P.h - 1, Math.round((zz - P.z0) / P.dz)));
+      return iy * P.w + ix;
+    }
+    // jednostka geologiczna pod punktem (indeksy wstawki, potem wyspy) — mapa opisuje DZISIEJSZĄ powierzchnię, więc przy
+    // czasie geologicznym (Ma > 0) null: stuknięcie bierze wtedy brzmienie domyślne
+    function jednostkaPod(x, zz) {
+      if (ewo.Ma > 0) return null;
+      var P = null;
+      for (var k = 0; k < wstawki.length && !P; k++) if (wstawki[k].indeksy && wewnatrz(wstawki[k].prost, x, zz)) P = wstawki[k];
+      if (!P && wewnatrz(wyspa.prost, x, zz)) P = wyspa;
+      if (!P || !P.indeksy) return null;
+      var j = P.indeksy[komorka(P, x, zz)];
+      return j && jednostki[j - 1] ? jednostki[j - 1].id : null;
+    }
+    // pierścień stuknięcia: tSek na zegarze animuj(t); gaśnie po 1,2 s (animuj zeruje uStuk.w)
+    function stuk(x, zz, tSek) {
+      U.uStuk.value.set(x, zz, +tSek || 0, 1);
+      U.uCzasStuk.value = +tSek || 0;
+      return true;
+    }
+    // odległość od brzegu dla komórek LĄDU (P.odl ma ją tylko na morzu) — liczona raz, przy pierwszej próbce pejzażu
+    function odlLadu(P) {
+      if (!P.odlLad) {
+        var w = P.s.wys, inv = new Float32Array(w.length);
+        for (var i = 0; i < w.length; i++) inv[i] = w[i] > 0 ? -1 : 1;
+        P.odlLad = odlegloscOdBrzegu(inv, P.w, P.h, P.dx, P.dz);
+      }
+      return P.odlLad;
+    }
+    // próbka miejsca dla GeologiaPejzaz.poziomy: morze / ląd i wysokość z rysowanej powierzchni (rzeźba chwili), odległość
+    // od brzegu i ekspozycja na falę z dzisiejszej siatki (pole fal A1, kanał B P.poleFal — bez przeliczania); wyspa, potem
+    // archipelag, poza nimi ekspozycja 0 i brzeg daleko. Gdy rzeźba chwili i dzisiejsza nie zgadzają się (ląd / morze),
+    // punkt leży na brzegu chwili — odległość 0.
+    function probkaPejzazu(x, zz) {
+      var hk = wysokoscKm(x, zz), w = { naMorzu: !(hk > 0), odlBrzeguKm: 1e9, wysM: hk == null ? 0 : hk * 1000, ekspozycja: 0 };
+      var P = wewnatrz(wyspa.prost, x, zz) ? wyspa : arch && wewnatrz(arch.prost, x, zz) ? arch : null;
+      if (!P) return w;
+      var i = komorka(P, x, zz), lad = P.s.wys[i] > 0;
+      w.odlBrzeguKm = lad !== !w.naMorzu ? 0 : lad ? odlLadu(P)[i] : P.odl[i];
+      if (P.poleFal) w.ekspozycja = P.poleFal[i * 4 + 2] / 255;
+      return w;
+    }
 
     // Próbka światła w punkcie (pomiar sondy): normalna wyświetlanej powierzchni (z przewyższeniem), N·L i cień rzucany
     // (marsz promienia ku słońcu po wysokościach).
@@ -1622,6 +1694,10 @@
     var czas = 0, Rdysku = 400, osKam = new T.Vector3();
     function animuj(t) {
       czas = t || 0;
+      if (U.uStuk.value.w > 0.5) {                     // pierścień stuknięcia (B3): 1,2 s, potem gałąź wyłączona
+        U.uCzasStuk.value = czas;
+        if (czas - U.uStuk.value.z > 1.2 || czas < U.uStuk.value.z - 0.5) U.uStuk.value.w = 0;
+      }
       uWoda.uCzas.value = czas; uChmury.uCzas.value = czas;
       if (uWiatr) uWiatr.uCzas.value = czas;
       kamera.updateMatrixWorld();
@@ -2078,6 +2154,7 @@
       tekstury: { wysW: wyspa.tWys, prostW: uWoda.uProstW.value, rozmW: uWoda.uRozmW.value },
       szklo: function () { return U.uSzklo.value; },
       wysokosc: wysokosc, probkaSwiatla: probkaSwiatla, trafiaSciane: trafiaSciane, punktNaMorzu: punktNaMorzu,
+      punktNaTerenie: punktNaTerenie, jednostkaPod: jednostkaPod, stuk: stuk, probkaPejzazu: probkaPejzazu,
       dodajWarstwe: dodajWarstwe, przygasCzesci: przygasCzesci,
       // pokaz (Task 8)
       zbudujGlob: zbudujGlob, zwolnijGlob: zwolnijGlob, dalekiLad: dalekiLad, kadr: kadr,
@@ -2095,7 +2172,7 @@
           swiatlo: { pora: sw.pora, az: sw.az, el: sw.el, dostroj: sw.dostroj }, przekroj: przek ? { kat_st: przek.kat_st, przesuniecie_km: przek.przesuniecie_km, maks_m: przek.profil ? przek.profil.maks_m : null } : null,
           podswietlona: podswietlona, najechana: najechana, etykiety: piny.filter(function (g) { return g.userData.pin.widoczna; }).length,
           wierzcholki: wierzcholki, dysk_km: Rdysku, lod: krok === 1 ? 'pelny' : 'lekki', czasMa: ewo.Ma, przygaszenie: przygaszenie,
-          cienieHor: UH.uCienieHor.value > 0.5, wiatr: !!(grupaWiatru && grupaWiatru.visible), wiatrLinie: wiatrSt.n, wiatrMs: wiatrSt.ms };
+          cienieHor: UH.uCienieHor.value > 0.5, stuk: U.uStuk.value.w > 0.5, wiatr: !!(grupaWiatru && grupaWiatru.visible), wiatrLinie: wiatrSt.n, wiatrMs: wiatrSt.ms };
       }
     };
   }

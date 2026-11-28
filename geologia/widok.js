@@ -5,7 +5,12 @@
    stan() → { miejsce, tryb, rozdzial, ujecie, t, fps, jakosc: 'pelna'|'lekka', jakoscAuto (false przy &jakosc=pelna i w smoke), lektor: 'gra'|'cisza'|'brak', gotowa, rzezba,
      kolorowanie, przekroj, chmury, przewyzszenie, czesc, mity, pelnyEkran } (ujecie = id bieżącego ujęcia albo null — Task 8);
    diagnostyka() → { geometrie, tekstury, programy, audio, audioMakiety, zrodlaMakiety } (audio = liczba żywych AudioContext
-   pokazu: 0 albo 1; audioMakiety = to samo dla lektora pinów makiety, zrodlaMakiety = grające źródła lektora makiety).
+   pokazu: 0 albo 1; audioMakiety = żywe konteksty makiety: lektor pinów + pejzaż dźwiękowy (0–2), zrodlaMakiety = grające
+   źródła lektora makiety).
+   Pejzaż dźwiękowy i stuknięcie (Task B3, geologia/pejzaz.js + geologia/dzwiek.js): głośnik w pasku (domyślnie wyłączony,
+   AudioContext dopiero po kliknięciu); stan().pejzaz = { gra, poziomy, ostatniStuk: { jednostka, t } | null, kontekst
+   (stan AudioContext), sygnal ({ podklad, lektor } dBFS z GeologiaDzwiek), niedostepny, trzaski (zaplanowane trzaski — pejzaż
+   ich nie ma, R17), wTle (karta w tle: kontekst wstrzymany) } — opis przy bloku „pejzaż”.
    Lektor pinów makiety (Task 8d): przycisk „▶ Posłuchaj” w karcie części, wulkanu i punktu turystyki tylko z nagraniami
    z zaproszenia (opis przy bloku „lektor na pinach makiety”); stan().lektorMakiety = 'brak' | 'laduje' (czasy.json w drodze)
    | 'gotowy' | 'gra', stan().lektorMakietyPowod = powód braku (null | 'siec' | 'zaproszenie' | 'przygotowanie' | 'wygaslo' | 'host'),
@@ -208,6 +213,11 @@
     ui.bWiatr = guzik(gWarstwy, 'Wiatr', 'Smugi pasatu z północnego wschodu opływające wyspę i piasek z plaż południa — schemat typowych warunków, nie pomiar');
     var gw = grupa('Przewyższenie');
     ui.bPrzew = PRZEWYZSZENIA.map(function (x) { var b = guzik(gw, '×' + liczba(x, 1), 'Przewyższenie pionowe ×' + liczba(x, 1)); b.dataset.przew = String(x); return b; });
+    // Task B3: głośnik — pejzaż dźwiękowy makiety, domyślnie wyłączony; pierwsze włączenie (gest) tworzy AudioContext
+    var gd = grupa('Dźwięk');
+    ui.bGlosnik = guzik(gd, null, null, 'ge-glosnik');
+    ui.bGlosnik.setAttribute('aria-label', 'Dźwięk makiety');
+    ikonaGlosnika(ui.bGlosnik);
     var gk = grupa('Karty');
     ui.bMity = guzik(gk, 'Fakty i mity', 'Fakty i mity o Teneryfie');
     ui.bPelny = guzik(gk, 'Pełny ekran', 'Pełny ekran (F)');
@@ -350,6 +360,7 @@
     ui.bTurystyka.addEventListener('click', function () { ustawTurystyke(!mks.turystyka); });
     ui.bWulkany.addEventListener('click', function () { ustawWulkany(!mks.wulkany); });
     ui.bWiatr.addEventListener('click', function () { ustawWiatr(!mks.wiatr); });
+    ui.bGlosnik.addEventListener('click', function () { ustawDzwiekMakiety(!pj.wl); });
     ui.kWulkX.addEventListener('click', zamknijWulkan);
     zbudujLegende();
     zbudujOsCzasu();
@@ -398,6 +409,7 @@
     if (ui.ostrzezenie) ui.ostrzezenie.hidden = !tur;
     ui.bWulkany.setAttribute('aria-pressed', String(mks.wulkany));
     ui.bWiatr.setAttribute('aria-pressed', String(mks.wiatr));
+    odswiezGlosnik();
     var wulk = mks.wulkany && st.tryb === 'makieta';
     if (wulk) zbudujLegendeWulkanow();
     // warstwy liczone z dzisiejszej rzeźby — w trybie turystycznym i wulkanów bez suwaka czasu
@@ -694,6 +706,7 @@
   function zwolnijMakiete() {
     budowa++;
     zwolnijLektorMakiety();
+    zwolnijPejzaz();
     if (!mk) return;
     if (mk.ster) mk.ster.dispose();
     if (mk.anim) mk.anim.zwolnij();
@@ -809,6 +822,8 @@
     if (mk.ster) mk.ster.update();
     ograniczKamere();
     sc.animuj(t);
+    // pejzaż dźwiękowy (B3): tylko przy włączonym dźwięku, co 0,1 s (wyłączony — zero pracy w klatce)
+    if (pj.wl) { var tn = performance.now(); if (tn - pj.tProby >= 100) { pj.tProby = tn; probkujPejzaz(); } }
     // animacja haka (G-F: wołana co klatkę po animuj; w smoke czas ruchu stały — kadr powtarzalny)
     if (mks.anim && mk.anim) {
       var wyn = mk.anim[FUNKCJE_ANIM[mks.anim.nazwa]](mks.anim.f, smoke ? 12 : undefined);
@@ -1564,6 +1579,136 @@
     notkaSieci(karta, null);
   }
   function wylaczLektorMakiety() { lm.czasy = null; lm.stan = 'brak'; lm.powod = 'zaproszenie'; odswiezPrzyciskiLektora(); }
+
+  /* ---------- pejzaż dźwiękowy makiety i stuknięcie w skałę (Task B3) ---------- */
+  // Przycisk głośnika w pasku (domyślnie wyłączony, po każdym wejściu w makietę). Pierwsze włączenie to gest: tu powstaje
+  // WŁASNY AudioContext pejzażu (osobny od lektora pinów — diagnostyka().audioMakiety liczy oba) i GeologiaDzwiek.utworz;
+  // brak Web Audio albo błąd budowy → jedno „Geologia/uwaga: …”, przycisk nieaktywny, makieta działa dalej bez dźwięku.
+  // Włączony: co 0,1 s poziomy warstw z GeologiaPejzaz.poziomy dla punktu pod środkiem ekranu (ląd z marszu promienia, inaczej
+  // tafla), × POD_LEKTOREM_PEJZAZ, gdy gra lektor pinu. Wyłączony: cisza i kontekst wstrzymany (ponowne włączenie wznawia
+  // go w geście). Klik w teren (poza pinami — karta zamyka się jak dotąd) → pierścień w shaderze (sc.stuk) i krótkie
+  // stuknięcie z GeologiaPejzaz.brzmienie (umowne — interfejs nic o brzmieniu skał nie mówi). Wyjście z makiety zamyka kontekst.
+  // Pomruk pejzażu bez trzasków Poissona (utworz z { trzaski: false }, R17 — przy kalimie trzask lawy byłby fałszywy). Karta
+  // w tle wstrzymuje kontekst, powrót wznawia. Błąd węzłów stuknięcia (kontekst przerwany/zamknięty) → jedno
+  // „Geologia/uwaga: stuknięcie bez dźwięku”, klik działa dalej (pierścień i karta).
+  var POD_LEKTOREM_PEJZAZ = 0.3;
+  var pj = { wl: false, ctx: null, dz: null, szum: null, poziomy: null, ostatniStuk: null, tProby: 0, niedostepny: false, ostrzezono: false,
+    ostrzezonoStuk: false, wTle: false };
+  function ostrzezPejzaz(powod) {
+    if (!pj.ostrzezono) console.warn('Geologia/uwaga: dźwięk makiety niedostępny (' + powod + ') — makieta bez dźwięku');
+    pj.ostrzezono = true; pj.niedostepny = true;
+  }
+  function odswiezGlosnik() {
+    if (!ui) return;
+    ui.bGlosnik.setAttribute('aria-pressed', String(pj.wl));
+    ui.bGlosnik.disabled = pj.niedostepny;
+    ui.bGlosnik.title = pj.niedostepny ? 'Dźwięk makiety niedostępny w tej przeglądarce'
+      : pj.wl ? 'Wyłącz dźwięk makiety' : 'Włącz dźwięk makiety: szum morza i wiatru zależny od miejsca w kadrze, stuknięcie po kliknięciu w teren';
+  }
+  function ikonaGlosnika(b) {
+    var s = svgEl('svg', { viewBox: '-50 -50 100 100', 'aria-hidden': 'true', focusable: 'false' }, b);
+    svgEl('path', { d: 'M-34,-13 L-16,-13 L4,-32 L4,32 L-16,13 L-34,13 Z', fill: 'currentColor' }, s);
+    svgEl('path', { class: 'ge-glosnik-fale', d: 'M15,-17 A24,24 0 0 1 15,17 M24,-30 A40,40 0 0 1 24,30', fill: 'none', stroke: 'currentColor', 'stroke-width': '7', 'stroke-linecap': 'round' }, s);
+    svgEl('path', { class: 'ge-glosnik-cisza', d: 'M16,-14 L40,14 M40,-14 L16,14', fill: 'none', stroke: 'currentColor', 'stroke-width': '7', 'stroke-linecap': 'round' }, s);
+  }
+  function ustawDzwiekMakiety(wl) {
+    wl = !!wl && !pj.niedostepny && !!mk;
+    if (wl && !pj.ctx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC || !window.GeologiaDzwiek || !window.GeologiaPejzaz) { ostrzezPejzaz('brak Web Audio'); wl = false; }
+      else {
+        try { pj.ctx = new AC(); } catch (e) { ostrzezPejzaz('AudioContext: ' + (e && e.message || e)); wl = false; }
+        if (pj.ctx) {
+          // R17: bez trzasków lawy (pomruk kalimy to stłumienie, nie lawa)
+          try { pj.dz = window.GeologiaDzwiek.utworz(pj.ctx, { trzaski: false }); } catch (e) {
+            ostrzezPejzaz(e && e.message || e); wl = false;
+            try { var pz = pj.ctx.close(); if (pz && pz.catch) pz.catch(function () { /* nic */ }); } catch (_) { /* nic */ }
+            pj.ctx = null; pj.dz = null;
+          }
+        }
+      }
+    }
+    pj.wl = wl;
+    if (pj.dz) {
+      pj.dz.cisza(!wl);
+      try {
+        var p = wl ? (pj.ctx.state !== 'running' ? pj.ctx.resume() : null) : pj.ctx.suspend();
+        if (p && p.catch) p.catch(function () { /* nic */ });
+      } catch (_) { /* nic */ }
+    }
+    if (wl) { pj.tProby = performance.now(); probkujPejzaz(); }
+    odswiezGlosnik();
+    return pj.wl;
+  }
+  // punkt pod środkiem ekranu → poziomy warstw (GeologiaPejzaz.poziomy); kamera w niebo (bez lądu i tafli) → miejsce pod kamerą
+  function probkujPejzaz() {
+    if (!mk || !pj.dz) return;
+    var sc = mk.sc, k = sc.kamera.position, p = sc.punktNaTerenie(0, 0) || sc.punktNaMorzu(0, 0);
+    if (!p) p = [k.x, k.z];
+    var pr = sc.probkaPejzazu(p[0], p[1]), y = Math.max(0, sc.wysokosc(p[0], p[1]) || 0);
+    pr.odlKameryKm = Math.hypot(k.x - p[0], k.y - y, k.z - p[1]);
+    pr.kalima = mks.pogoda === 'kalima';
+    var lv = window.GeologiaPejzaz.poziomy(pr);
+    if (lm.gra) Object.keys(lv).forEach(function (x) { lv[x] *= POD_LEKTOREM_PEJZAZ; });
+    pj.poziomy = lv;
+    pj.dz.ustaw(lv);
+  }
+  // zegar animuj(t) z krok() — pierścień stuknięcia liczy wiek na tym samym zegarze
+  function zegarMakiety() { return smoke ? 1 : (performance.now() - tStart) / 1000; }
+  function stuknij(x, y) {
+    if (!pj.wl || !pj.dz || !mk) return;
+    var n = ndc(x, y), p = n && mk.sc.punktNaTerenie(n[0], n[1]);
+    if (!p) return;
+    var id = mk.sc.jednostkaPod(p[0], p[1]), D = window.GeologiaTeneryfa;
+    mk.sc.stuk(p[0], p[1], zegarMakiety());
+    // kontekst przerwany (iOS „interrupted”) albo zamknięty z zewnątrz: węzły rzucają — klik nie może się wysypać
+    try {
+      grajStuk(window.GeologiaPejzaz.brzmienie(id, D && D.jednostki));
+      pj.ostatniStuk = { jednostka: id, t: pj.ctx.currentTime };
+    } catch (e) {
+      if (!pj.ostrzezonoStuk) console.warn('Geologia/uwaga: stuknięcie bez dźwięku (' + (e && e.message || e) + ')');
+      pj.ostrzezonoStuk = true;
+    }
+  }
+  // stuknięcie: sinus (lekko opadający) + szum przez pasmowy przy 1,6 × częstotliwości, obwiednie wykładnicze; do miksera
+  // podkładu (wejście lektora: kompresor, master) — źródła rozłączane po końcu
+  function grajStuk(b) {
+    var ctx = pj.ctx, t = ctx.currentTime, wy = pj.dz.wejscie, A = 0.003;
+    if (!pj.szum) {
+      var n = Math.round(0.3 * ctx.sampleRate), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+      for (var i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+      pj.szum = buf;
+    }
+    var o = ctx.createOscillator(), go = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(b.czest, t); o.frequency.exponentialRampToValueAtTime(b.czest * 0.85, t + A + b.wybrzmienie);
+    go.gain.setValueAtTime(0, t); go.gain.linearRampToValueAtTime(0.25 * (1 - 0.6 * b.szum), t + A); go.gain.exponentialRampToValueAtTime(0.0005, t + A + b.wybrzmienie);
+    o.connect(go); go.connect(wy); o.start(t); o.stop(t + A + b.wybrzmienie + 0.05);
+    var s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), gs = ctx.createGain(), ds = Math.min(0.12, b.wybrzmienie);
+    s.buffer = pj.szum; f.type = 'bandpass'; f.frequency.value = b.czest * 1.6; f.Q.value = 0.9;
+    gs.gain.setValueAtTime(0, t); gs.gain.linearRampToValueAtTime(0.6 * b.szum, t + A); gs.gain.exponentialRampToValueAtTime(0.0005, t + A + ds);
+    s.connect(f); f.connect(gs); gs.connect(wy); s.start(t); s.stop(t + A + ds + 0.05);
+    var rozlacz = function (wezly) { return function () { wezly.forEach(function (w) { try { w.disconnect(); } catch (_) { /* nic */ } }); }; };
+    o.onended = rozlacz([o, go]); s.onended = rozlacz([s, f, gs]);
+  }
+  // karta w tle (jak pokaz i Myśliwce): rAF staje, więc próbki też — kontekst wstrzymany, po powrocie wznowiony
+  // i od razu nowa próbka (poziomy sprzed ukrycia mogły być nieaktualne)
+  doc.addEventListener('visibilitychange', function () {
+    if (!pj.ctx || !pj.wl) return;
+    try {
+      var p = doc.hidden ? pj.ctx.suspend() : pj.ctx.resume();
+      if (p && p.catch) p.catch(function () { /* nic */ });
+    } catch (_) { /* nic */ }
+    pj.wTle = doc.hidden;
+    if (!doc.hidden) { pj.tProby = performance.now(); probkujPejzaz(); }
+  });
+  function zwolnijPejzaz() {
+    if (pj.dz) { try { pj.dz.zwolnij(); } catch (_) { /* nic */ } }
+    if (pj.ctx) { try { var p = pj.ctx.close(); if (p && p.catch) p.catch(function () { /* nic */ }); } catch (_) { /* nic */ } }
+    pj.ctx = null; pj.dz = null; pj.szum = null; pj.wl = false; pj.poziomy = null; pj.ostatniStuk = null;
+    pj.niedostepny = false; pj.ostrzezono = false; pj.ostrzezonoStuk = false; pj.wTle = false;
+    odswiezGlosnik();
+  }
   function zwolnijLektorMakiety() {
     lm.nr++;                            // spóźniony czasy.json nie wróci do zamkniętej makiety
     zatrzymajLektorMakiety();
@@ -1804,7 +1949,7 @@
       if (tu) { pokazTur(tu.typ, tu.id); return; }
       var id = trafienie(e.clientX, e.clientY);
       if (id) pokazCzesc(id);
-      else { if (!ui.kCzesc.hidden) zamknijCzesc(); if (!ui.kTur.hidden) zamknijTur(); if (!ui.kWulk.hidden) zamknijWulkan(); }
+      else { if (!ui.kCzesc.hidden) zamknijCzesc(); if (!ui.kTur.hidden) zamknijTur(); if (!ui.kWulk.hidden) zamknijWulkan(); stuknij(e.clientX, e.clientY); }
     });
   }
 
@@ -1919,6 +2064,8 @@
         wulkany: mks.wulkany, wulkanyWidoczna: wulkanyWidoczna(), kartaWulkanu: mks.wulk, warstwaWulkanow: mk && mk.wulk ? mk.wulk.stan() : null,
         legendaWulkanow: mk && mk.grupyWulk ? window.GeologiaWulkany.legenda(mk.grupyWulk, window.GeologiaWulkany.LITERATURA) : null,
         lektorMakiety: lm.stan, lektorMakietyPowod: lm.powod, lektorMakietyWers: lm.gra ? lm.gra.id : null, lektorMakietyZrodla: lm.lek ? lm.lek.zrodla() : 0,
+        pejzaz: { gra: pj.wl, poziomy: pj.poziomy, ostatniStuk: pj.ostatniStuk, kontekst: pj.ctx ? pj.ctx.state : null,
+          sygnal: pj.dz ? pj.dz.sygnal() : null, niedostepny: pj.niedostepny, trzaski: pj.dz ? pj.dz.trzaski() : null, wTle: !!pj.wTle },
         kamera: mk ? { poz: mk.sc.kamera.position.toArray(), cel: mk.ster ? mk.ster.target.toArray() : null,
           min: mk.ster ? mk.ster.minDistance : null, max: mk.ster ? mk.ster.maxDistance : null } : null };
     },
@@ -1932,7 +2079,7 @@
       if (!gl) return null;
       var m = gl.renderer.info.memory, pr = gl.renderer.info.programs;
       return { geometrie: m.geometries, tekstury: m.textures, programy: pr ? pr.length : 0, audio: pokaz ? pokaz.audio() : 0,
-        audioMakiety: lm.ctx ? 1 : 0, zrodlaMakiety: lm.lek ? lm.lek.zrodla() : 0,
+        audioMakiety: (lm.ctx ? 1 : 0) + (pj.ctx ? 1 : 0), zrodlaMakiety: lm.lek ? lm.lek.zrodla() : 0,
         // światło sceny makiety (Task 8e): pora presetu, az, el — to, co faktycznie świeci; pogoda ze stanu makiety
         swiatlo: mk ? (function (w) { return { pora: w.pora, az: w.az, el: w.el, pogoda: mks.pogoda, dostroj: !!w.dostroj }; })(mk.sc.stan().swiatlo) : null };
     },
