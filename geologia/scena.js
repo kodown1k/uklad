@@ -1,9 +1,9 @@
 'use strict';
 /* Zakładka Geologia — scena makiety (plik przeglądarkowy, THREE r128; czysta część w node: dual-export).
    GeologiaScena.zbuduj(T, renderer, { siatka, poziomy: { archipelag, wstawki }, dane, lod: 'pelny'|'lekki', przewyzszenie = 1.5,
-     fale = true })
+     fale = true, cienieHor = true })
      → { scena, kamera, teren, ocean, kolorowanie(tryb), przekroj(null | { kat_st, przesuniecie_km }) → profil, chmury(wl),
-         woda(stan, f), material(m), swiatlo({ pora, az, el }), przewyzszenie(x), czesci: { [id]: Object3D }, pick(ndcX, ndcY) → id|null,
+         woda(stan, f), material(m), swiatlo({ pora, az, el }), horyzont(mapa), cienieHor(wl), przewyzszenie(x), czesci: { [id]: Object3D }, pick(ndcX, ndcY) → id|null,
          podswietl(id|null), kotwica(id) → [x, y, z], animuj(t), czas(Ma), zwolnij(),
          efekty: { luna, zar, cienChmur, wypelnienie } (haki animacji A1–A4, geologia/animacje.js),
          (dodatki dla widoku i sondy) wysokosc(x, z), probkaSwiatla(x, z), lad, granice, trafiaSciane(ndc), punktNaMorzu(ndc), stan(),
@@ -44,12 +44,20 @@
    Materiał „Sklejka” (Task B1 — geologia/sklejka.js): material('zwykly'|'sklejka') — uMaterial 0/1 i uKrokSklejki
    (GeologiaSklejka.krok(przewyższenie), odświeżany w przewyzszenie(x)), woda szklana z mgłą wodną żywicy #2e7f8c albo realna.
    Warstwy liczone z wysokości rysowanej powierzchni (przy czasie geologicznym — rzeźba chwili), krawędzie i cień schodka
-   z pochodnych ekranowych; bez tekstur i bez nowych programów. Domyślnie uMaterial = 0: gałąź pominięta (pokaz). */
+   z pochodnych ekranowych; bez tekstur i bez nowych programów. Domyślnie uMaterial = 0: gałąź pominięta (pokaz).
+   Cienie z mapy horyzontu (Task A3 — geologia/horyzont.js, mapa z scripts/gen-horyzont-teneryfy.mjs): horyzont({ meta, rgba0,
+   rgba1 }) wgrywa 8 kątów horyzontu na komórkę (uHor0/uHor1) przez z() i stożek Teide (uStozek z horyzont.json); uSlonceAzEl [rad] z swiatlo(). Teren: światło klucza × (1 − zasłonięcie z mapy) w LUZ_SWIATLA (miękkie
+   cienie własne dolin i wąwozów, obok mapy cieni). Woda (tafla 0 m) i strop chmur (STROP_CHMUR_KM jako płaszczyzna): cień
+   Teide z modelu stożka (R13, GeologiaHoryzont.cienStozka — klin trójkątny), gasi światło słoneczne, połysk i pianę,
+   a przy niskim Słońcu także poświatę (barwa × 1 − POSWIATA·cień). uCienieHor = 1 tylko z wczytaną mapą, bez czasu geologicznego (uEwoMa > 0 — mapa opisuje dzisiejszą rzeźbę)
+   i z zezwoleniem widoku cienieHor(wl) (animacje A1–A5: false); stan().cienieHor. o.cienieHor === false (pokaz) — mapy
+   się nie wgrywa nigdy: gałąź pominięta, kadry filmów bit w bit jak przed A3. */
 (function (root) {
   var Teren = root.Teren || (typeof require === 'function' ? require('./teren.js') : null);
   var Ew = root.Ewolucja || (typeof require === 'function' ? require('./ewolucja.js') : null);
   var Fale = root.GeologiaFale || (typeof require === 'function' ? require('./fale.js') : null);
   var Sklejka = root.GeologiaSklejka || (typeof require === 'function' ? require('./sklejka.js') : null);
+  var Hor = root.GeologiaHoryzont || (typeof require === 'function' ? require('./horyzont.js') : null);
   var RAD = Math.PI / 180;
   var MORZE_POD_KM = 0.012;            // dno o wysokości 0 (półka szwu SRTM/ETOPO) leży 12 m pod taflą — bez z-fightingu
   var WTOP_WYSPA_KM = 8, WTOP_WSTAWKA_KM = 0.3;
@@ -383,7 +391,9 @@
     'uniform float uCienChmur; uniform float uStropA4; uniform float uCzasA4; uniform vec3 uSlonceKier;',
     // materiał makiety (Task B1): 0 zwykły (pokaz zawsze), 1 sklejka; grubość arkusza [m n.p.m.] z GeologiaSklejka.krok(przew)
     'uniform float uMaterial; uniform float uKrokSklejki;',
-    'float geCien = 1.0;',
+    // cienie z mapy horyzontu (Task A3): geSlHor = 1 − zasłonięcie Słońca, mnoży światło klucza (LUZ_SWIATLA)
+    Hor.GLSL_SLONCE, Hor.GLSL_MAPA,
+    'float geCien = 1.0; float geSlHor = 1.0;',
     GLSL_WSPOLNE,
     GLSL_CHMURY_A4,
     // hipsometria atlasowa (makieta „Teren”): dno w błękitach, ląd zieleń → beż → brąz → szarość → biel
@@ -460,6 +470,7 @@
     '  vec2 geP = vSwiat.xz + uSlonceKier.xz / max(uSlonceKier.y, 0.08) * max(uStropA4 - vSwiat.y, 0.0);',
     '  geCien = 1.0 - uCienChmur * geNiz * geChmuryA4(geP, uCzasA4, 0.0);',
     '}',
+    'geSlHor = 1.0 - geZaslonHor(vSwiat.xz);',
     'float geH = vWys * 1000.0;',
     'float geJ = uMaIndeksy > 0.5 ? floor(texture2D(uIndeksy, vUv).r * 255.0 + 0.5) : 0.0;',
     'vec3 geKol;',
@@ -584,6 +595,7 @@
     GLSL_WSPOLNE,
     GLSL_MGIELKA,
     GLSL_EWOLUCJA,
+    Hor.GLSL_SLONCE, Hor.GLSL_STOZEK,
     'vec2 geUv(vec2 xz, vec4 r, vec2 n) { vec2 f = (xz - r.xy) / (r.zw - r.xy); return (f * (n - 1.0) + 0.5) / n; }',
     'bool geW(vec2 xz, vec4 r) { return xz.x >= r.x && xz.x <= r.z && xz.y >= r.y && xz.y <= r.w; }',
     'void main() {',
@@ -634,8 +646,12 @@
     '  vec3 R = reflect(-V, n);',
     '  vec3 niebo = mix(uHoryzontL, uZenitL, pow(clamp(R.y, 0.0, 1.0), 0.45));',
     '  float rs = max(dot(R, uSlonce), 0.0);',
-    '  float blysk = (pow(rs, 900.0) * 30.0 + pow(rs, 80.0) * 0.35) * smoothstep(0.0, 0.06, uSlonce.y);',
-    '  vec3 kol = woda * (uAmb + uKolorSlonca * max(uSlonce.y, 0.0) * 0.45);',
+    // cień Teide na morzu (A3, R13 — stożek z geologia/horyzont.js, tafla 0 m): gasi światło słoneczne tafli, połysk
+    // i pianę; przy niskim Słońcu także poświatę (niżej, razem z odbiciem nieba)
+    '  float geCienT = geCienStozka(xz, 0.0);',
+    '  float geSlW = 1.0 - geCienT;',
+    '  float blysk = (pow(rs, 900.0) * 30.0 + pow(rs, 80.0) * 0.35) * smoothstep(0.0, 0.06, uSlonce.y) * geSlW;',
+    '  vec3 kol = woda * (uAmb + uKolorSlonca * max(uSlonce.y, 0.0) * 0.45 * geSlW);',
     '  kol = mix(kol, niebo, fres) + uKolorSlonca * blysk;',
     '  float piana = (1.0 - smoothstep(0.015, 0.11, dist)) * step(h, 2.0) * (0.55 + 0.45 * geSzum(xz * 22.0 + uCzas * 0.3));',
     // piana A1 liczona od LINII WODY, nie od środka komórki lądu (dist): linia wody leży w komórce brzegowej (105 m wyspy,
@@ -660,7 +676,7 @@
     '  float rozbryzg = (1.0 - smoothstep(0.0, 0.02, dW)) * 1.5 * mix(0.65, 1.0, eks);',
     '  float pianaFal = step(h, 2.0) * (0.55 + 0.45 * geSzum(xz * 22.0 + uCzas * 0.3)) * mix(wybieg, rozbryzg, pf.a);',
     '  piana = mix(piana, pianaFal, uFaleWl * geDzis);',
-    '  kol = mix(kol, vec3(0.78, 0.80, 0.80) * (uAmb + uKolorSlonca * max(uSlonce.y, 0.0)), min(piana * 0.65, 1.0));',
+    '  kol = mix(kol, vec3(0.78, 0.80, 0.80) * (uAmb + uKolorSlonca * max(uSlonce.y, 0.0) * geSlW), min(piana * 0.65, 1.0));',
     '  float daleko = smoothstep(25.0, 110.0, length(cameraPosition - vSwiat));',
     '  float geAlfa = mix(1.0, mix(0.25, 0.35, daleko), uSzklo);',               // szklana: krycie ≤ 0,35 także z daleka (P7)
     // pokaz: ląd spoza danych (Afryka, Madera) z tekstury globu — ta sama barwa co na poziomie `glob` (przenikanie P)
@@ -670,6 +686,7 @@
     '    float lad = smoothstep(0.05, 0.16, distance(tz, OCEAN_ZIEMI));',
     '    kol = mix(kol, geS2L(tz) * (uAmb + uKolorSlonca * max(uSlonce.y, 0.0)), lad); geAlfa = mix(geAlfa, 1.0, lad);',
     '  }',
+    '  kol *= 1.0 - ' + Hor.POSWIATA.woda.toFixed(2) + ' * geCienT * geNiskoSlonce();',
     '  gl_FragColor = vec4(kol, geAlfa);',
     '  #include <tonemapping_fragment>',
     '  #include <encodings_fragment>',
@@ -763,6 +780,7 @@
     'uniform float uCzas; uniform float uStrop; uniform vec3 uSlonce; uniform vec3 uKolorSlonca; uniform vec3 uAmb;',
     'varying vec3 vSwiat;',
     GLSL_WSPOLNE,
+    Hor.GLSL_SLONCE, Hor.GLSL_STOZEK,
     'vec2 geUv(vec2 xz, vec4 r, vec2 n) { vec2 f = (xz - r.xy) / (r.zw - r.xy); return (f * (n - 1.0) + 0.5) / n; }',
     'void main() {',
     '  #include <clipping_planes_fragment>',
@@ -780,7 +798,11 @@
     '  float brzeg = min(e.x, e.y) - 22.0 * geFbm(xz * 0.04 + vec2(3.7, 1.3));',
     '  float a = pokrycie * styk * smoothstep(0.0, 10.0, brzeg) * 0.94;',
     '  if (a < 0.004) discard;',
-    '  vec3 c = vec3(0.92) * (uAmb * 1.15 + uKolorSlonca * max(uSlonce.y, 0.05) * 0.7) * (0.82 + 0.18 * d);',
+    // cień Teide na morzu chmur (A3, R13 — stożek, strop jako płaszczyzna uStrop): gasi człon słoneczny i przy niskim
+    // Słońcu złotą poświatę stropu
+    '  float geCienT = geCienStozka(xz, uStrop);',
+    '  vec3 c = vec3(0.92) * (uAmb * 1.15 + uKolorSlonca * max(uSlonce.y, 0.05) * 0.7 * (1.0 - geCienT)) * (0.82 + 0.18 * d);',
+    '  c *= 1.0 - ' + Hor.POSWIATA.chmury.toFixed(2) + ' * geCienT * geNiskoSlonce();',
     '  gl_FragColor = vec4(c, a);',
     '  #include <tonemapping_fragment>',
     '  #include <encodings_fragment>',
@@ -881,6 +903,16 @@
     var UM = { uMgielka: { value: 0 }, uMgielkaL: { value: new T.Vector2(MGIELKA_L[0], MGIELKA_L[1]) }, uMgielkaKol: { value: new T.Vector3(1, 1, 1) },
       uMgielkaKolR: { value: new T.Vector3(1, 1, 1) }, uMgPrzew: { value: e }, uMgKamH: { value: 0 } };
     Object.keys(UM).forEach(function (k) { U[k] = UM[k]; });
+    // cienie z mapy horyzontu (Task A3): te same obiekty w terenie, wodzie i chmurach. Do wczytania mapy (horyzont()) próbniki
+    // dostają paletę, a uCienieHor = 0 pomija odczyt. Pokaz (o.cienieHor === false) mapy nie dostaje nigdy — kadry filmów
+    // strojone bez tych cieni (Review Focus 2).
+    var UH = { uHor0: { value: tPaleta }, uHor1: { value: tPaleta }, uSlonceAzEl: { value: new T.Vector2(250 * RAD, 30 * RAD) },
+      uCienieHor: { value: 0 }, uProstHor: { value: new T.Vector4(0, 0, 1, 1) }, uRozmHor: { value: new T.Vector2(1, 1) },
+      // stożek Teide (R13): x, z [km sceny], wierzchołek h [km], k = promień / wysokość; k = 0 — bez cienia
+      uStozek: { value: new T.Vector4(0, 0, 0, 0) } };
+    var stozek = null;
+    Object.keys(UH).forEach(function (k) { U[k] = UH[k]; });
+    var hor = { dozwolone: o.cienieHor !== false, wczytana: false, zezwolenie: true };
     var plaszczyzna = new T.Plane(new T.Vector3(0, 1, 0), 1e7), plaszczyzny = [plaszczyzna];
     // pokaz (o.ostrze): druga płaszczyzna i przecięcie (clipIntersection) — odcięcie jedzie wzdłuż linii przekroju
     // (R9.6 X2); poza ruchem ostrze „tnie wszystko”, więc przecięcie = sama płaszczyzna przekroju. Makieta: jedna płaszczyzna.
@@ -892,7 +924,7 @@
     if (T.ShaderChunk.lights_fragment_begin.indexOf(KOTWICA_SWIATLA) < 0 || T.ShaderChunk.normal_fragment_maps.indexOf(KOTWICA_NORMALNEJ) < 0) {
       console.error('Geologia: fragmenty shaderów THREE inne niż w r128 — cień chmur i nachylenie rzeźby chwili nie zadziałają');
     }
-    var LUZ_SWIATLA = T.ShaderChunk.lights_fragment_begin.replace(KOTWICA_SWIATLA, KOTWICA_SWIATLA + '\n\t\tdirectLight.color *= geCien;');
+    var LUZ_SWIATLA = T.ShaderChunk.lights_fragment_begin.replace(KOTWICA_SWIATLA, KOTWICA_SWIATLA + '\n\t\tdirectLight.color *= geCien * geSlHor;');
     var NORMALNA_EWO = T.ShaderChunk.normal_fragment_maps.replace(KOTWICA_NORMALNEJ, KOTWICA_NORMALNEJ + '\n\tnormal.xz *= vEwoK;');
     function wierzcholekEwolucji(sh, u, glebia) {
       Object.keys(UE).forEach(function (k) { sh.uniforms[k] = UE[k]; });
@@ -1127,6 +1159,7 @@
     if (faleWl) { uWoda.uKierFali.value.set(Fale.KIERUNEK_FALI[0], Fale.KIERUNEK_FALI[1]); uWoda.uFaleWl.value = 1; uWoda.uFaleGrzbiety.value = flt ? 1 : 0; }
     Object.keys(UE).forEach(function (k) { uWoda[k] = UE[k]; });          // czas geologiczny: te same obiekty co w terenie
     Object.keys(UM).forEach(function (k) { uWoda[k] = UM[k]; });
+    Object.keys(UH).forEach(function (k) { uWoda[k] = UH[k]; });
     var matWody = z(new T.ShaderMaterial({ uniforms: uWoda, vertexShader: WODA_VERT, fragmentShader: WODA_FRAG, transparent: true,
       fog: true, clipping: true, clippingPlanes: plaszczyzny, clipIntersection: !!ostrze, depthWrite: true }));
     var ocean = new T.Mesh(z(new T.CircleGeometry(1, 128)), matWody);
@@ -1142,6 +1175,7 @@
       uAmb: { value: uWoda.uAmb.value } }]);
     uChmury.uWysW.value = wyspa.tWys;
     Object.keys(UM).forEach(function (k) { uChmury[k] = UM[k]; });
+    Object.keys(UH).forEach(function (k) { uChmury[k] = UH[k]; });
     var matChmur = z(new T.ShaderMaterial({ uniforms: uChmury, vertexShader: WODA_VERT, fragmentShader: CHMURY_FRAG, transparent: true,
       depthWrite: false, side: T.DoubleSide, fog: true, clipping: true, clippingPlanes: plaszczyzny, clipIntersection: !!ostrze }));
     var chmuryMesh = new T.Mesh(z(new T.PlaneGeometry(prostCh.x1 - prostCh.x0, prostCh.z1 - prostCh.z0, 1, 1)), matChmur);
@@ -1408,6 +1442,7 @@
       klucz.color.set(p.klucz); klucz.intensity = p.k;
       wypelnienie.color.set(p.wyp); wypelnienie.groundColor.set(p.wyp); wypelnienie.intensity = p.f;
       uNiebo.uSlonce.value.copy(kier); uWoda.uSlonce.value.copy(kier); UF.uSlonceKier.value.copy(kier);
+      UH.uSlonceAzEl.value.set(sw.az * RAD, sw.el * RAD);
       var kl = new T.Color(p.klucz), kw = new T.Color(p.wyp);
       // te same jednostki co w MeshStandardMaterial bez fizycznych świateł: blask = barwa · moc (π się skraca)
       uWoda.uKolorSlonca.value.set(kl.r * p.k, kl.g * p.k, kl.b * p.k);
@@ -1616,6 +1651,7 @@
       if (Ma === ewo.Ma) return Ma;
       if (Ma > 0) przygotujEwolucje();
       ewo.Ma = Ma; UE.uEwoMa.value = Ma;
+      cienieHorAkt();
       ustawPiny();
       if (sciana && przek) zbudujSciane(przek.linia);
       renderer.shadowMap.needsUpdate = true;
@@ -1884,6 +1920,41 @@
       return true;
     }
 
+    // --- cienie z mapy horyzontu (Task A3) ---
+    // horyzont({ meta, rgba0, rgba1 }): mapa z generatora (horyzont.json + PNG rozpakowane bajt w bajt) → tekstury przez z()
+    // i stożek Teide z meta.stozekTeide (R13); bez przebudowy programów (próbniki i uniformy są od budowy). Czynne, gdy mapa
+    // wczytana, scena nie jest pokazem, widok zezwala (cienieHor(false) — animacje A1–A5) i nie ma czasu geologicznego
+    // (mapa i stożek opisują dzisiejszą rzeźbę).
+    function cienieHorAkt() {
+      var wl = hor.dozwolone && hor.wczytana && hor.zezwolenie && !(ewo.Ma > 0);
+      UH.uCienieHor.value = wl ? 1 : 0;
+      return wl;
+    }
+    function teksturaHor(rgba, w, h) {
+      var t = z(new T.DataTexture(rgba, w, h, T.RGBAFormat, T.UnsignedByteType));
+      t.wrapS = t.wrapT = T.ClampToEdgeWrapping; t.magFilter = t.minFilter = T.LinearFilter;
+      t.generateMipmaps = false; t.unpackAlignment = 1; t.needsUpdate = true;
+      return t;
+    }
+    function horyzont(d) {
+      if (!hor.dozwolone || hor.wczytana || !d || !d.meta) return false;
+      var m = d.meta, r = prostokat({ bbox: m.bbox });
+      if (d.rgba0.length !== m.w * m.h * 4 || d.rgba1.length !== m.w * m.h * 4) {
+        console.error('Geologia: mapa horyzontu — rozmiar danych niezgodny z horyzont.json (' + m.w + '×' + m.h + ')');
+        return false;
+      }
+      UH.uHor0.value = teksturaHor(d.rgba0, m.w, m.h); UH.uHor1.value = teksturaHor(d.rgba1, m.w, m.h);
+      var st = m.stozekTeide;
+      if (st && st.k > 0) {
+        stozek = { x: st.x_km, z: st.z_km, h: st.h_km, hb: st.hb_km, k: st.k };
+        UH.uStozek.value.set(stozek.x, stozek.z, stozek.h, stozek.k);
+      } else console.error('Geologia: horyzont.json bez stozekTeide — makieta bez cienia Teide na morzu i chmurach');
+      UH.uProstHor.value.set(r.x0, r.z0, r.x1, r.z1); UH.uRozmHor.value.set(m.w, m.h);
+      hor.wczytana = true;
+      cienieHorAkt();
+      return true;
+    }
+
     function zwolnij() {
       warstwy.length = 0;
       zwolnijSciane();
@@ -1926,7 +1997,10 @@
         woda(sk ? 'szklana' : 'realna', 1);
         return sk ? 'sklejka' : 'zwykly';
       },
-      swiatlo: swiatlo, przewyzszenie: przewyzszenie, pick: pick, podswietl: podswietl, najedz: najedz, kotwica: kotwica, animuj: animuj, zwolnij: zwolnij,
+      swiatlo: swiatlo, przewyzszenie: przewyzszenie, pick: pick,
+      // cienie z mapy horyzontu (A3): wgranie mapy i zezwolenie widoku (animacje: false) → czy cienie są czynne
+      horyzont: horyzont, cienieHor: function (wl) { if (wl != null) hor.zezwolenie = !!wl; return cienieHorAkt(); },
+      stozekTeide: function () { return stozek; }, podswietl: podswietl, najedz: najedz, kotwica: kotwica, animuj: animuj, zwolnij: zwolnij,
       czas: czasGeo, efekty: efekty, renderer: renderer,
       // dane czasu geologicznego wyspy (A1: szczyty jednostek) — przygotowuje je przy pierwszym wołaniu
       ewolucja: function () { przygotujEwolucje(); return { s: wyspa.s, przyn: wyspa.przyn, P: ewo.P }; },
@@ -1950,13 +2024,14 @@
           material: U.uMaterial.value > 0.5 ? 'sklejka' : 'zwykly', krokSklejki_m: U.uKrokSklejki.value,
           swiatlo: { pora: sw.pora, az: sw.az, el: sw.el, dostroj: sw.dostroj }, przekroj: przek ? { kat_st: przek.kat_st, przesuniecie_km: przek.przesuniecie_km, maks_m: przek.profil ? przek.profil.maks_m : null } : null,
           podswietlona: podswietlona, najechana: najechana, etykiety: piny.filter(function (g) { return g.userData.pin.widoczna; }).length,
-          wierzcholki: wierzcholki, dysk_km: Rdysku, lod: krok === 1 ? 'pelny' : 'lekki', czasMa: ewo.Ma, przygaszenie: przygaszenie };
+          wierzcholki: wierzcholki, dysk_km: Rdysku, lod: krok === 1 ? 'pelny' : 'lekki', czasMa: ewo.Ma, przygaszenie: przygaszenie,
+          cienieHor: UH.uCienieHor.value > 0.5 };
       }
     };
   }
 
   var api = { zbuduj: zbuduj, odlegloscOdBrzegu: odlegloscOdBrzegu, nawietrznosc: nawietrznosc, indeksyJednostek: indeksyJednostek,
     liniaPrzekroju: liniaPrzekroju, wysokoscTrojkatna: wysokoscTrojkatna, zbudujPoziom: zbudujPoziom, prostokat: prostokat,
-    kierunekSlonca: kierunekSlonca, PORY: PORY, GLSL_WSPOLNE: GLSL_WSPOLNE, GLSL_CHMURY_A4: GLSL_CHMURY_A4 };
+    kierunekSlonca: kierunekSlonca, PORY: PORY, GLSL_WSPOLNE: GLSL_WSPOLNE, GLSL_CHMURY_A4: GLSL_CHMURY_A4, STROP_CHMUR_KM: STROP_CHMUR_KM };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.GeologiaScena = api;
 })(typeof window !== 'undefined' ? window : globalThis);

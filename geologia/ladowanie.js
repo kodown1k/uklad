@@ -15,7 +15,7 @@
    Zapytanie: ?geologia = przycisk zakładki widoczny (do czasu gotowości jest ukryty); hak testowy
             ?smoke&geologia=<miejsce>[&rozdzial=<id>|&makieta|&tryb=makieta][&t=0..1][&czas=<Ma>][&przekroj=<°>[&przesuniecie=<km>]][&geologiczna]
             [&jakosc=pelna][&kontrola=biel|czern][&anim=a1..a5&f=0..1][&warstwa=<lista>][&widok=poludnie|polnoc|gora]
-            [&pora=teraz|HH:MM][&pogoda=pogodnie|chmury|kalima]
+            [&pora=teraz|HH:MM][&pogoda=pogodnie|chmury|kalima][&data=RRRR-MM-DD]
             (marker GEOLOGIA_READY <miejsce> <rozdzial|makieta>). `&makieta` = `&tryb=makieta`;
             `&warstwa=turystyka` = warstwa turystyczna makiety (Task 7b), `&warstwa=wulkany` = warstwa wulkanów (Task 8c),
             obie naraz `&warstwa=turystyka,wulkany`; `&widok` = kadr z przycisków kompasu;
@@ -45,7 +45,7 @@
   ];
   // Kolejność leniwego ładowania: tylko pliki, które istnieją. Kolejne zadania dopisują swoje PRZED widok.js —
   // widok.js jest ostatni, bo korzysta z reszty. Pliki konkretnego miejsca: GeologiaMiejsca.MIEJSCA[].pliki.
-  var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/ewolucja.js', 'geologia/fale.js', 'geologia/sklejka.js', 'geologia/scena.js', 'geologia/slonce.js', 'geologia/gwiazdy.js', 'geologia/animacje.js',
+  var PLIKI = ['geologia/miejsca.js', 'geologia/teren.js', 'geologia/ewolucja.js', 'geologia/fale.js', 'geologia/sklejka.js', 'geologia/horyzont.js', 'geologia/scena.js', 'geologia/slonce.js', 'geologia/gwiazdy.js', 'geologia/animacje.js',
     'geologia/rozdzialy.js', 'geologia/turystyka-scena.js', 'geologia/wulkany-scena.js', 'geologia/lektor.js', 'geologia/dzwiek.js',
     'geologia/pokaz.js', 'geologia/widok.js'];
   var KONTROLE = ['biel', 'czern'];
@@ -141,6 +141,12 @@
     return wynik;
   }
 
+  function dataSmoke(v) {
+    var m = typeof v === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(v) : null;
+    if (!m) return null;
+    var t = Date.UTC(+m[1], +m[2] - 1, +m[3], 12);
+    return new Date(t).getUTCDate() === +m[3] ? t : null;
+  }
   function parsujZapytanieGeologii(search) {
     var s = typeof search === 'string' ? search : '';
     var flaga = function (n) { return new RegExp('[?&]' + n + '(?=[&=]|$)').test(s); };
@@ -165,7 +171,9 @@
       lektor: wart('lektor') === 'lokalny' ? 'lokalny' : null,
       // Task B1: materiał (hak smoke i pomiar wydajności — oba niosą stan w zapytaniu) i hak przewyższenia (tylko wartości paska)
       material: material(wart('material')),
-      przew: PRZEWYZSZENIA.indexOf(pw) >= 0 ? pw : null
+      przew: PRZEWYZSZENIA.indexOf(pw) >= 0 ? pw : null,
+      // Task A3 (R13): dzień pory w smoke (RRRR-MM-DD → południe UTC tego dnia [ms]); zła data → null
+      data: dataSmoke(wart('data'))
     };
   }
 

@@ -1,0 +1,199 @@
+{
+ "bbox": {
+  "lonMin": -17.05,
+  "lonMax": -15.95,
+  "latMin": 27.85,
+  "latMax": 28.75
+ },
+ "w": 512,
+ "h": 476,
+ "dx_km": 0.21075,
+ "dz_km": 0.21069,
+ "kierunki": 8,
+ "azymuty": [
+  0,
+  45,
+  90,
+  135,
+  180,
+  225,
+  270,
+  315
+ ],
+ "kodowanie": "0…45° → 0…255 (ujemne → 0)",
+ "zasiegKm": 40,
+ "krokWzrost": 1.15,
+ "uklad": "horyzont-0.png: R=0°, G=45°, B=90°, A=135°; horyzont-1.png: R=180°, G=225°, B=270°, A=315° (azymut od N przez E); wiersz 0 = północ, próbki na krawędziach bbox",
+ "zrodlo": "geologia/teneryfa/rzezba.png (AWS Terrain Tiles (terrarium; ląd SRTM/GMTED, dno ETOPO1; ląd z=11/12, dno z=10), z=11), przepróbkowana dwuliniowo do połowy rozdzielczości",
+ "model": "marsz po liniach siatki odcinkami ×1.15 od jednej komórki, najwyższa komórka odcinka, krzywizna Ziemi bez refrakcji",
+ "rzezbaSha256": "c0f73efe0c37d2d7e1f2ca6856cbc3e531f7c2f6e68589e9461df16a75e34570",
+ "data": "2026-11-28",
+ "czasGenerowania_s": 0.85,
+ "pliki": {
+  "horyzont-0.png": {
+   "w": 512,
+   "h": 476,
+   "bajty": 169233,
+   "suma": 2856647594
+  },
+  "horyzont-1.png": {
+   "w": 512,
+   "h": 476,
+   "bajty": 167802,
+   "suma": 1437873280
+  }
+ },
+ "stozekTeide": {
+  "x_km": -13.949,
+  "z_km": 3.104,
+  "h_km": 3.672,
+  "hb_km": 2.25,
+  "k": 2.6631,
+  "r_km": 3.787,
+  "lon": -16.64247,
+  "lat": 28.27208,
+  "metoda": "wierzchołek = najwyższa komórka rzezba.png; poziomy co 50 m: spójny obszar nad poziomem ze szczytem (Teide z Pico Viejo), promień równoważny √(A/π); podstawa hb = najniższy poziom przed rozlaniem obszaru (zasięg od szczytu > 2× — łączy się z dnem i ścianą kaldery Las Cañadas); k — najmniejsze kwadraty r = k·(h − poziom) od hb do 100 m pod szczytem",
+  "poziomy_m_rKm_zasiegKm": [
+   [
+    3600,
+    0.197,
+    0.24
+   ],
+   [
+    3550,
+    0.314,
+    0.38
+   ],
+   [
+    3500,
+    0.432,
+    0.57
+   ],
+   [
+    3450,
+    0.557,
+    0.77
+   ],
+   [
+    3400,
+    0.685,
+    0.9
+   ],
+   [
+    3350,
+    0.808,
+    1.06
+   ],
+   [
+    3300,
+    0.941,
+    1.23
+   ],
+   [
+    3250,
+    1.069,
+    1.43
+   ],
+   [
+    3200,
+    1.204,
+    1.65
+   ],
+   [
+    3150,
+    1.32,
+    1.79
+   ],
+   [
+    3100,
+    1.441,
+    1.88
+   ],
+   [
+    3050,
+    1.591,
+    3.02
+   ],
+   [
+    3000,
+    1.76,
+    3.2
+   ],
+   [
+    2950,
+    1.904,
+    3.35
+   ],
+   [
+    2900,
+    2.021,
+    3.44
+   ],
+   [
+    2850,
+    2.146,
+    3.54
+   ],
+   [
+    2800,
+    2.258,
+    3.68
+   ],
+   [
+    2750,
+    2.378,
+    3.82
+   ],
+   [
+    2700,
+    2.519,
+    3.91
+   ],
+   [
+    2650,
+    2.65,
+    4.05
+   ],
+   [
+    2600,
+    2.776,
+    4.15
+   ],
+   [
+    2550,
+    2.899,
+    4.34
+   ],
+   [
+    2500,
+    3.031,
+    4.44
+   ],
+   [
+    2450,
+    3.18,
+    4.57
+   ],
+   [
+    2400,
+    3.387,
+    4.96
+   ],
+   [
+    2350,
+    3.586,
+    5.27
+   ],
+   [
+    2300,
+    3.858,
+    5.9
+   ],
+   [
+    2250,
+    4.217,
+    6.63
+   ]
+  ]
+ }
+}

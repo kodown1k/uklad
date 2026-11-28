@@ -61,7 +61,15 @@
    makiety; zapytanie — hak smoke i pomiar wydajności), stan().material. Animacje A1–A5 (hak &anim) wymuszają wodę ujęcia
    także przy zmianie materiału w ich trakcie; nowa budowa makiety najpierw kładzie wodę materiału.
    Hak smoke `&przew=1|1.5|3`: przewyższenie przed markerem (warstwy sklejki zgodne ze skalą Y). W smoke makiety tuż przed
-   markerem linia `GEOLOGIA_STAN_MAKIETY {json}` (materiał, przewyższenie, krok sklejki) — sprawdza ją smoke-geologia.mjs.
+   markerem linia `GEOLOGIA_STAN_MAKIETY {json}` (materiał, przewyższenie, krok sklejki, cienie z horyzontu) — sprawdza ją
+   smoke-geologia.mjs.
+   Cienie z mapy horyzontu (Task A3): horyzont.json + horyzont-*.png miejsca wczytywane po wejściu w makietę (bez blokowania
+   budowy; smoke czeka na nie przed markerem), rozpakowane bajt w bajt (DecompressionStream, bez kanwy i zarządzania
+   kolorem), sumy kontrolne z JSON → sc.horyzont(mapa). Animacje A1–A5 wyłączają cienie (sc.cienieHor(false)), czas
+   geologiczny wyłącza je w scenie. W grupie „Pora dnia” przycisk „Cień Teide” (title: „Dziś najdłuższy cień: rano HH:MM,
+   wieczorem HH:MM (Słońce 2° nad horyzontem)” z GeologiaHoryzont.chwileCienia — R13: najdłuższy WIDOCZNY cień) — klik
+   ustawia porę wieczorną po 12:00 czasu wyspy, inaczej poranną. Na morzu i stropie chmur cień Teide z modelu stożka
+   (sc.stozekTeide()). Hak smoke `&data=RRRR-MM-DD`: dzień, w którym liczy się pora z adresu i przycisk.
    Tekst z danych trafia do DOM wyłącznie przez textContent. Błędy własne: prefiks „Geologia: ”,
    ostrzeżenia nie będące błędem: „Geologia/uwaga: ”. */
 (function () {
@@ -173,6 +181,11 @@
     var gPora = grupa('Pora dnia'); gPora.classList.add('ge-grupa-pora');
     ui.bStale = guzik(gPora, 'Stałe', 'Światło stałe makiety: popołudniowe słońce z zachodu-południowego zachodu');
     ui.bTeraz = guzik(gPora, 'Teraz', 'Słońce nad Teneryfą w tej chwili (zegar urządzenia, czas wyspy)');
+    // Task A3: „Cień Teide” — pora najdłuższego widocznego cienia dziś (Słońce 2° nad horyzontem, GeologiaHoryzont.chwileCienia);
+    // podpis liczony z efemeryd przy każdej zmianie pory (pamięć na dzień wyspy). Akcja, nie przełącznik — bez aria-pressed.
+    ui.bCienTeide = guzik(gPora, 'Cień Teide', null);
+    ui.bCienTeide.removeAttribute('aria-pressed');
+    ui.bCienTeide.hidden = true;        // widoczny, gdy pokazPore policzy chwile cienia
     ui.pora = el('label', 'ge-pora', null, gPora);
     ui.poraSuwak = el('input', 'ge-pora-suwak', null, ui.pora);
     ui.poraSuwak.type = 'range'; ui.poraSuwak.min = '0'; ui.poraSuwak.max = '1430'; ui.poraSuwak.step = '10';
@@ -312,6 +325,7 @@
     ui.bPogodnie.addEventListener('click', function () { ustawPogode('pogodnie'); });
     ui.bStale.addEventListener('click', function () { ustawPore(null); });
     ui.bTeraz.addEventListener('click', function () { ustawPore(mks.pora === 'teraz' ? null : 'teraz'); });
+    ui.bCienTeide.addEventListener('click', function () { var c = cienTeideDzis(); if (c) ustawPore(c.poPoludniu ? c.wieczor : c.rano); });
     // przeciąganie: światło na bieżąco, adres dopiero po puszczeniu (replaceState przy każdym kroku Chrome dławi)
     ui.poraSuwak.addEventListener('input', function () { ustawPore(+ui.poraSuwak.value, true); });
     ui.poraSuwak.addEventListener('change', function () { adres(); });
@@ -496,7 +510,7 @@
       if (st.tryb === 'makieta') {
         var sm = window.Geologia.stan(), ss = sm.scena || {};
         console.log('GEOLOGIA_STAN_MAKIETY ' + JSON.stringify({ material: sm.material, przewyzszenie: sm.przewyzszenie,
-          scena: { material: ss.material, przewyzszenie: ss.przewyzszenie, krokSklejki_m: ss.krokSklejki_m } }));
+          scena: { material: ss.material, przewyzszenie: ss.przewyzszenie, krokSklejki_m: ss.krokSklejki_m, cienieHor: ss.cienieHor } }));
       }
       console.log('GEOLOGIA_READY ' + gotowosc); gotowosc = null;
     }
@@ -558,6 +572,49 @@
     return rzezby[miejsce];
   }
 
+  // Mapa horyzontu (Task A3): horyzont.json (z nim stożek Teide — R13) + 2 PNG RGBA rozpakowane tu bajt w bajt (DecompressionStream + odfiltrowanie
+  // z geologia/horyzont.js) — bez kanwy, która mnoży kolor przez alfę (kąt 0 w kanale A zerowałby RGB), i bez zarządzania
+  // kolorem. Suma kontrolna bajtów z horyzont.json jak szczyt rzeźby. Brak mapy / przeglądarka bez DecompressionStream:
+  // makieta bez cieni z horyzontu (null), bez blokowania wejścia.
+  var horyzonty = {};
+  function rozpakujPng(url) {
+    var HZ = window.GeologiaHoryzont;
+    return fetch(url).then(function (r) { if (!r.ok) throw new Error(url + ': HTTP ' + r.status); return r.arrayBuffer(); })
+      .then(function (b) {
+        var p = HZ.rozbierzPng(new Uint8Array(b));
+        var strumien = new Blob([p.idat]).stream().pipeThrough(new DecompressionStream('deflate'));
+        return new Response(strumien).arrayBuffer().then(function (raw) { return { w: p.w, h: p.h, rgba: HZ.odfiltrujPng(new Uint8Array(raw), p.w, p.h, p.bpp) }; });
+      });
+  }
+  function wczytajHoryzont(miejsce) {
+    if (horyzonty[miejsce]) return horyzonty[miejsce];
+    var HZ = window.GeologiaHoryzont;
+    if (!HZ || typeof DecompressionStream === 'undefined') {
+      console.warn('Geologia/uwaga: przeglądarka bez DecompressionStream — makieta bez cieni z mapy horyzontu');
+      return Promise.resolve(null);
+    }
+    var m = M.MIEJSCA.filter(function (x) { return x.id === miejsce; })[0];
+    var kat = m ? m.katalog : 'geologia/' + miejsce + '/';
+    var p = fetch(kat + 'horyzont.json').then(function (r) { if (!r.ok) throw new Error('horyzont.json: HTTP ' + r.status); return r.json(); })
+      .then(function (meta) {
+        var pliki = ['horyzont-0.png', 'horyzont-1.png'];
+        return Promise.all(pliki.map(function (f) { return rozpakujPng(kat + f); })).then(function (obr) {
+          obr.forEach(function (o, i) {
+            var oczek = meta.pliki && meta.pliki[pliki[i]];
+            if (!oczek || o.w !== oczek.w || o.h !== oczek.h || HZ.suma(o.rgba) !== oczek.suma) throw new Error(pliki[i] + ' niezgodny z horyzont.json (rozmiar albo suma kontrolna)');
+          });
+          if (smoke) console.log('GEOLOGIA_HORYZONT ' + meta.w + 'x' + meta.h + ' sumy zgodne z horyzont.json');
+          return { meta: meta, rgba0: obr[0].rgba, rgba1: obr[1].rgba };
+        });
+      });
+    horyzonty[miejsce] = p.then(null, function (e) {
+      console.error('Geologia: mapa horyzontu — ' + (e && e.message || e) + '; makieta bez cieni z horyzontu');
+      delete horyzonty[miejsce];
+      return null;
+    });
+    return horyzonty[miejsce];
+  }
+
   /* ---------- makieta ---------- */
   function lod() {
     if (/[?&]lod=lekki(?=&|$)/.test(location.search)) return 'lekki';      // hak: siatka co drugą próbkę (jak na telefonie)
@@ -607,7 +664,14 @@
     if (mks.turystyka) ustawTurystyke(true);
     if (mks.wulkany) ustawWulkany(true);
     odswiezNarzedzia();
-    if (smoke) gotowosc = st.miejsce + ' makieta';
+    // Task A3: mapa horyzontu dochodzi po wejściu (nie blokuje budowy); smoke czeka na nią przed markerem
+    var ten = mk, miejsce = st.miejsce;
+    wczytajHoryzont(miejsce).then(function (h) {
+      if (mk !== ten) return;
+      if (h) ten.sc.horyzont(h);
+      ten.horGotowy = true;             // stan().gotowa (sondy, pomiar): makieta z mapą horyzontu albo bez niej — rozstrzygnięte
+      if (smoke) gotowosc = miejsce + ' makieta';
+    });
   }
   function zwolnijMakiete() {
     budowa++;
@@ -815,6 +879,7 @@
     var K = KADRY_ANIM[nazwa], sc = mk.sc, e = sc.przewyzszenie(), D = window.GeologiaTeneryfa || {};
     var c = (D.czesci || []).filter(function (x) { return x.id === K.cel; })[0], p = c ? Teren.doLokalnych(null, c.lonLat[0], c.lonLat[1]) : [0, 0];
     sc.swiatlo(K.swiatlo); sc.woda(K.woda, 1); sc.kolorowanie('krajobraz');      // ujęcia filmu: barwy modelu krajobrazu (R4)
+    sc.cienieHor(false);                // światło ujęcia filmu — bez cieni z mapy horyzontu (Task A3, Review Focus 1)
     sc.kamera.fov = K.fov; sc.kamera.updateProjectionMatrix();
     var czesci = sc.scena.getObjectByName('czesci'); if (czesci) czesci.visible = false;
     // kadr ujęcia może patrzeć w górę (A5: niebo nad Teide z podnóża) — limit makiety „nie spod poziomu celu” nie obowiązuje
@@ -861,15 +926,18 @@
     return a;
   }
   // Słońce i pogoda → światło sceny makiety (bez sceny: tylko stan i etykieta). Animacja haka ma własne światło ujęcia.
+  // Dzień odniesienia pory (suwak, adres, „Cień Teide”): dziś; w smoke hak `&data=RRRR-MM-DD` (południe UTC tego dnia) —
+  // stany smoke z porą nie zależą od dnia uruchomienia (Task A3, R13). „Teraz” zawsze z zegara.
+  function dzienPory() { return smoke && zap.data != null ? zap.data : Date.now(); }
   function zastosujNiebo() {
-    var GS = window.GeologiaSlonce, teraz = Date.now(), a = null;
+    var GS = window.GeologiaSlonce, teraz = dzienPory(), a = null;
     mks.chmury = mks.pogoda === 'chmury';
     mks.slonce = null;
     if (GS && mks.pora != null) {
       var ll = lonLatSlonca();
       if (!ll) console.error('Geologia: brak Teide w GeologiaTeneryfa.czesci — pora dnia bez pozycji Słońca, światło stałe');
       else {
-        var ms = mks.pora === 'teraz' ? teraz : GS.msGodzinyWyspy(teraz, mks.pora), s = GS.slonce(ms, ll[1], ll[0]);
+        var ms = mks.pora === 'teraz' ? Date.now() : GS.msGodzinyWyspy(teraz, mks.pora), s = GS.slonce(ms, ll[1], ll[0]);
         var min = mks.pora === 'teraz' ? GS.czasWyspy(ms).min : mks.pora;
         mks.slonce = { az: s.az, el: s.el, pora: GS.poraZeSlonca(s.el), min: min, ms: ms };
         a = { pora: mks.slonce.pora, az: s.az, el: s.el };
@@ -884,9 +952,30 @@
     }
     pokazPore();
   }
+  // Task A3 (R13): chwile najdłuższego WIDOCZNEGO cienia Teide dziś (dzień wyspy) — Słońce 2° nad horyzontem rano po
+  // wschodzie i wieczorem przed zachodem (GeologiaHoryzont.chwileCienia); minuty dnia wyspy; pamięć na dzień.
+  var cienDnia = null;
+  function cienTeideDzis() {
+    var GS = window.GeologiaSlonce, HZ = window.GeologiaHoryzont, teraz = dzienPory();
+    if (!GS || !HZ) return null;
+    var cz = GS.czasWyspy(teraz), klucz = cz.rok + '-' + cz.mies + '-' + cz.dzien;
+    if (!cienDnia || cienDnia.klucz !== klucz) {
+      var c = HZ.chwileCienia(teraz, lonLatSlonca());
+      // minuta dnia wyspy zaokrąglona do najbliższej (czasWyspy obcina sekundy; dzień zmiany czasu — z przesunięcia chwili)
+      var min = function (ms) { return isFinite(ms) ? Math.min(1439, GS.czasWyspy(ms + 30000).min) : null; };
+      cienDnia = { klucz: klucz, rano: min(c.rano), wieczor: min(c.wieczor) };
+    }
+    return cienDnia.rano == null || cienDnia.wieczor == null ? null
+      : { rano: cienDnia.rano, wieczor: cienDnia.wieczor, poPoludniu: cz.min >= 720 };
+  }
   function pokazPore() {
     if (!ui) return;
-    var GS = window.GeologiaSlonce, t;
+    var GS = window.GeologiaSlonce, t, ct = cienTeideDzis();
+    if (ui.bCienTeide.hidden === !!ct) ui.bCienTeide.hidden = !ct;      // bez efemeryd albo Teide w danych — bez przycisku
+    if (ct) {
+      var tc = 'Dziś najdłuższy cień: rano ' + GS.godzinaTekst(ct.rano) + ', wieczorem ' + GS.godzinaTekst(ct.wieczor) + ' (Słońce 2° nad horyzontem)';
+      if (ui.bCienTeide.title !== tc) ui.bCienTeide.title = tc;
+    }
     if (mks.slonce && GS) {
       t = GS.etykietaPory(mks.slonce.min, mks.slonce.el);
       if (+ui.poraSuwak.value !== mks.slonce.min) ui.poraSuwak.value = String(mks.slonce.min);   // „Teraz”: suwak idzie za zegarem
@@ -1785,7 +1874,7 @@
     stan: function () {
       var rz = mk && mk.rz, ps = st.tryb === 'pokaz' && pokaz ? pokaz.stan() : null;
       return { miejsce: st.miejsce, tryb: st.tryb, rozdzial: st.rozdzial, ujecie: ps ? ps.ujecie : st.ujecie, t: ps ? ps.t : st.t, fps: Math.round(fps),
-        jakosc: jakosc, jakoscAuto: !wymusPelna, lektor: smoke ? 'cisza' : ps ? ps.lektorStan : 'brak', gotowa: st.tryb === 'pokaz' ? !!(pokaz && pokaz.gotowy()) : !!mk, pokaz: ps,
+        jakosc: jakosc, jakoscAuto: !wymusPelna, lektor: smoke ? 'cisza' : ps ? ps.lektorStan : 'brak', gotowa: st.tryb === 'pokaz' ? !!(pokaz && pokaz.gotowy()) : !!(mk && mk.horGotowy), pokaz: ps,
         rzezba: rz ? { hMax: rz.hMax, hMin: rz.hMin, hMaxJson: rz.meta.hMax, hMinJson: rz.meta.hMin } : null,
         kolorowanie: mks.kolorowanie, material: mks.material, przekroj: mks.przekroj ? { kat_st: mks.przekroj.kat_st, przesuniecie_km: mks.przekroj.przesuniecie_km,
           maks_m: mks.przekroj.profil ? mks.przekroj.profil.maks_m : null } : null,
